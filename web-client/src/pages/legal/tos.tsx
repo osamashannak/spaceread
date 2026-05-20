@@ -6,14 +6,14 @@ const termsOfService = `
 Welcome to SpaceRead (formerly UAEU Space). These Terms of Service ("Terms") govern your access to and use of the SpaceRead website and all related services (collectively, the "Platform"). By accessing or using the Platform, you agree to be bound by these Terms. If you do not agree, please discontinue use immediately.
 SpaceRead is a student-built platform with two core functions:
 - A study materials library where students can upload, download, and share course-related resources.
-- A professor review platform where students can anonymously rate and review their academic experiences at UAEU.
+- A professor review platform where students can anonymously rate and review their academic experiences at supported universities.
 The Platform operates on a fully anonymous basis. No account registration or personal information is required to use SpaceRead. We believe anonymity encourages honest, constructive feedback while protecting user privacy.
 
 # 2. Eligibility
-The Platform is intended for use by current and former students of UAE University. By using SpaceRead, you represent that:
+The Platform is intended for use by current and former students of universities supported by SpaceRead. By using SpaceRead, you represent that:
 - You are at least 18 years of age, or have the consent of a parent or guardian.
 - Your use of the Platform complies with all applicable laws and regulations.
-- You understand and accept that SpaceRead is an independent platform unaffiliated with UAEU.
+- You understand and accept that SpaceRead is an independent platform unaffiliated with any university listed on the Platform.
 
 # 3. Study Materials
 
@@ -28,7 +28,7 @@ You are solely responsible for any materials you upload. You warrant that your u
 - Are accurate and not misleading.
 - Do not contain confidential, sensitive, or personally identifiable information about any individual.
 - Do not infringe upon any copyright, trademark, or other intellectual property right.
-- Comply with all applicable UAE laws and UAEU academic integrity policies.
+- Comply with all applicable UAE laws and the academic integrity policies of your university.
 Uploading materials obtained through academic dishonesty (e.g., stolen exams, leaked answer keys) is prohibited.
 
 ## 3.4 Moderation and Removal
@@ -142,7 +142,7 @@ You may cease using the Platform at any time. Content you have previously submit
 The Platform may contain links to third-party websites or services. SpaceRead is not responsible for the content, privacy practices, or terms of any third-party platform. Accessing third-party links is at your own risk, and you should review the applicable terms and policies of those platforms independently.
 
 # 13. Academic Integrity
-Users must not upload or share materials that violate UAEU's academic integrity policies or any applicable academic honor code. This includes, without limitation, unauthorized exam papers, leaked assessments, or answer keys obtained through dishonest means. SpaceRead reserves the right to remove such materials and, where legally required, report violations to the appropriate authorities.
+Users must not upload or share materials that violate their university's academic integrity policies or any applicable academic honor code. This includes, without limitation, unauthorized exam papers, leaked assessments, or answer keys obtained through dishonest means. SpaceRead reserves the right to remove such materials and, where legally required, report violations to the appropriate authorities.
 
 # 14. Governing Law and Jurisdiction
 These Terms shall be governed by and construed in accordance with the laws of the United Arab Emirates. Any disputes arising out of or in connection with these Terms or your use of the Platform shall be subject to the exclusive jurisdiction of the competent courts of the UAE.
@@ -165,8 +165,8 @@ export default function TermsOfService() {
             <LegalPage
                 title="Terms of Service"
                 label="SpaceRead"
-                lastUpdated="May 15, 2026"
-                notice="IMPORTANT: SpaceRead is an independent, student-led initiative. It is not affiliated with, endorsed by, or connected to UAE University (UAEU) or any of its staff, faculty, or official bodies."
+                lastUpdated="May 21, 2026"
+                notice="IMPORTANT: SpaceRead is an independent, student-led initiative. It is not affiliated with, endorsed by, or connected to any university listed on the Platform, or with any university's staff, faculty, or official bodies."
             >
                 <LegalMarkdownDocument source={termsOfService}/>
             </LegalPage>
