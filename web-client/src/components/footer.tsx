@@ -35,7 +35,7 @@ export default function Footer() {
                 </div>
             </section>
             <section className={styles.footerEnd}>
-                <p className={styles.copyright}>© 2025 SpaceRead. Not affiliated with any university (Student-operated). Emojis by <a href={"https://github.com/jdecked/twemoji"}
+                <p className={styles.copyright}>© 2026 SpaceRead. Not affiliated with any university (Student-operated). Emojis by <a href={"https://github.com/jdecked/twemoji"}
                                                                 rel="noreferrer" target={"_blank"}>Twemoji</a>.</p>
                 <ul className={styles.links}>
                     <li><Link to={"/terms-of-service"}>Terms of Service</Link></li>
