@@ -14,7 +14,7 @@ export type LegalBlock =
     | {type: "paragraph"; text: string}
     | {type: "list"; items: string[]};
 
-const contactEmail = "uaeuspace@gmail.com";
+const contactEmail = "contact@spaceread.net";
 
 function PrintIcon() {
     return (

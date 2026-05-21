@@ -80,7 +80,7 @@ SpaceRead is not directed to children under 17, and we do not knowingly collect 
 We may update this Privacy Policy as SpaceRead changes or as legal, security, or operational needs evolve. The updated policy will be posted on this page with a new "Last updated" date. Your continued use of SpaceRead after an update means you accept the revised policy.
 
 # Contact
-Privacy questions, requests, and concerns may be sent to uaeuspace@gmail.com.
+Privacy questions, requests, and concerns may be sent to contact@spaceread.net.
 `;
 
 export default function Privacy() {
@@ -92,7 +92,7 @@ export default function Privacy() {
             <LegalPage
                 title="Privacy Policy"
                 label="SpaceRead"
-                lastUpdated="May 15, 2026"
+                lastUpdated="May 21, 2026"
                 notice="This policy explains how SpaceRead handles information submitted through the website and information collected to keep the platform useful, secure, and respectful."
             >
                 <LegalMarkdownDocument source={privacyPolicy}/>

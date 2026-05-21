@@ -35,7 +35,7 @@ Uploading materials obtained through academic dishonesty (e.g., stolen exams, le
 All uploaded materials are subject to review by our moderation team prior to publication. SpaceRead reserves the right to reject, remove, or disable access to any material at its sole discretion, including materials that are outdated, irrelevant, infringing, or otherwise in violation of these Terms.
 
 ## 3.5 Copyright Infringement (DMCA-Style Notice)
-SpaceRead respects intellectual property rights. If you believe that content on the Platform infringes your copyright, please send a written notice to uaeuspace@gmail.com including:
+SpaceRead respects intellectual property rights. If you believe that content on the Platform infringes your copyright, please send a written notice to contact@spaceread.net including:
 - Your full name and contact information.
 - A description of the copyrighted work you claim has been infringed.
 - The URL or specific location of the allegedly infringing material.
@@ -79,7 +79,7 @@ SpaceRead uses a combination of automated tools (including third-party content m
 Once submitted, reviews cannot be edited or deleted by the user. This policy preserves the authenticity and integrity of the review record. Please review your submission carefully before posting.
 
 ## 4.7 Flagging Reviews
-Users who encounter reviews that appear to violate these Terms are encouraged to flag them using the in-platform reporting tool or by contacting us at uaeuspace@gmail.com. Flagged reviews are assessed by our moderation team and may be removed if found to be in violation.
+Users who encounter reviews that appear to violate these Terms are encouraged to flag them using the in-platform reporting tool or by contacting us at contact@spaceread.net. Flagged reviews are assessed by our moderation team and may be removed if found to be in violation.
 
 ## 4.8 No Endorsement
 The opinions expressed in reviews are solely those of the individual users. SpaceRead does not verify, endorse, or vouch for any review. SpaceRead expressly disclaims any responsibility for the accuracy or reliability of user-submitted reviews.
@@ -152,8 +152,7 @@ SpaceRead reserves the right to update or modify these Terms at any time. Change
 
 # 16. Contact
 For questions, concerns, copyright notices, or to report violations, please contact us at:
-Email: uaeuspace@gmail.com
-We aim to respond to all inquiries within 5 business days.
+Email: contact@spaceread.net
 `;
 
 export default function TermsOfService() {
