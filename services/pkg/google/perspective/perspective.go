@@ -72,14 +72,14 @@ func (p *Perspective) Analyze(commentText string) *AnalysisResult {
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		fmt.Printf("Perspective API returned non-200 status: %d\n", resp.StatusCode)
-		return result
-	}
-
 	raw, err := io.ReadAll(resp.Body)
 	if err != nil {
 		fmt.Println("Error reading response body:", err)
+		return result
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		fmt.Printf("Perspective API returned non-200 status: %d: %s\n", resp.StatusCode, string(raw))
 		return result
 	}
 
