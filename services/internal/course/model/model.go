@@ -9,17 +9,20 @@ type Course struct {
 }
 
 type CourseFile struct {
-	ID            string
-	BlobName      string
-	Name          string
-	Type          string
-	Size          int
-	Visible       bool
-	Reviewed      bool
-	VtReport      *VTReportJson
-	CourseTag     string
-	DownloadCount int
-	CreatedAt     time.Time
+	ID               string
+	BlobName         string
+	Name             string
+	Type             string
+	Size             int
+	Visible          bool
+	Reviewed         bool
+	VtReport         *VTReportJson
+	CourseTag        string
+	DownloadCount    int
+	CreatedAt        time.Time
+	UserId           *int64
+	SessionId        *int64
+	ReviewedAt       *time.Time
 }
 
 type VTReportJson struct {

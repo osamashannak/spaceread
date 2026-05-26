@@ -178,8 +178,8 @@ export const parseText = <T extends HTMLElement | string>(text: T): T => {
 
 export const isPasswordValid = (password: string) => {
 
-    if (password.length < 8 || password.length > 20) {
-        return "Password must be between 8 and 20 characters long."
+    if (password.length < 8 || password.length > 256) {
+        return "Password must be between 8 and 256 characters long."
     }
 
     return true;
@@ -197,6 +197,10 @@ export const isUsernameValid = (username: string) => {
 
     if (username.match(/\s/)) {
         return "Username cannot contain spaces."
+    }
+
+    if (!username.match(/^[A-Za-z0-9_-]+$/)) {
+        return "Username can only contain letters, numbers, underscores, and hyphens."
     }
 
     if (username.length < 3 || username.length > 20) {

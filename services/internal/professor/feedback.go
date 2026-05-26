@@ -59,7 +59,7 @@ func (s *Server) NewFeedback() http.Handler {
 
 		question := utils.GetFirstQuestion()
 
-		err = s.db.InsertNewFeedback(ctx, id, profile.SessionId, question.ID)
+		err = s.db.InsertNewFeedback(ctx, id, profile.SessionId, profile.UserId, question.ID)
 
 		jsonutil.MarshalResponse(w, http.StatusOK, v1.NewFeedbackResponse{
 			FeedbackID:     id,

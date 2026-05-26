@@ -20,7 +20,7 @@ const Router = createBrowserRouter([
         children: [
             {
                 path: "/",
-                element: <Navigate to={"/professor"}/>
+                element: <Navigate to={"/professor"} replace/>
             },
             {
                 path: "notifications",

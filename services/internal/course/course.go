@@ -1,6 +1,7 @@
 package course
 
 import (
+	"errors"
 	"fmt"
 	v1 "github.com/osamashannak/uaeu-space/services/internal/api/v1"
 	"github.com/osamashannak/uaeu-space/services/internal/course/model"
@@ -8,11 +9,14 @@ import (
 	"github.com/osamashannak/uaeu-space/services/pkg/logging"
 	"github.com/osamashannak/uaeu-space/services/pkg/utils"
 	"io"
+	"mime"
 	"net"
 	"net/http"
 	"strconv"
 	"time"
 )
+
+const maxCourseUploadSize = 101 << 20
 
 func (s *Server) Get() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -129,27 +133,49 @@ func (s *Server) UploadCourseFile() http.Handler {
 			return
 		}
 
-		err := r.ParseMultipartForm(101 << 20) // 101 MB limit
+		r.Body = http.MaxBytesReader(w, r.Body, maxCourseUploadSize)
+		err := r.ParseMultipartForm(maxCourseUploadSize)
 		if err != nil {
-			http.Error(w, "failed to parse multipart form", http.StatusBadRequest)
+			var maxBytesErr *http.MaxBytesError
+			if errors.As(err, &maxBytesErr) {
+				jsonutil.MarshalResponse(w, http.StatusRequestEntityTooLarge, v1.ErrorResponse{
+					Message: fmt.Sprintf("file size cannot exceed %d MB", maxCourseUploadSize>>20),
+					Error:   http.StatusRequestEntityTooLarge,
+				})
+				return
+			}
+
+			jsonutil.MarshalResponse(w, http.StatusBadRequest, v1.ErrorResponse{
+				Message: "failed to parse multipart form",
+				Error:   http.StatusBadRequest,
+			})
 			return
 		}
 
-		file, _, err := r.FormFile("contents")
+		file, fileHeader, err := r.FormFile("contents")
 		if err != nil {
-			http.Error(w, "file is required", http.StatusBadRequest)
+			jsonutil.MarshalResponse(w, http.StatusBadRequest, v1.ErrorResponse{
+				Message: "file is required",
+				Error:   http.StatusBadRequest,
+			})
 			return
 		}
 		defer file.Close()
 
 		contents, err := io.ReadAll(file)
 		if err != nil {
-			http.Error(w, "failed to read file", http.StatusInternalServerError)
+			jsonutil.MarshalResponse(w, http.StatusInternalServerError, v1.ErrorResponse{
+				Message: "an error occurred. please try again later.",
+				Error:   http.StatusInternalServerError,
+			})
 			return
 		}
 
 		tag := r.FormValue("course_tag")
 		fileName := r.FormValue("file_name")
+		if fileName == "" && fileHeader != nil {
+			fileName = fileHeader.Filename
+		}
 
 		logger.Debugf("received request to upload course file by session id: %d", profile.SessionId)
 
@@ -169,7 +195,15 @@ func (s *Server) UploadCourseFile() http.Handler {
 
 		fileName = utils.SanitizeFileName(fileName)
 
-		contentType := http.DetectContentType(contents)
+		contentType, err := validateCourseMaterial(fileName, contents)
+		if err != nil {
+			logger.Debugf("invalid course material upload: %v", err)
+			jsonutil.MarshalResponse(w, http.StatusBadRequest, v1.ErrorResponse{
+				Message: err.Error(),
+				Error:   http.StatusBadRequest,
+			})
+			return
+		}
 
 		compressedContents, err := utils.CompressData(contents)
 
@@ -185,7 +219,7 @@ func (s *Server) UploadCourseFile() http.Handler {
 
 		cacheControl := "max-age=31536000, immutable"
 		encoding := "gzip"
-		disposition := fmt.Sprintf("attachment; filename=%s", fileName)
+		disposition := mime.FormatMediaType("attachment", map[string]string{"filename": fileName})
 
 		err = s.storage.CreateObject(ctx, fileId, &contentType, &cacheControl, &encoding, &disposition, compressedContents)
 
@@ -206,6 +240,8 @@ func (s *Server) UploadCourseFile() http.Handler {
 			Type:      contentType,
 			Size:      len(compressedContents),
 			CourseTag: course.Tag,
+			UserId:    profile.UserId,
+			SessionId: &profile.SessionId,
 		})
 
 		if err != nil {
@@ -316,7 +352,7 @@ func (s *Server) DownloadCourseFile() http.Handler {
 			logger.Debugf("access token for ip address %s has expired", ipAddress)
 
 			expiresOn := time.Now().AddDate(0, 3, 0)
-			queryParams, err = s.storage.GenerateSASToken(net.IP(ipAddress), expiresOn)
+			queryParams, err = s.storage.GenerateSASToken(net.ParseIP(ipAddress), expiresOn)
 
 			if err != nil || queryParams == "" {
 				logger.Errorf("failed to generate SAS token for ip address %s: %v", ipAddress, err)

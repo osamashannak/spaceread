@@ -61,7 +61,7 @@ func (db *ProfessorDB) GetProfessor(ctx context.Context, email string) (*model.P
 	return &prof, nil
 }
 
-func (db *ProfessorDB) GetProfessorReviews(ctx context.Context, sessionId int64, email string) (*[]v1.Review, *float64, *[]int64, *bool, error) {
+func (db *ProfessorDB) GetProfessorReviews(ctx context.Context, sessionId int64, userId *int64, email string) (*[]v1.Review, *float64, *[]int64, *bool, error) {
 	rows, err := db.Db.Pool.Query(ctx, `
 		SELECT 
 		    r.visible,
@@ -78,7 +78,7 @@ func (db *ProfessorDB) GetProfessorReviews(ctx context.Context, sessionId int64,
 			r.reply_count,
 			r.uaeu_origin,
 			r.created_at,
-			COALESCE( (r.session_id IS NOT DISTINCT FROM $1), FALSE ) AS self,
+			COALESCE( (r.session_id IS NOT DISTINCT FROM $1) OR ($2::bigint IS NOT NULL AND r.user_id IS NOT DISTINCT FROM $2), FALSE ) AS self,
 			CASE 
 				WHEN rr.value = true THEN 'like'
 				WHEN rr.value = false THEN 'dislike'
@@ -90,12 +90,18 @@ func (db *ProfessorDB) GetProfessorReviews(ctx context.Context, sessionId int64,
 			r.session_id,
 			r.gif
 		FROM professor.review r
-		LEFT JOIN professor.review_rating rr 
-			ON rr.review_id = r.id AND rr.session_id = $1
+		LEFT JOIN LATERAL (
+			SELECT value
+			FROM professor.review_rating
+			WHERE review_id = r.id
+			  AND (session_id = $1 OR ($2::bigint IS NOT NULL AND user_id = $2))
+			ORDER BY created_at DESC
+			LIMIT 1
+		) rr ON true
 		LEFT JOIN professor.review_attachment ra 
 			ON r.attachment = ra.id AND ra.visible
-		WHERE professor_email = $2 AND r.deleted_at IS NULL AND r.created_at >= NOW() - INTERVAL '2 years'
-		ORDER BY r.created_at DESC;`, sessionId, email)
+		WHERE professor_email = $3 AND r.deleted_at IS NULL AND r.created_at >= NOW() - INTERVAL '2 years'
+		ORDER BY r.created_at DESC;`, sessionId, userId, email)
 
 	if err != nil {
 		return nil, nil, nil, nil, err

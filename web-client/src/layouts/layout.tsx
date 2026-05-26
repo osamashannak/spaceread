@@ -7,10 +7,15 @@ import MobileNavigation from "../components/mobile_navigation.tsx";
 import {useEffect, useState} from "react";
 import {Helmet} from "@dr.pogodin/react-helmet";
 import {ModalProvider} from "../components/provider/modal.tsx";
+import {getAccountSettings} from "../api/auth.ts";
+import {useAppDispatch} from "../redux/hooks.ts";
+import {setUser} from "../redux/slice/user_slice.ts";
+import {recaptchaDisabled} from "../lib/recaptcha.ts";
 
 export default function Layout() {
 
     const [width, setWidth] = useState(window.innerWidth);
+    const dispatch = useAppDispatch();
 
     useEffect(() => {
         const handleResize = () => {
@@ -23,6 +28,12 @@ export default function Layout() {
             window.removeEventListener('resize', handleResize);
         }
     }, []);
+
+    useEffect(() => {
+        getAccountSettings().then((user) => {
+            dispatch(setUser(user ?? {status: "guest"}));
+        });
+    }, [dispatch]);
 
     return (
         <>
@@ -56,16 +67,22 @@ export default function Layout() {
             <ScrollRestoration/>
 
             <main>
-                <GoogleReCaptchaProvider
-                    reCaptchaKey={import.meta.env.VITE_GOOGLE_RECAPTCHA_SITE_KEY}
-                    useEnterprise={true}
-                    scriptProps={{
-                        async: true
-                    }}>
+                {recaptchaDisabled ? (
                     <ModalProvider>
                         <Outlet/>
                     </ModalProvider>
-                </GoogleReCaptchaProvider>
+                ) : (
+                    <GoogleReCaptchaProvider
+                        reCaptchaKey={import.meta.env.VITE_GOOGLE_RECAPTCHA_SITE_KEY}
+                        useEnterprise={true}
+                        scriptProps={{
+                            async: true
+                        }}>
+                        <ModalProvider>
+                            <Outlet/>
+                        </ModalProvider>
+                    </GoogleReCaptchaProvider>
+                )}
             </main>
 
             <Footer/>

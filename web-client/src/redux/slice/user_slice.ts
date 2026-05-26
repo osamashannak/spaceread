@@ -3,15 +3,15 @@ import {createSlice} from '@reduxjs/toolkit'
 interface UserState {
     id: string,
     username: string,
-    csrfToken: string,
-    status: "guest" | "authenticated" | null
+    role: string,
+    status: "guest" | "authenticated" | "loading" | null
 }
 
 const initialState: UserState = {
     id: "",
     username: "",
-    csrfToken: "",
-    status: "guest"
+    role: "",
+    status: "loading"
 }
 
 export const userSlice = createSlice({
@@ -19,16 +19,16 @@ export const userSlice = createSlice({
     initialState,
     reducers: {
         setUser: (state, action) => {
-            state.id = action.payload.id
-            state.username = action.payload.username
-            state.csrfToken = action.payload.csrfToken
-            state.status = action.payload.status
+            state.id = action.payload.id ?? ""
+            state.username = action.payload.username ?? ""
+            state.role = action.payload.role ?? ""
+            state.status = action.payload.status ?? "guest"
         },
         clearUser: (state) => {
             state.id = ""
             state.username = ""
-            state.csrfToken = ""
-            state.status = null
+            state.role = ""
+            state.status = "guest"
         }
     }
 })

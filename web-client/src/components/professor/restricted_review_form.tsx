@@ -19,6 +19,7 @@ import EmojiSelector from "../lexical_editor/emoji_selector.tsx";
 import ReviewAttachment from "./review_attachment.tsx";
 import {useModal} from "../provider/modal.tsx";
 import FlaggedModal from "../modal/flagged_modal.tsx";
+import {getRecaptchaToken} from "../../lib/recaptcha.ts";
 
 export default function RestrictedReviewForm(props: { professorEmail: string; canReview: boolean }) {
     const [details, setDetails] = useState<ReviewFormDraft>({
@@ -175,14 +176,14 @@ export default function RestrictedReviewForm(props: { professorEmail: string; ca
             lineRef.current?.resume();
         }
 
-        if (!executeRecaptcha) {
+        const token = await getRecaptchaToken(executeRecaptcha, "new_review");
+
+        if (!token) {
             // @ts-expect-error Clarity is not defined
             clarity("set", "ReviewFailed", "true");
             setSubmitting("error");
             return;
         }
-
-        const token = await executeRecaptcha("new_review");
 
         const review = await postReview({
             course_taken: "", grade_received: "",

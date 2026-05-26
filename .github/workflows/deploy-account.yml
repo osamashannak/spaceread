@@ -1,0 +1,66 @@
+name: 'Build and Deploy Account Microservice to Cloud Run'
+
+on:
+  push:
+    branches:
+      - 'main'
+    paths:
+      - '.github/workflows/deploy-account.yml'
+      - 'services/cmd/account/**'
+      - 'services/internal/account/**'
+      - 'services/internal/api/**'
+      - 'services/internal/middleware/**'
+      - 'services/pkg/**'
+      - 'services/Dockerfile'
+      - 'services/go.mod'
+      - 'services/go.sum'
+
+env:
+  PROJECT_ID: 'uaeu-space'
+  REGION: 'europe-west1'
+  SERVICE: 'spaceread-account'
+  WORKLOAD_IDENTITY_PROVIDER: 'projects/503811163032/locations/global/workloadIdentityPools/github-actions-pool/providers/spaceread'
+
+jobs:
+  deploy:
+    runs-on: 'ubuntu-latest'
+
+    permissions:
+      contents: 'read'
+      id-token: 'write'
+
+    steps:
+      - name: 'Checkout'
+        uses: 'actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332' # actions/checkout@v4
+
+      - id: 'auth'
+        name: 'Authenticate to Google Cloud'
+        uses: 'google-github-actions/auth@f112390a2df9932162083945e46d439060d66ec2' # google-github-actions/auth@v2
+        with:
+          workload_identity_provider: '${{ env.WORKLOAD_IDENTITY_PROVIDER }}'
+
+      - name: 'Docker Auth'
+        uses: 'docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567' # docker/login-action@v3
+        with:
+          username: 'oauth2accesstoken'
+          password: '${{ steps.auth.outputs.auth_token }}'
+          registry: '${{ env.REGION }}-docker.pkg.dev'
+
+      - name: 'Build and Push Container'
+        run: |-
+          DOCKER_TAG="${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.SERVICE }}/account:${{ github.sha }}"
+          docker build --file services/Dockerfile --build-arg SERVICE=account --tag "${DOCKER_TAG}" services
+          docker push "${DOCKER_TAG}"
+
+      - name: 'Deploy to Cloud Run'
+        id: 'deploy'
+        uses: 'google-github-actions/deploy-cloudrun@33553064113a37d688aa6937bacbdc481580be17' # google-github-actions/deploy-cloudrun@v2
+        with:
+          service: '${{ env.SERVICE }}'
+          region: '${{ env.REGION }}'
+          project_id: '${{ env.PROJECT_ID }}'
+          image: '${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.SERVICE }}/account:${{ github.sha }}'
+
+      - name: 'Show output'
+        run: |-
+          echo ${{ steps.deploy.outputs.url }}

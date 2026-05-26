@@ -1,8 +1,10 @@
 
+import {AuthUser} from "../typed/user.ts";
+import {csrfHeader} from "./csrf.ts";
 
-const HOST = import.meta.env.VITE_AUTH_SERVER_ENDPOINT;
+const HOST = import.meta.env.VITE_AUTH_ENDPOINT;
 
-export async function sendLonginRequest(id: string, password: string) {
+export async function sendLoginRequest(id: string, password: string) {
     let response;
 
     try {
@@ -27,7 +29,7 @@ export async function sendSignUpRequest(id: string, email: string, password: str
     try {
         response = await fetch(HOST + "/gate/signup", {
             method: "POST",
-            body: JSON.stringify({id, email, password}),
+            body: JSON.stringify({username: id, email, password}),
             headers: {
                 "Content-Type": "application/json"
             },
@@ -59,13 +61,13 @@ export async function sendGoogleLogin(credential: string) {
     return response;
 }
 
-export async function sendGoogleSignup(googleId: string, email: string, username: string) {
+export async function sendGoogleSignup(credential: string, username: string) {
     let response;
 
     try {
         response = await fetch(HOST + "/gate/googleSignup", {
             method: "POST",
-            body: JSON.stringify({googleId, email, username}),
+            body: JSON.stringify({credential, username}),
             headers: {
                 "Content-Type": "application/json"
             },
@@ -78,16 +80,32 @@ export async function sendGoogleSignup(googleId: string, email: string, username
     return response;
 }
 
-
-export async function whoAmI() {
+export async function getAccountSettings() {
     let response;
 
     try {
-        response = await fetch(HOST + "/gate/whoAmI", {
+        response = await fetch(HOST + "/gate/account/settings", {
             method: "GET",
             headers: {
                 "Content-Type": "application/json"
             },
+            credentials: "include"
+        })
+    } catch (error) {
+        return undefined;
+    }
+
+    if (!response || !response.ok) return undefined;
+    return await response.json() as AuthUser;
+}
+
+export async function logout() {
+    let response;
+
+    try {
+        response = await fetch(HOST + "/gate/logout", {
+            method: "POST",
+            headers: csrfHeader(),
             credentials: "include"
         })
     } catch (error) {

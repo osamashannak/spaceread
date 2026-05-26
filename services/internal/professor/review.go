@@ -92,7 +92,7 @@ func (s *Server) PostReview() http.Handler {
 			return
 		}
 
-		existingReview, err := s.db.ExistsReviewSession(ctx, *request.ProfessorEmail, profile.SessionId)
+		existingReview, err := s.db.ExistsReviewIdentity(ctx, *request.ProfessorEmail, profile.SessionId, profile.UserId)
 
 		if err != nil {
 			logger.Errorf("failed to check existing review: %v", err)
@@ -222,6 +222,7 @@ func (s *Server) PostReview() http.Handler {
 			Language:       flags.Language,
 			IpAddress:      ipAddress,
 			SessionId:      &profile.SessionId,
+			UserId:         profile.UserId,
 			CreatedAt:      time.Now(),
 			Gif:            gif,
 		}
@@ -320,7 +321,9 @@ func (s *Server) DeleteReview() http.Handler {
 			return
 		}
 
-		if review.SessionId == nil || *review.SessionId != profile.SessionId {
+		ownedBySession := review.SessionId != nil && *review.SessionId == profile.SessionId
+		ownedByUser := review.UserId != nil && profile.UserId != nil && *review.UserId == *profile.UserId
+		if !ownedBySession && !ownedByUser {
 			errorResponse := v1.ErrorResponse{
 				Message: "you are not allowed to delete this review",
 				Error:   http.StatusForbidden,
@@ -752,7 +755,7 @@ func (s *Server) AddReviewRating() http.Handler {
 			return
 		}
 
-		existingRating, err := s.db.ExistsReviewRatingFromSession(ctx, request.ReviewID, profile.SessionId)
+		existingRating, err := s.db.ExistsReviewRatingFromIdentity(ctx, request.ReviewID, profile.SessionId, profile.UserId)
 
 		if err != nil {
 			logger.Errorf("failed to check existing rating: %v", err)
@@ -795,6 +798,7 @@ func (s *Server) AddReviewRating() http.Handler {
 		rating := model.ReviewRating{
 			ReviewId:  request.ReviewID,
 			SessionId: profile.SessionId,
+			UserId:    profile.UserId,
 			Value:     *value,
 			IpAddress: utils.GetClientIP(r),
 		}
@@ -864,7 +868,7 @@ func (s *Server) DeleteReviewRating() http.Handler {
 			return
 		}
 
-		existingRating, err := s.db.ExistsReviewRatingFromSession(ctx, reviewIdInt, profile.SessionId)
+		existingRating, err := s.db.ExistsReviewRatingFromIdentity(ctx, reviewIdInt, profile.SessionId, profile.UserId)
 
 		if err != nil {
 			logger.Errorf("failed to check existing rating: %v", err)
@@ -886,7 +890,7 @@ func (s *Server) DeleteReviewRating() http.Handler {
 			return
 		}
 
-		err = s.db.DeleteReviewRating(ctx, reviewIdInt, profile.SessionId)
+		err = s.db.DeleteReviewRating(ctx, reviewIdInt, profile.SessionId, profile.UserId)
 
 		if err != nil {
 			logger.Errorf("failed to delete review rating: %v", err)

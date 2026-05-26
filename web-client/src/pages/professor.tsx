@@ -2,7 +2,7 @@ import einstein from "../assets/images/einstien.png";
 import {lazy, Suspense, useEffect, useRef} from "react";
 import styles from "../styles/pages/professor.module.scss";
 import {getProfessor} from "../api/professor.ts";
-import {useParams} from "react-router-dom";
+import {useLocation, useParams} from "react-router-dom";
 import Skeleton from "react-loading-skeleton";
 import 'react-loading-skeleton/dist/skeleton.css'
 import {useDispatch, useSelector} from "react-redux";
@@ -33,6 +33,7 @@ const ReviewSection = lazy(async () => {
 
 export default function Professor() {
     const {email} = useParams();
+    const location = useLocation();
 
     const dispatch = useDispatch();
     const professorState = useSelector(selectProfessor);
@@ -96,6 +97,32 @@ export default function Professor() {
             localStorage.setItem("professorHistory", JSON.stringify(professorHistory));
         }
     }, [professor]);
+
+    useEffect(() => {
+        if (!professor || !location.hash.startsWith("#review-")) return;
+
+        let attempts = 0;
+        let timeout: number | undefined;
+
+        const scrollToReview = () => {
+            const element = document.getElementById(location.hash.slice(1));
+            if (element) {
+                element.scrollIntoView({behavior: "smooth", block: "center"});
+                return;
+            }
+
+            attempts++;
+            if (attempts < 12) {
+                timeout = window.setTimeout(scrollToReview, 100);
+            }
+        }
+
+        scrollToReview();
+
+        return () => {
+            if (timeout) window.clearTimeout(timeout);
+        }
+    }, [location.hash, professor]);
 
     const isStale = email && professor && professor.email.toLowerCase() !== email.toLowerCase();
 

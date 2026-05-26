@@ -60,26 +60,26 @@ func NewServer(db *database.ProfessorDB,
 func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
 
-	mux.Handle("GET /professor", s.gateway.Middleware(s.Get()))
+	mux.Handle("GET /professor", s.gateway.OptionalAuthMiddleware(s.Get()))
 	mux.Handle("GET /professor/all", s.GetAll())
 
-	mux.Handle("POST /comment", s.gateway.Middleware(s.PostReview()))
-	mux.Handle("DELETE /comment", s.gateway.Middleware(s.DeleteReview()))
+	mux.Handle("POST /comment", s.gateway.OptionalAuthMiddleware(s.gateway.RequireCSRF(s.PostReview())))
+	mux.Handle("DELETE /comment", s.gateway.OptionalAuthMiddleware(s.gateway.RequireCSRF(s.DeleteReview())))
 	mux.Handle("GET /comment/translate", s.TranslateReview())
-	mux.Handle("POST /comment/report", s.gateway.Middleware(s.ReportReview()))
-	mux.Handle("POST /comment/attachment", s.UploadReviewAttachment())
-	mux.Handle("POST /comment/rating", s.gateway.Middleware(s.AddReviewRating()))
-	mux.Handle("DELETE /comment/rating", s.gateway.Middleware(s.DeleteReviewRating()))
+	mux.Handle("POST /comment/report", s.gateway.OptionalAuthMiddleware(s.gateway.RequireCSRF(s.ReportReview())))
+	mux.Handle("POST /comment/attachment", s.gateway.Middleware(s.gateway.RequireCSRF(s.UploadReviewAttachment())))
+	mux.Handle("POST /comment/rating", s.gateway.OptionalAuthMiddleware(s.gateway.RequireCSRF(s.AddReviewRating())))
+	mux.Handle("DELETE /comment/rating", s.gateway.OptionalAuthMiddleware(s.gateway.RequireCSRF(s.DeleteReviewRating())))
 
-	mux.Handle("GET /comment/reply", s.gateway.Middleware(s.GetReplies()))
-	mux.Handle("GET /comment/reply/name", s.gateway.Middleware(s.GetReplyName()))
-	mux.Handle("POST /comment/reply", s.gateway.Middleware(s.PostReply()))
-	mux.Handle("DELETE /comment/reply", s.gateway.Middleware(s.DeleteReply()))
-	mux.Handle("POST /comment/reply/like", s.gateway.Middleware(s.LikeReply()))
-	mux.Handle("DELETE /comment/reply/like", s.gateway.Middleware(s.UnlikeReply()))
+	mux.Handle("GET /comment/reply", s.gateway.OptionalAuthMiddleware(s.GetReplies()))
+	mux.Handle("GET /comment/reply/name", s.gateway.OptionalAuthMiddleware(s.GetReplyName()))
+	mux.Handle("POST /comment/reply", s.gateway.OptionalAuthMiddleware(s.gateway.RequireCSRF(s.PostReply())))
+	mux.Handle("DELETE /comment/reply", s.gateway.OptionalAuthMiddleware(s.gateway.RequireCSRF(s.DeleteReply())))
+	mux.Handle("POST /comment/reply/like", s.gateway.OptionalAuthMiddleware(s.gateway.RequireCSRF(s.LikeReply())))
+	mux.Handle("DELETE /comment/reply/like", s.gateway.OptionalAuthMiddleware(s.gateway.RequireCSRF(s.UnlikeReply())))
 
-	mux.Handle("GET /feedback/new", s.gateway.Middleware(s.NewFeedback()))
-	mux.Handle("POST /feedback", s.Feedback())
+	mux.Handle("GET /feedback/new", s.gateway.OptionalAuthMiddleware(s.NewFeedback()))
+	mux.Handle("POST /feedback", s.gateway.OptionalAuthMiddleware(s.gateway.RequireCSRF(s.Feedback())))
 
 	return middleware.CORS(mux)
 }

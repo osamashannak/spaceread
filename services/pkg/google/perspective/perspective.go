@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/osamashannak/uaeu-space/services/pkg/logging"
 	"io"
 	"net/http"
 	"time"
@@ -28,6 +29,14 @@ func New(config *Config) *Perspective {
 }
 
 func (p *Perspective) Analyze(commentText string) *AnalysisResult {
+	result := &AnalysisResult{
+		Language: "en",
+	}
+
+	if p.config != nil && p.config.Bypass {
+		logging.DefaultLogger().Debug("perspective analysis bypassed")
+		return result
+	}
 
 	request := RequestBody{
 		Comment:         Comment{Text: commentText},
@@ -40,10 +49,6 @@ func (p *Perspective) Analyze(commentText string) *AnalysisResult {
 			"PROFANITY":       {ScoreThreshold: threshold},
 			"THREAT":          {ScoreThreshold: threshold},
 		},
-	}
-
-	result := &AnalysisResult{
-		Language: "en",
 	}
 
 	body, err := json.Marshal(request)

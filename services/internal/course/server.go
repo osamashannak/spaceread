@@ -35,7 +35,7 @@ func (s *Server) Routes() http.Handler {
 
 	mux.Handle("GET /course", s.Get())
 	mux.Handle("GET /course/list", s.GetCourseList())
-	mux.Handle("POST /course/upload", s.gateway.Middleware(s.UploadCourseFile()))
+	mux.Handle("POST /course/upload", s.gateway.OptionalAuthMiddleware(s.gateway.RequireCSRF(s.UploadCourseFile())))
 	mux.Handle("GET /course/download", s.DownloadCourseFile())
 
 	return middleware.CORS(mux)

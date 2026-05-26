@@ -26,6 +26,7 @@ WORKDIR /app
 ARG SERVICE
 COPY --from=builder /app/bin/server .
 COPY --from=builder /app/migrations ./migrations
+COPY --from=builder /app/devdata ./devdata
 
 EXPOSE 8080
 

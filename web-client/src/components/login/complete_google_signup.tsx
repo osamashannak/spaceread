@@ -2,12 +2,20 @@ import styles from "../../styles/pages/login.module.scss";
 import {GoogleSignUpProps} from "../../typed/user.ts";
 import {FormEvent, useEffect, useState} from "react";
 import {sendGoogleSignup} from "../../api/auth.ts";
-import { isPasswordValid, isUsernameValid} from "../../utils.tsx";
+import {isUsernameValid} from "../../utils.tsx";
 import CenterScreen from "../center_screen.tsx";
+import {getUserFacingResponseError} from "../../api/errors.ts";
+import {useAppDispatch} from "../../redux/hooks.ts";
+import {setUser} from "../../redux/slice/user_slice.ts";
 
 
-export default function CompleteGoogleSignUp({autocomplete, setDisplayScreen}: { autocomplete: GoogleSignUpProps, setDisplayScreen: (screen: "login" | "register" | undefined) => void }) {
+export default function CompleteGoogleSignUp({autocomplete, setDisplayScreen, onLoginComplete}: {
+    autocomplete: GoogleSignUpProps,
+    setDisplayScreen: (screen: "login" | "register" | undefined) => void,
+    onLoginComplete: (redirect?: string) => void
+}) {
 
+    const dispatch = useAppDispatch();
     const [form, setForm] = useState(autocomplete);
     const [failedAttempt, setFailedAttempt] = useState(false);
     const [validationMessage, setValidationMessage] = useState("");
@@ -26,10 +34,10 @@ export default function CompleteGoogleSignUp({autocomplete, setDisplayScreen}: {
         button.disabled = true;
         button.classList.add(styles.disabledButton);
 
-        sendGoogleSignup(form.googleId, form.email, form.username).then(async (res) => {
+        sendGoogleSignup(form.credential, form.username).then(async (res) => {
 
             if (!res || res.status !== 200) {
-                validation.innerText = (await res?.json())?.message ?? "The authentication servers are currently down. Please try again later.";
+                validation.innerText = await getUserFacingResponseError(res, "googleSignup");
 
                 button.disabled = false;
                 button.classList.remove(styles.disabledButton);
@@ -39,8 +47,9 @@ export default function CompleteGoogleSignUp({autocomplete, setDisplayScreen}: {
             }
 
             const responseJson = await res.json();
+            dispatch(setUser(responseJson));
 
-            window.location.href = responseJson.redirect as string;
+            onLoginComplete(responseJson.redirect as string | undefined);
 
         })
 
@@ -72,7 +81,7 @@ export default function CompleteGoogleSignUp({autocomplete, setDisplayScreen}: {
                                onBlur={(e) => {
                                    const username = e.target.value;
 
-                                   const usernameValidation = isPasswordValid(username);
+                                   const usernameValidation = isUsernameValid(username);
 
                                    if (typeof usernameValidation === "string") {
                                        setValidationMessage(usernameValidation);

@@ -7,10 +7,10 @@ export default function FilePreview(props: {
     courseTag: string,
     name: string,
     file: File,
-    changeName: any,
+    changeName: (file: File, name: string) => void,
     uploadFile: boolean,
-    finishedUploading: any,
-    deleteFile: any
+    finishedUploading: (file: File, ok: boolean) => void,
+    deleteFile: (file: File) => void
 }) {
 
     const [progress, setProgress] = useState("Ready to upload");
@@ -24,12 +24,13 @@ export default function FilePreview(props: {
                 name,
                 props.file,
                 props.courseTag)
-                .then(() => {
-                    setProgress(`Uploaded`);
-                    props.finishedUploading(props.file);
+                .then((result) => {
+                    setProgress(result.ok ? "Uploaded" : result.message);
+                    props.finishedUploading(props.file, result.ok);
                 })
-                .catch((error) => {
-                    setProgress(`Error: ${error}`);
+                .catch(() => {
+                    setProgress("Upload failed. Please try again.");
+                    props.finishedUploading(props.file, false);
                 });
         }
 

@@ -1,18 +1,56 @@
 import styles from "../styles/components/global/mobile_navigation.module.scss";
 import {Link, useNavigate} from "react-router-dom";
 import {useEffect, useRef, useState} from "react";
+import {useAppDispatch, useAppSelector} from "../redux/hooks.ts";
+import {getNotificationSummary} from "../api/notifications.ts";
+import {setUnreadCount} from "../redux/slice/notification_slice.ts";
+import {logout as sendLogoutRequest} from "../api/auth.ts";
+import {clearUser} from "../redux/slice/user_slice.ts";
 
 
 export default function MobileNavigation() {
 
     const scrollRef = useRef<number>(window.scrollY);
     const navigate = useNavigate();
+    const dispatch = useAppDispatch();
     const [scrolling, setScrolling] = useState(false);
     const [selected, setSelected] = useState<string>((window.location.pathname || "").toString().split('/')[1] || "");
+    const username = useAppSelector(state => state.user.username);
+    const isAuthenticated = useAppSelector(state => state.user.status === "authenticated");
+    const userStatus = useAppSelector(state => state.user.status);
+    const unreadCount = useAppSelector(state => state.notifications.unreadCount);
+    const [loggingOut, setLoggingOut] = useState(false);
 
     useEffect(() => {
         setSelected((window.location.pathname || "").toString().split('/')[1] || "");
     }, [window.location.pathname]);
+
+    useEffect(() => {
+        if (userStatus === "loading") return;
+
+        getNotificationSummary().then((response) => {
+            if (!response) {
+                dispatch(setUnreadCount(0));
+                return;
+            }
+            dispatch(setUnreadCount(response.unread_count));
+        });
+    }, [dispatch, userStatus]);
+
+    async function handleLogout() {
+        if (loggingOut) return;
+
+        setLoggingOut(true);
+        const response = await sendLogoutRequest();
+
+        if (response?.ok || response?.status === 401) {
+            dispatch(clearUser());
+            dispatch(setUnreadCount(0));
+            return;
+        }
+
+        setLoggingOut(false);
+    }
 
     const headerClass = scrolling ? styles.navUp : '';
     const menuBlur = scrolling ? styles.menuBlur : '';
@@ -72,6 +110,16 @@ export default function MobileNavigation() {
                             </svg>
                             <span className={styles.titleText}>SpaceRead</span>
                         </h1>
+                        {isAuthenticated && username && (
+                            <div className={styles.accountStatus} title={`Logged in as ${username}`}>
+                                <span>Logged in as</span>
+                                <strong>{username}</strong>
+                                <span className={styles.accountSeparator}>·</span>
+                                <button type="button" onClick={handleLogout} disabled={loggingOut}>
+                                    {loggingOut ? "Logging out" : "Log out"}
+                                </button>
+                            </div>
+                        )}
                     </div>
                 </div>
             </header>
@@ -112,6 +160,31 @@ export default function MobileNavigation() {
                     }
                     <div className={styles.mobileText}>
                         <span>Course Materials</span>
+                    </div>
+                </Link>
+
+                <Link className={styles.navLinkMobile} to={"/notifications"}>
+                    <span className={styles.notificationIcon}>
+                        {selected === "notifications" ?
+                            <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28"
+                                 viewBox="0 0 512 512">
+                                <path fill="currentColor"
+                                      d="M440.08 341.31c-1.66-2-3.29-4-4.89-5.93c-22-26.61-35.31-42.67-35.31-118c0-39-9.33-71-27.72-95c-13.56-17.73-31.89-31.18-56.05-41.12a3 3 0 0 1-.82-.67C306.6 51.49 282.82 32 256 32s-50.59 19.49-59.28 48.56a3.1 3.1 0 0 1-.81.65c-56.38 23.21-83.78 67.74-83.78 136.14c0 75.36-13.29 91.42-35.31 118c-1.6 1.93-3.23 3.89-4.89 5.93a35.16 35.16 0 0 0-4.65 37.62c6.17 13 19.32 21.07 34.33 21.07H410.5c14.94 0 28-8.06 34.19-21a35.17 35.17 0 0 0-4.61-37.66M256 480a80.06 80.06 0 0 0 70.44-42.13a4 4 0 0 0-3.54-5.87H189.12a4 4 0 0 0-3.55 5.87A80.06 80.06 0 0 0 256 480"/>
+                            </svg>
+                            :
+                            <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28"
+                                 viewBox="0 0 512 512">
+                                <path fill="none" stroke="currentColor" strokeLinecap="round"
+                                      strokeLinejoin="round" strokeWidth="24"
+                                      d="M427.68 351.43C402 320 383.87 304 383.87 217.35C383.87 138 343.35 109.73 310 96c-4.43-1.82-8.6-6-9.95-10.55C294.2 65.54 277.8 48 256 48s-38.21 17.55-44 37.47c-1.35 4.6-5.52 8.71-9.95 10.53c-33.39 13.75-73.87 41.92-73.87 121.35C128.13 304 110 320 84.32 351.43C73.68 364.45 83 384 101.61 384h308.88c18.51 0 27.77-19.61 17.19-32.57M320 384v16a64 64 0 0 1-128 0v-16"/>
+                            </svg>
+                        }
+                        {unreadCount > 0 && <span className={styles.notificationBadge}>
+                            {unreadCount > 99 ? "99+" : unreadCount}
+                        </span>}
+                    </span>
+                    <div className={styles.mobileText}>
+                        <span>Notifications</span>
                     </div>
                 </Link>
 

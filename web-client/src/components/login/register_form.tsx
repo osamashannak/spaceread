@@ -3,10 +3,17 @@ import {isEmailValid, isPasswordValid, isUsernameValid} from "../../utils.tsx";
 import {FormEvent, useEffect, useState} from "react";
 import {sendSignUpRequest} from "../../api/auth.ts";
 import CenterScreen from "../center_screen.tsx";
+import {getUserFacingResponseError} from "../../api/errors.ts";
+import {useAppDispatch} from "../../redux/hooks.ts";
+import {setUser} from "../../redux/slice/user_slice.ts";
 
 
-export default function RegisterForm({setDisplayScreen}: { setDisplayScreen: (screen: "login" | "register" | undefined) => void }) {
+export default function RegisterForm({setDisplayScreen, onLoginComplete}: {
+    setDisplayScreen: (screen: "login" | "register" | undefined) => void,
+    onLoginComplete: (redirect?: string) => void
+}) {
 
+    const dispatch = useAppDispatch();
 
     const [form, setForm] = useState({
         email: "",
@@ -50,8 +57,7 @@ export default function RegisterForm({setDisplayScreen}: { setDisplayScreen: (sc
         sendSignUpRequest(form.username, form.email, form.password).then(async (res) => {
 
             if (!res || res.status !== 200) {
-                console.log(res)
-                validation.innerText = (await res?.json())?.message ?? "The authentication servers are currently down. Please try again later.";
+                validation.innerText = await getUserFacingResponseError(res, "signup");
 
                 button.disabled = false;
                 button.classList.remove(styles.disabledButton);
@@ -60,12 +66,10 @@ export default function RegisterForm({setDisplayScreen}: { setDisplayScreen: (sc
                 return;
             }
 
-            // dispatch
-
-
             const responseJson = await res.json();
+            dispatch(setUser(responseJson));
 
-            window.location.href = responseJson.redirect as string;
+            onLoginComplete(responseJson.redirect as string | undefined);
 
         })
 
@@ -115,7 +119,7 @@ export default function RegisterForm({setDisplayScreen}: { setDisplayScreen: (sc
                                        const username = e.target.value;
                                        setForm({...form, username});
                                    }}
-                                   pattern="[\p{L} \-]+"
+                                   pattern="[A-Za-z0-9_-]{3,20}"
                                    onBlur={(e) => {
                                        const username = e.target.value;
                                        if (!username) return;

@@ -8,6 +8,7 @@ export default defineConfig(({ mode}) => {
   const env = loadEnv(mode, process.cwd());
   const professorProxyTarget = env.VITE_PROFESSOR_PROXY_TARGET || 'https://professor.api.spaceread.net';
   const courseProxyTarget = env.VITE_COURSE_PROXY_TARGET || 'https://course.api.spaceread.net';
+  const authProxyTarget = env.VITE_AUTH_PROXY_TARGET || 'https://auth.api.spaceread.net';
 
   return {
     plugins: [react(),
@@ -31,6 +32,10 @@ export default defineConfig(({ mode}) => {
       },
     },
     server: {
+      watch: {
+        usePolling: true,
+        interval: 100,
+      },
       proxy: {
         // Proxy for the Professor API
         '/api/professor': {
@@ -46,6 +51,13 @@ export default defineConfig(({ mode}) => {
           changeOrigin: true,
           secure: false,
           rewrite: (path) => path.replace(/^\/api\/course/, ''),
+        },
+
+        '/api/auth': {
+          target: authProxyTarget,
+          changeOrigin: true,
+          secure: false,
+          rewrite: (path) => path.replace(/^\/api\/auth/, ''),
         },
       },
     },

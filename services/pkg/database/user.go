@@ -19,7 +19,18 @@ func (db *DB) GetSessionID(ctx context.Context, token string) (*int64, error) {
 
 func (db *DB) CreateSession(ctx context.Context, id int64, token, userAgent, ipAddress string) error {
 	_, err := db.Pool.Exec(ctx,
-		`INSERT INTO account.session (token, user_agent, ip_address, id) VALUES ($1, $2, $3, $4)`,
+		`INSERT INTO account.session (token, user_agent, ip_address, id)
+		 VALUES ($1, $2, COALESCE(NULLIF($3, ''), '0.0.0.0')::inet, $4)`,
+		token, userAgent, ipAddress, id)
+
+	return err
+}
+
+func (db *DB) RecoverSession(ctx context.Context, id int64, token, userAgent, ipAddress string) error {
+	_, err := db.Pool.Exec(ctx,
+		`INSERT INTO account.session (token, user_agent, ip_address, id)
+		 VALUES ($1, $2, COALESCE(NULLIF($3, ''), '0.0.0.0')::inet, $4)
+		 ON CONFLICT (id) DO NOTHING`,
 		token, userAgent, ipAddress, id)
 
 	return err

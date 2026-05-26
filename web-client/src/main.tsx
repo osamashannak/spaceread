@@ -15,7 +15,8 @@ Sentry.init({
     ],
     tracePropagationTargets: [
         /^https:\/\/professor\.api\.spaceread\.net\/.*/,
-        /^https:\/\/course\.api\.spaceread\.net\/.*/
+        /^https:\/\/course\.api\.spaceread\.net\/.*/,
+        /^https:\/\/auth\.api\.spaceread\.net\/.*/
     ],
     tracesSampleRate: 0.1
 });

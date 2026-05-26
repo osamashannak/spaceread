@@ -1,5 +1,7 @@
 import {CourseItem} from "../typed/searchbox.ts";
 import {CourseAPI} from "../typed/course.ts";
+import {csrfHeader} from "./csrf.ts";
+import {apiFailure, apiSuccess, type ApiResult} from "./errors.ts";
 
 const HOST = import.meta.env.VITE_COURSE_ENDPOINT;
 
@@ -33,18 +35,30 @@ export const getCourse = async (id: string) => {
     return response as CourseAPI ?? null;
 }
 
-export const uploadFile = async (fileName: string, file: File, courseTag: string): Promise<boolean> => {
+export const uploadFile = async (fileName: string, file: File, courseTag: string): Promise<ApiResult> => {
     const form = new FormData();
     form.set("course_tag", courseTag);
     form.set("file_name", fileName);
     form.set("contents", file);
 
-    const response = await fetch(HOST + "/course/upload", {
-        method: "POST",
-        body: form
-    });
+    let response;
 
-    return response.ok;
+    try {
+        response = await fetch(HOST + "/course/upload", {
+            method: "POST",
+            headers: csrfHeader(),
+            body: form,
+            credentials: "include"
+        });
+    } catch {
+        return apiFailure(undefined, "courseUpload");
+    }
+
+    if (!response.ok) {
+        return apiFailure(response, "courseUpload");
+    }
+
+    return apiSuccess(undefined);
 }
 
 export const getDownloadLink = (fileId: number) => {

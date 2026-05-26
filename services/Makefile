@@ -1,11 +1,12 @@
 .DEFAULT_GOAL := help
 
 MIGRATE ?= go run ./cmd/migrate
+SEED ?= go run ./cmd/seed
 NAME ?= $(name)
 STEPS ?= 1
 VERSION ?= 1
 
-.PHONY: help test fmt tidy run-course run-professor migrate-create migrate-up migrate-down migrate-steps migrate-force migrate-version
+.PHONY: help test fmt tidy run-course run-professor seed migrate-create migrate-up migrate-down migrate-steps migrate-force migrate-version
 
 help:
 	@echo "Backend shortcuts"
@@ -14,6 +15,7 @@ help:
 	@echo "  make tidy                         Tidy Go modules"
 	@echo "  make run-professor                Run professor API"
 	@echo "  make run-course                   Run course API"
+	@echo "  make seed                         Seed the configured local development DB"
 	@echo "  make migrate-create NAME=<name>   Create up/down migration files"
 	@echo "  make migrate-up                   Apply pending migrations"
 	@echo "  make migrate-down STEPS=1         Roll back migrations"
@@ -35,6 +37,9 @@ run-course:
 
 run-professor:
 	go run ./cmd/professor
+
+seed:
+	$(SEED) --allow-dev
 
 migrate-create:
 	$(MIGRATE) create $(NAME)

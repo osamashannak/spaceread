@@ -5,6 +5,8 @@ import {
     ReviewReplyAPI
 } from "../typed/professor.ts";
 import {ProfessorItem} from "../typed/searchbox.ts";
+import {csrfHeader} from "./csrf.ts";
+import {getUserFacingError} from "./errors.ts";
 
 
 const HOST = import.meta.env.VITE_PROFESSOR_ENDPOINT;
@@ -30,13 +32,16 @@ export const getProfessor = async (id: string, abortController: AbortController)
             credentials: "include",
             signal: abortController.signal
         });
+        if (!request.ok) {
+            throw new Error(getUserFacingError(request, "professorLoad"));
+        }
         response = await request.json();
     } catch (error) {
         throw error
     }
 
     if (response.error) {
-        throw new Error(response.error);
+        throw new Error("We couldn't load this professor. Refresh the page and try again.");
     }
 
     return response as ProfessorAPI ?? null;
@@ -52,9 +57,8 @@ export const uploadImageAttachment = async (file: File | Blob) => {
         const request = await fetch(HOST + "/comment/attachment", {
             method: "POST",
             body: formData,
-            headers: {
-                'X-Csrf-Token': document.cookie.split(";").find((c) => c.trim().startsWith("k"))?.split("=")[1] ?? ""
-            }
+            headers: csrfHeader(),
+            credentials: "include"
         });
         response = await request.json();
     } catch (error) {
@@ -77,9 +81,8 @@ export const uploadVideoAttachment = async (file: File | Blob) => {
         const request = await fetch(HOST + "/comment/attachment/uploadVideo", {
             method: "POST",
             body: formData,
-            headers: {
-                'X-Csrf-Token': document.cookie.split(";").find((c) => c.trim().startsWith("k"))?.split("=")[1] ?? ""
-            }
+            headers: csrfHeader(),
+            credentials: "include"
         });
         response = await request.json();
     } catch (error) {
@@ -135,7 +138,7 @@ export const postReply = async (reviewId: string, content: {comment: string, gif
             method: "POST",
             headers: {
                 'Content-Type': 'application/json',
-                'X-Csrf-Token': document.cookie.split(";").find((c) => c.trim().startsWith("k"))?.split("=")[1] ?? ""
+                ...csrfHeader()
             },
             body: JSON.stringify({
                 review_id: reviewId,
@@ -164,7 +167,7 @@ export const likeReply = async (replyId: string) => {
             method: "POST",
             headers: {
                 'Content-Type': 'application/json',
-                'X-Csrf-Token': document.cookie.split(";").find((c) => c.trim().startsWith("k"))?.split("=")[1] ?? ""
+                ...csrfHeader()
             },
             credentials: "include"
         });
@@ -187,6 +190,7 @@ export const removeLikeReply = async (replyId: string) => {
     try {
         const request = await fetch(HOST + `/comment/reply/like?replyId=${replyId}`, {
             method: "DELETE",
+            headers: csrfHeader(),
             credentials: "include"
         });
         response = await request.json();
@@ -209,7 +213,7 @@ export const postReview = async (options: ReviewFormAPI) => {
             method: "POST",
             headers: {
                 'Content-Type': 'application/json',
-                'X-Csrf-Token': document.cookie.split(";").find((c) => c.trim().startsWith("k"))?.split("=")[1] ?? ""
+                ...csrfHeader()
             },
             body: JSON.stringify(options),
             credentials: "include"
@@ -234,7 +238,7 @@ export const deleteReview = async (reviewId: string) => {
             method: "DELETE",
             headers: {
                 'Content-Type': 'application/json',
-                'X-Csrf-Token': document.cookie.split(";").find((c) => c.trim().startsWith("k"))?.split("=")[1] ?? ""
+                ...csrfHeader()
             },
             credentials: "include"
         });
@@ -281,6 +285,7 @@ export const reportReview = async (reviewId: string, reason: string) => {
             method: "POST",
             headers: {
                 'Content-Type': 'application/json',
+                ...csrfHeader()
             },
             body: JSON.stringify({
                 review_id: reviewId,
@@ -304,7 +309,7 @@ export const deleteReply = async (replyId: string) => {
             method: "DELETE",
             headers: {
                 'Content-Type': 'application/json',
-                'X-Csrf-Token': document.cookie.split(";").find((c) => c.trim().startsWith("k"))?.split("=")[1] ?? ""
+                ...csrfHeader()
             },
             credentials: "include"
         });
@@ -326,7 +331,8 @@ export const addRating = async (review_id: string, rating: string) => {
         await fetch(HOST + "/comment/rating", {
             method: "POST",
             headers: {
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                ...csrfHeader()
             },
             body: JSON.stringify({
                 review_id,
@@ -347,6 +353,7 @@ export const removeRating = async (reviewId: string) => {
     try {
         await fetch(HOST + `/comment/rating?reviewId=${reviewId}`, {
             method: "DELETE",
+            headers: csrfHeader(),
             credentials: "include"
         });
     } catch (error) {
@@ -363,7 +370,8 @@ export const verifyStudentEmail = async (email: string) => {
         const request = await fetch(HOST + "/student/verify", {
             method: "POST",
             headers: {
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                ...csrfHeader()
             },
             body: JSON.stringify({email}),
             credentials: "include"
@@ -387,7 +395,8 @@ export const submitOTP = async (email: string, otp: string) => {
         const request = await fetch(HOST + "/student/verify/submit", {
             method: "POST",
             headers: {
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                ...csrfHeader()
             },
             body: JSON.stringify({email, otp}),
             credentials: "include"

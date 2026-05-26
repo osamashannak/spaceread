@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	accountDB "github.com/osamashannak/uaeu-space/services/internal/account/database"
 	"github.com/osamashannak/uaeu-space/services/internal/course"
 	courseDB "github.com/osamashannak/uaeu-space/services/internal/course/database"
 	"github.com/osamashannak/uaeu-space/services/pkg/azure/blobstorage"
@@ -56,6 +57,7 @@ func realMain(ctx context.Context) error {
 	defer db.Close(ctx)
 
 	courseDb := courseDB.New(db)
+	accountStore := accountDB.New(db)
 
 	logger.Info("setting up snowflake generator")
 
@@ -71,7 +73,7 @@ func realMain(ctx context.Context) error {
 
 	logger.Info("setting up course server")
 
-	gatewayClient := gateway.New(*db, *sfGenerator, cfg.Gateway)
+	gatewayClient := gateway.New(db, *sfGenerator, cfg.Gateway, accountStore)
 
 	courseServer, err := course.NewServer(courseDb, sfGenerator, blobStorage, gatewayClient)
 	if err != nil {

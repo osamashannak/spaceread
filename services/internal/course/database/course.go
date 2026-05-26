@@ -121,6 +121,9 @@ func (db *CourseDB) GetCourseFileBlobName(ctx context.Context, id string) (*stri
 	err := db.Db.Pool.QueryRow(ctx, `SELECT blob_name FROM course.file WHERE id = $1 AND visible`, id).Scan(&blobName)
 
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
 		return nil, err
 	}
 
@@ -176,9 +179,9 @@ func (db *CourseDB) UpdateAccessToken(ctx context.Context, accessToken *model.Fi
 
 func (db *CourseDB) InsertCourseFile(ctx context.Context, file *model.CourseFile) error {
 	_, err := db.Db.Pool.Exec(ctx, `INSERT INTO 
-	course.file (id, course_tag, name, type, size, blob_name) 
-	VALUES ($1, $2, $3, $4, $5, $6)`,
-		file.ID, file.CourseTag, file.Name, file.Type, file.Size, file.BlobName)
+	course.file (id, course_tag, name, type, size, blob_name, user_id, session_id)
+	VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+		file.ID, file.CourseTag, file.Name, file.Type, file.Size, file.BlobName, file.UserId, file.SessionId)
 
 	return err
 }

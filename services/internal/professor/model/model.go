@@ -67,6 +67,7 @@ type ReviewReply struct {
 	UserId      *int64
 	SessionId   int64
 	MentionId   *int64
+	Visible     bool
 }
 
 type ReviewScores struct {

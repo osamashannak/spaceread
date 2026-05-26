@@ -1,11 +1,18 @@
 import styles from "../../styles/pages/login.module.scss";
 import {FormEvent, useEffect, useState} from "react";
-import {sendLonginRequest} from "../../api/auth.ts";
+import {sendLoginRequest} from "../../api/auth.ts";
 import CenterScreen from "../center_screen.tsx";
+import {getLoginError} from "../../api/errors.ts";
+import {useAppDispatch} from "../../redux/hooks.ts";
+import {setUser} from "../../redux/slice/user_slice.ts";
 
 
-export default function LoginWithEmail({setDisplayScreen}: { setDisplayScreen: (screen: "login" | "register" | undefined) => void }) {
+export default function LoginWithEmail({setDisplayScreen, onLoginComplete}: {
+    setDisplayScreen: (screen: "login" | "register" | undefined) => void,
+    onLoginComplete: (redirect?: string) => void
+}) {
 
+    const dispatch = useAppDispatch();
     const [loginForm, setLoginForm] = useState({
         id: "",
         password: ""
@@ -26,10 +33,10 @@ export default function LoginWithEmail({setDisplayScreen}: { setDisplayScreen: (
         button.disabled = true;
         button.classList.add(styles.disabledButton);
 
-        sendLonginRequest(loginForm.id, loginForm.password).then(async (res) => {
+        sendLoginRequest(loginForm.id, loginForm.password).then(async (res) => {
 
             if (!res || res.status !== 200) {
-                validation.innerText = (await res?.json())?.message ?? "The authentication servers are currently down. Please try again later.";
+                validation.innerText = getLoginError(res, loginForm.id);
 
                 button.disabled = false;
                 button.classList.remove(styles.disabledButton);
@@ -39,8 +46,9 @@ export default function LoginWithEmail({setDisplayScreen}: { setDisplayScreen: (
             }
 
             const responseJson = await res.json();
+            dispatch(setUser(responseJson));
 
-            window.location.href = responseJson.redirect as string;
+            onLoginComplete(responseJson.redirect as string | undefined);
 
         })
     }

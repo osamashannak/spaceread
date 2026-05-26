@@ -54,7 +54,7 @@ export default function Review(review: ReviewAPI) {
     const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
 
     return (
-        <div className={styles.reviewWrapper}>
+        <div id={`review-${review.id}`} className={styles.reviewWrapper}>
             <article className={`${styles.review} ${review.fadeIn ? styles.fadeIn : ''}`}>
                 <div className={styles.reviewInfo}>
 

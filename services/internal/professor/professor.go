@@ -98,7 +98,7 @@ func (s *Server) Get() http.Handler {
 			return
 		}
 
-		reviews, averageScore, sessions, reviewed, err := s.db.GetProfessorReviews(ctx, profile.SessionId, professor.Email)
+		reviews, averageScore, sessions, reviewed, err := s.db.GetProfessorReviews(ctx, profile.SessionId, profile.UserId, professor.Email)
 
 		if err != nil {
 			logger.Errorf("failed to get reviews for professor with email %s: %v", email, err)

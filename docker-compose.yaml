@@ -11,7 +11,13 @@ x-api-environment: &api-environment
   DB_POOL_MIN_CONNS: "1"
   DB_POOL_MAX_CONNS: "5"
   SESSION_COOKIE_NAME: ${SESSION_COOKIE_NAME:-spaceread_dev}
+  AUTH_COOKIE_NAME: ${AUTH_COOKIE_NAME:-spaceread_auth_dev}
+  CSRF_COOKIE_NAME: ${CSRF_COOKIE_NAME:-spaceread_csrf_dev}
+  COOKIE_SECURE: ${COOKIE_SECURE:-false}
+  COOKIE_MAX_AGE_DAYS: ${COOKIE_MAX_AGE_DAYS:-365}
   JWT_SECRET: ${JWT_SECRET:-local-dev-secret}
+  CSRF_SECRET: ${CSRF_SECRET:-local-dev-csrf-secret}
+  PASSWORD_PEPPER: ${PASSWORD_PEPPER:-local-dev-password-pepper}
   AZURE_STORAGE_ACCOUNT: ${AZURE_STORAGE_ACCOUNT:-devstoreaccount1}
   AZURE_STORAGE_ACCESS_KEY: ${AZURE_STORAGE_ACCESS_KEY:-Eby8vdM02xNOcqFeqCnf2eL9Hobn2YHLFyX5wJ1EMkGZxHDHvpT8k4NfSW6/0KxX6DfT3VU+1yY2cN6r7kYJ2w==}
   MATERIALS_CONTAINER: ${MATERIALS_CONTAINER:-materials}
@@ -51,6 +57,25 @@ services:
         condition: service_healthy
     restart: "no"
 
+  seed:
+    build:
+      context: ./services
+      dockerfile: Dockerfile
+      args:
+        SERVICE: seed
+    environment:
+      <<: *api-environment
+      SEED_ENV: development
+      ALLOW_DEV_SEED: "true"
+      SEEDS_PATH: /app/devdata/seeds
+    command: ["--allow-dev"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    profiles:
+      - devdata
+    restart: "no"
+
   course:
     build:
       context: ./services
@@ -77,6 +102,7 @@ services:
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-local}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-local}
       AWS_EC2_METADATA_DISABLED: "true"
+      PERSPECTIVE_BYPASS: ${PERSPECTIVE_BYPASS:-true}
       PERSPECTIVE_KEY: ${PERSPECTIVE_KEY:-local}
       RECAPTCHA_BYPASS: ${RECAPTCHA_BYPASS:-true}
       RECAPTCHA_SITE_KEY: ${RECAPTCHA_SITE_KEY:-local}
@@ -90,19 +116,38 @@ services:
       migrate:
         condition: service_completed_successfully
 
+  account:
+    build:
+      context: ./services
+      dockerfile: Dockerfile
+      args:
+        SERVICE: account
+    environment:
+      <<: *api-environment
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-503811163032-7sb2rm7k4r4knulc0ig7ubp9jcjanaco.apps.googleusercontent.com}
+    ports:
+      - "${ACCOUNT_PORT:-8083}:8080"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
   web:
     image: node:22.18.0-alpine
     working_dir: /app
-    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    command: sh -c "test -x node_modules/.bin/vite || npm install; exec npm run dev -- --host 0.0.0.0"
     environment:
       VITE_PROFESSOR_ENDPOINT: ${VITE_PROFESSOR_ENDPOINT:-/api/professor}
       VITE_COURSE_ENDPOINT: ${VITE_COURSE_ENDPOINT:-/api/course}
-      VITE_AUTH_SERVER_ENDPOINT: ${VITE_AUTH_SERVER_ENDPOINT:-}
+      VITE_AUTH_ENDPOINT: ${VITE_AUTH_ENDPOINT:-/api/auth}
+      VITE_CSRF_COOKIE_NAME: ${CSRF_COOKIE_NAME:-spaceread_csrf_dev}
+      VITE_RECAPTCHA_DISABLED: ${VITE_RECAPTCHA_DISABLED:-true}
+      VITE_ALLOWED_LOGIN_REDIRECT_ORIGINS: ${VITE_ALLOWED_LOGIN_REDIRECT_ORIGINS:-http://localhost:5174}
       VITE_GOOGLE_RECAPTCHA_SITE_KEY: ${VITE_GOOGLE_RECAPTCHA_SITE_KEY:-local}
-      VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID:-local}
+      VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID:-503811163032-7sb2rm7k4r4knulc0ig7ubp9jcjanaco.apps.googleusercontent.com}
       VITE_GOOGLE_TENOR_API_KEY: ${VITE_GOOGLE_TENOR_API_KEY:-}
       VITE_PROFESSOR_PROXY_TARGET: http://professor:8080
       VITE_COURSE_PROXY_TARGET: http://course:8080
+      VITE_AUTH_PROXY_TARGET: http://account:8080
     ports:
       - "${WEB_PORT:-5173}:5173"
     volumes:
@@ -112,6 +157,8 @@ services:
       course:
         condition: service_started
       professor:
+        condition: service_started
+      account:
         condition: service_started
 
 volumes:

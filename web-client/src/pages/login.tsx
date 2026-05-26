@@ -1,13 +1,18 @@
 import styles from "../styles/pages/login.module.scss";
 import dayjs from "dayjs";
 import {CredentialResponse, GoogleLogin, GoogleOAuthProvider} from "@react-oauth/google";
-import {useEffect, useState} from "react";
+import {useCallback, useEffect, useRef, useState} from "react";
 import LoginWithEmail from "../components/login/login_with_email.tsx";
 import RegisterForm from "../components/login/register_form.tsx";
 import CompleteGoogleSignUp from "../components/login/complete_google_signup.tsx";
 import {GoogleSignUpProps} from "../typed/user.ts";
 import {sendGoogleLogin} from "../api/auth.ts";
 import {Helmet} from "@dr.pogodin/react-helmet";
+import {getLoginRedirect} from "../lib/login_redirect.ts";
+import {getUserFacingError, getUserFacingResponseError} from "../api/errors.ts";
+import {useAppDispatch, useAppSelector} from "../redux/hooks.ts";
+import {useNavigate} from "react-router-dom";
+import {setUser} from "../redux/slice/user_slice.ts";
 
 
 export default function Login() {
@@ -15,6 +20,31 @@ export default function Login() {
     const [displayScreen, setDisplayScreen] = useState<"login" | "register" | undefined>();
     const [googleSignUp, setGoogleSignUp] = useState<GoogleSignUpProps | null>(null);
     const [width, setWidth] = useState<number>(getWidth());
+    const [googleError, setGoogleError] = useState("");
+    const dispatch = useAppDispatch();
+    const userStatus = useAppSelector(state => state.user.status);
+    const navigate = useNavigate();
+    const redirectedRef = useRef(false);
+
+    const completeLoginRedirect = useCallback((defaultRedirect?: string) => {
+        if (redirectedRef.current) return;
+        redirectedRef.current = true;
+
+        const fallbackRedirect = !defaultRedirect || defaultRedirect === "/" ? "/professor" : defaultRedirect;
+        const redirectUrl = new URL(getLoginRedirect(fallbackRedirect), window.location.origin);
+        if (redirectUrl.origin !== window.location.origin) {
+            window.location.href = redirectUrl.href;
+            return;
+        }
+
+        navigate(`${redirectUrl.pathname}${redirectUrl.search}${redirectUrl.hash}`, {replace: true});
+    }, [navigate]);
+
+    useEffect(() => {
+        if (userStatus === "authenticated") {
+            completeLoginRedirect();
+        }
+    }, [completeLoginRedirect, userStatus]);
 
 
     function googleSignInSuccess(response: CredentialResponse) {
@@ -22,21 +52,27 @@ export default function Login() {
             return;
         }
 
-       // todo check if user is already signed up before
-        sendGoogleLogin(response.credential).then(async (res) => {
-            if (!res) return;
+        const credential = response.credential;
+        setGoogleError("");
+
+        sendGoogleLogin(credential).then(async (res) => {
+            if (!res || !res.ok) {
+                setGoogleError(await getUserFacingResponseError(res, "googleLogin"));
+                return;
+            }
 
             const data = await res.json();
 
-            if ('redirect' in data) {
-                window.location.href = data.redirect;
+            if (data.status === "authenticated") {
+                dispatch(setUser(data));
+                completeLoginRedirect(data.redirect);
                 return;
             }
 
             setGoogleSignUp({
                 email: data.email,
                 username: data.suggestedUsername,
-                googleId: data.gid
+                credential
             });
 
         });
@@ -67,6 +103,14 @@ export default function Login() {
     }
 
 
+    if (userStatus === "authenticated") {
+        return null;
+    }
+
+    if (userStatus === "loading") {
+        return null;
+    }
+
     return (
         <>
 
@@ -76,14 +120,14 @@ export default function Login() {
             </Helmet>
 
             {
-                displayScreen === "register" && <RegisterForm setDisplayScreen={setDisplayScreen}/>
+                displayScreen === "register" && <RegisterForm setDisplayScreen={setDisplayScreen} onLoginComplete={completeLoginRedirect}/>
             }
 
             {
-                displayScreen === "login" && <LoginWithEmail setDisplayScreen={setDisplayScreen}/>
+                displayScreen === "login" && <LoginWithEmail setDisplayScreen={setDisplayScreen} onLoginComplete={completeLoginRedirect}/>
             }
 
-            {googleSignUp && <CompleteGoogleSignUp autocomplete={googleSignUp} setDisplayScreen={setDisplayScreen}/>}
+            {googleSignUp && <CompleteGoogleSignUp autocomplete={googleSignUp} setDisplayScreen={setDisplayScreen} onLoginComplete={completeLoginRedirect}/>}
 
 
             <div className={styles.loginPage}>
@@ -126,9 +170,12 @@ export default function Login() {
                                 locale={dayjs.locale()}
                                 use_fedcm_for_prompt
                                 itp_support
-                                onSuccess={googleSignInSuccess}/>
+                                onSuccess={googleSignInSuccess}
+                                onError={() => setGoogleError(getUserFacingError(undefined, "googleLogin"))}/>
                         </GoogleOAuthProvider>
                     </div>
+
+                    {googleError && <div className={styles.validation} role={"alert"}>{googleError}</div>}
 
                     <p className={styles.terms}>
                         By continuing, you agree to our <a href={"/terms-of-service"}>Terms of Service</a> and <a

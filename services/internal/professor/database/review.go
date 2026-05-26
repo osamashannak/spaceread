@@ -33,11 +33,17 @@ func (db *ProfessorDB) GetReview(ctx context.Context, id int64) (*model.Review, 
 	return &review, nil
 }
 
-func (db *ProfessorDB) ExistsReviewSession(ctx context.Context, email string, sessionId int64) (bool, error) {
+func (db *ProfessorDB) ExistsReviewIdentity(ctx context.Context, email string, sessionId int64, userId *int64) (bool, error) {
 	var exists bool
 
 	err := db.Db.Pool.QueryRow(ctx,
-		`SELECT EXISTS(SELECT 1 FROM professor.review WHERE professor_email = $1 AND session_id = $2 AND deleted_at IS NULL)`, email, sessionId).Scan(&exists)
+		`SELECT EXISTS(
+			SELECT 1
+			FROM professor.review
+			WHERE professor_email = $1
+			  AND deleted_at IS NULL
+			  AND (session_id = $2 OR ($3::bigint IS NOT NULL AND user_id = $3))
+		)`, email, sessionId, userId).Scan(&exists)
 	if err != nil {
 		return false, err
 	}
@@ -47,8 +53,11 @@ func (db *ProfessorDB) ExistsReviewSession(ctx context.Context, email string, se
 
 func (db *ProfessorDB) InsertReview(ctx context.Context, review *model.Review) error {
 	_, err := db.Db.Pool.Exec(ctx,
-		`INSERT INTO professor.review (sort_index, id, score, positive, content, attachment, professor_email, ip_address, session_id, user_id, visible, uaeu_origin, language, created_at, gif, grade_received, course_taken)
-			VALUES ($1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
+		`INSERT INTO professor.review (
+			sort_index, id, score, positive, content, attachment, professor_email, ip_address, session_id, user_id,
+			visible, uaeu_origin, language, created_at, gif, grade_received, course_taken
+		)
+		VALUES ($1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
 		review.ID,
 		review.Score,
 		review.Positive,
@@ -143,11 +152,16 @@ func (db *ProfessorDB) GetReviewAttachment(ctx context.Context, attachmentId int
 	return &attachment, nil
 }
 
-func (db *ProfessorDB) ExistsReviewRatingFromSession(ctx context.Context, reviewId, sessionId int64) (*bool, error) {
+func (db *ProfessorDB) ExistsReviewRatingFromIdentity(ctx context.Context, reviewId, sessionId int64, userId *int64) (*bool, error) {
 	var exists bool
 
 	err := db.Db.Pool.QueryRow(ctx,
-		`SELECT EXISTS(SELECT 1 FROM professor.review_rating WHERE review_id = $1 AND session_id = $2)`, reviewId, sessionId).Scan(&exists)
+		`SELECT EXISTS(
+			SELECT 1
+			FROM professor.review_rating
+			WHERE review_id = $1
+			  AND (session_id = $2 OR ($3::bigint IS NOT NULL AND user_id = $3))
+		)`, reviewId, sessionId, userId).Scan(&exists)
 
 	if err != nil {
 		return nil, err
@@ -164,8 +178,10 @@ func (db *ProfessorDB) InsertReviewRating(ctx context.Context, rating *model.Rev
 	return err
 }
 
-func (db *ProfessorDB) DeleteReviewRating(ctx context.Context, reviewId int64, sessionId int64) error {
+func (db *ProfessorDB) DeleteReviewRating(ctx context.Context, reviewId int64, sessionId int64, userId *int64) error {
 	_, err := db.Db.Pool.Exec(ctx,
-		`DELETE FROM professor.review_rating WHERE review_id = $1 AND session_id = $2`, reviewId, sessionId)
+		`DELETE FROM professor.review_rating
+		 WHERE review_id = $1
+		   AND (session_id = $2 OR ($3::bigint IS NOT NULL AND user_id = $3))`, reviewId, sessionId, userId)
 	return err
 }

@@ -9,6 +9,10 @@ type SessionClaims struct {
 
 type Profile struct {
 	SessionId int64
+	UserId    *int64
+	Username  *string
+	Email     *string
+	Role      string
 }
 
 type contextKey string

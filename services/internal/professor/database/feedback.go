@@ -7,10 +7,11 @@ import (
 	"github.com/osamashannak/uaeu-space/services/internal/professor/model"
 )
 
-func (db *ProfessorDB) InsertNewFeedback(ctx context.Context, feedbackId, sessionId int64, currentQuestion string) error {
-	_, err := db.Db.Pool.Exec(ctx, `INSERT INTO public.feedback (id, session_id, current_question) VALUES ($1, $2, $3)`,
+func (db *ProfessorDB) InsertNewFeedback(ctx context.Context, feedbackId, sessionId int64, userId *int64, currentQuestion string) error {
+	_, err := db.Db.Pool.Exec(ctx, `INSERT INTO public.feedback (id, session_id, user_id, current_question) VALUES ($1, $2, $3, $4)`,
 		feedbackId,
 		sessionId,
+		userId,
 		currentQuestion,
 	)
 

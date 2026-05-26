@@ -20,6 +20,7 @@ import EmojiSelector from "../lexical_editor/emoji_selector.tsx";
 import ReviewAttachment from "./review_attachment.tsx";
 import {useModal} from "../provider/modal.tsx";
 import FlaggedModal from "../modal/flagged_modal.tsx";
+import {getRecaptchaToken} from "../../lib/recaptcha.ts";
 
 // Helper to calculate star label
 const getStarLabel = (r: number) => {
@@ -370,14 +371,14 @@ export default function ReviewForm(props: { courses: string[] | null, professorE
             lineRef.current?.resume();
         }
 
-        if (!executeRecaptcha) {
+        const token = await getRecaptchaToken(executeRecaptcha, "new_review");
+
+        if (!token) {
             // @ts-expect-error Clarity is not defined
             clarity("set", "ReviewFailed", "true");
             setSubmitting("error");
             return;
         }
-
-        const token = await executeRecaptcha("new_review");
 
         const review = await postReview({
             text: details.comment!,

@@ -22,7 +22,7 @@ func New(client *recaptcha.Client, config *Config) *Recaptcha {
 
 func (r *Recaptcha) Verify(ctx context.Context, token, ip, userAgent string) (bool, error) {
 	if r.cfg != nil && r.cfg.Bypass {
-		logging.FromContext(ctx).Warn("recaptcha verification bypassed")
+		logging.FromContext(ctx).Debug("recaptcha verification bypassed")
 		return true, nil
 	}
 

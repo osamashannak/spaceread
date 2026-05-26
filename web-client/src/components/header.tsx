@@ -1,14 +1,52 @@
 import {Link, useNavigate} from "react-router-dom";
 import styles from "../styles/components/global/header.module.scss";
 import {useEffect, useState} from "react";
+import {useAppDispatch, useAppSelector} from "../redux/hooks.ts";
+import {getNotificationSummary} from "../api/notifications.ts";
+import {setUnreadCount} from "../redux/slice/notification_slice.ts";
+import {logout as sendLogoutRequest} from "../api/auth.ts";
+import {clearUser} from "../redux/slice/user_slice.ts";
 
 export default function Header() {
     const navigate = useNavigate();
     const [selected, setSelected] = useState<string>((window.location.pathname || "").toString().split('/')[1] || "");
+    const dispatch = useAppDispatch();
+    const username = useAppSelector(state => state.user.username);
+    const isAuthenticated = useAppSelector(state => state.user.status === "authenticated");
+    const userStatus = useAppSelector(state => state.user.status);
+    const unreadCount = useAppSelector(state => state.notifications.unreadCount);
+    const [loggingOut, setLoggingOut] = useState(false);
 
     useEffect(() => {
         setSelected((window.location.pathname || "").toString().split('/')[1] || "");
     }, [window.location.pathname]);
+
+    useEffect(() => {
+        if (userStatus === "loading") return;
+
+        getNotificationSummary().then((response) => {
+            if (!response) {
+                dispatch(setUnreadCount(0));
+                return;
+            }
+            dispatch(setUnreadCount(response.unread_count));
+        });
+    }, [dispatch, userStatus]);
+
+    async function handleLogout() {
+        if (loggingOut) return;
+
+        setLoggingOut(true);
+        const response = await sendLogoutRequest();
+
+        if (response?.ok || response?.status === 401) {
+            dispatch(clearUser());
+            dispatch(setUnreadCount(0));
+            return;
+        }
+
+        setLoggingOut(false);
+    }
 
     return (
         <header>
@@ -27,6 +65,16 @@ export default function Header() {
                         </svg>
                         <span className={styles.titleText}>SpaceRead</span>
                     </h1>
+                    {isAuthenticated && username && (
+                        <div className={styles.accountStatus} title={`Logged in as ${username}`}>
+                            <span>Logged in as</span>
+                            <strong>{username}</strong>
+                            <span className={styles.accountSeparator}>·</span>
+                            <button type="button" onClick={handleLogout} disabled={loggingOut}>
+                                {loggingOut ? "Logging out" : "Log out"}
+                            </button>
+                        </div>
+                    )}
 
                     <div className={styles.navigation}>
 
@@ -100,7 +148,8 @@ export default function Header() {
                                     <div className={styles.forUAEU}><span>for UAEU</span></div>
                                 </div>
                             </Link>*/}
-                        {/*<Link className={styles.navLink} to={"/notifications"} title={"Notification"}>
+                        <Link className={styles.navLink} to={"/notifications"} title={"Notification"}>
+                            <span className={styles.notificationIcon}>
                                 {selected === "notifications" ?
                                     <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28"
                                          viewBox="0 0 512 512">
@@ -116,8 +165,12 @@ export default function Header() {
                                     </svg>
 
                                 }
-                                <span className={styles.navLinkText}>Notifications</span>
-                            </Link>*/}
+                                {unreadCount > 0 && <span className={styles.notificationBadge}>
+                                    {unreadCount > 2 ? "2+" : unreadCount}
+                                </span>}
+                            </span>
+                            <span className={styles.navLinkText}>Notifications</span>
+                        </Link>
 
                         {/*<Link className={`${styles.navLink} ${styles.navLinkLogin}`} to={"/login"}
                                   title={"Login"}>

@@ -7,6 +7,7 @@ import Multi from "../components/feedback/multi.tsx";
 import FreeResponse from "../components/feedback/free_response.tsx";
 import {FeedbackResponse, NewFeedbackResponse} from "../typed/feedback.ts";
 import LoadingSuspense from "../components/loading_suspense.tsx";
+import {csrfHeader} from "../api/csrf.ts";
 
 
 export default function Feedback() {
@@ -32,8 +33,12 @@ export default function Feedback() {
         try {
             const res = await fetch(HOST + "/feedback", {
                 method: "POST",
-                headers: {"Content-Type": "application/json"},
+                headers: {
+                    "Content-Type": "application/json",
+                    ...csrfHeader()
+                },
                 body: JSON.stringify({id: feedbackId, answer}),
+                credentials: "include"
             });
 
             const data: FeedbackResponse = await res.json();
@@ -65,7 +70,9 @@ export default function Feedback() {
         setStarted(true);
         setQuestion("loading");
 
-        const res = await fetch(HOST + "/feedback/new");
+        const res = await fetch(HOST + "/feedback/new", {
+            credentials: "include"
+        });
         const data: NewFeedbackResponse = await res.json();
 
         totalQuestions.current = data.remaining_count;

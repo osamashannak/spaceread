@@ -6,6 +6,7 @@ export default function FileUpload(props: { courseTag: string }) {
     const [details, setDetails] = useState<{name: string, file: File}[]>([]);
     const [submitting, setSubmitting] = useState<boolean>(false);
     const [finished, setFinished] = useState<File[]>([]);
+    const [hasUploadError, setHasUploadError] = useState(false);
     const [dragging, setDragging] = useState<boolean>(false);
     const [uploadNotice, setUploadNotice] = useState<string | null>(null);
 
@@ -18,6 +19,7 @@ export default function FileUpload(props: { courseTag: string }) {
             return;
         }
         setUploadNotice(null);
+        setHasUploadError(false);
         setSubmitting(true);
     }
 
@@ -40,7 +42,11 @@ export default function FileUpload(props: { courseTag: string }) {
     }
 
 
-    const finishedUploading = (file: File) => {
+    const finishedUploading = (file: File, ok: boolean) => {
+        if (!ok) {
+            setHasUploadError(true);
+        }
+
         setFinished((prevState) => {
             return [...prevState, file];
         });
@@ -189,7 +195,9 @@ export default function FileUpload(props: { courseTag: string }) {
 
                 {
                     isFinished() && (<div style={{marginTop: "3rem", fontWeight: 400}}>
-                        Thank you.<br/>Uploaded files will be shown here after being reviewed.
+                        {hasUploadError
+                            ? "Some files could not be uploaded. Check the messages above and try those files again."
+                            : <>Thank you.<br/>Uploaded files will be shown here after being reviewed.</>}
                     </div>)
                 }
 

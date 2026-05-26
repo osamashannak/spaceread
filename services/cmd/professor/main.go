@@ -5,6 +5,7 @@ import (
 	translate2 "cloud.google.com/go/translate"
 	"context"
 	"github.com/joho/godotenv"
+	accountDB "github.com/osamashannak/uaeu-space/services/internal/account/database"
 	"github.com/osamashannak/uaeu-space/services/internal/professor"
 	profDB "github.com/osamashannak/uaeu-space/services/internal/professor/database"
 	"github.com/osamashannak/uaeu-space/services/pkg/azure/blobstorage"
@@ -66,6 +67,7 @@ func realMain(ctx context.Context) error {
 	defer db.Close(ctx)
 
 	professorDb := profDB.New(db)
+	accountStore := accountDB.New(db)
 
 	logger.Info("setting up snowflake generator")
 
@@ -114,7 +116,7 @@ func realMain(ctx context.Context) error {
 		return fmt.Errorf("blobstorage.New: %w", err)
 	}
 
-	gatewayClient := gateway.New(*db, *sfGenerator, cfg.Gateway)
+	gatewayClient := gateway.New(db, *sfGenerator, cfg.Gateway, accountStore)
 
 	sesClient, err := ses.New(ctx, &cfg.AWS, "SpaceRead <noreply@auth.spaceread.net>")
 

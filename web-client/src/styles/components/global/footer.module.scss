@@ -52,6 +52,36 @@
   line-height: 1.5rem;
 }
 
+.accountBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.accountLabel {
+  width: fit-content;
+  border-radius: 999px;
+  background: rgba(34, 197, 94, 0.12);
+  color: rgb(21, 128, 61);
+  font-size: 12px;
+  font-weight: 700;
+  padding: 4px 8px;
+}
+
+.accountName {
+  color: rgb(15, 23, 42);
+  font-size: 15px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.accountEmail {
+  color: rgb(83, 100, 113);
+  font-size: 13px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
 .blockList {
   list-style: square;
   margin-left: 18px;

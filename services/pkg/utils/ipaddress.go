@@ -114,31 +114,63 @@ func IsGoogleServiceIP(ip net.IP) bool {
 	return false
 }
 
-// GetClientIP extracts the first non-Google IP from X-Forwarded-For
+// GetClientIP extracts the first non-Google IP from X-Forwarded-For, falling
+// back to RemoteAddr for local development and direct requests.
 func GetClientIP(r *http.Request) string {
-	xffHeader := r.Header.Get("X-Forwarded-For")
-	if xffHeader == "" {
+	if r == nil {
 		return ""
 	}
-	ips := strings.Split(xffHeader, ",")
-	var fallbackIPv6 string
-	for _, ipstr := range ips {
-		ipstr = strings.TrimSpace(ipstr)
-		parsed := net.ParseIP(ipstr)
-		if parsed == nil {
-			continue
+
+	xffHeader := r.Header.Get("X-Forwarded-For")
+	if xffHeader != "" {
+		ips := strings.Split(xffHeader, ",")
+		var fallbackIPv6 string
+		for _, ipstr := range ips {
+			parsed := parseClientIP(ipstr)
+			if parsed == nil {
+				continue
+			}
+			// Skip Google proxies.
+			if shouldSkipGoogleServiceIP(parsed) {
+				continue
+			}
+			// Prefer IPv4.
+			if v4 := parsed.To4(); v4 != nil {
+				return v4.String()
+			}
+			if fallbackIPv6 == "" {
+				fallbackIPv6 = parsed.String()
+			}
 		}
-		// Skip Google proxies
-		if IsGoogleServiceIP(parsed) {
-			continue
-		}
-		// Prefer IPv4
-		if v4 := parsed.To4(); v4 != nil {
-			return v4.String()
-		}
-		if fallbackIPv6 == "" {
-			fallbackIPv6 = parsed.String()
+		if fallbackIPv6 != "" {
+			return fallbackIPv6
 		}
 	}
-	return fallbackIPv6
+
+	if ip := parseClientIP(r.RemoteAddr); ip != nil {
+		return ip.String()
+	}
+
+	return ""
+}
+
+func parseClientIP(value string) net.IP {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
+	}
+
+	if host, _, err := net.SplitHostPort(value); err == nil {
+		value = host
+	}
+
+	value = strings.Trim(value, "[]")
+	return net.ParseIP(value)
+}
+
+func shouldSkipGoogleServiceIP(ip net.IP) bool {
+	if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified() {
+		return false
+	}
+	return IsGoogleServiceIP(ip)
 }

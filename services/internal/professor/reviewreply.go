@@ -1,14 +1,16 @@
 package professor
 
 import (
+	"context"
+	"net/http"
+	"strconv"
+	"time"
+
 	v1 "github.com/osamashannak/uaeu-space/services/internal/api/v1"
 	"github.com/osamashannak/uaeu-space/services/internal/professor/model"
 	"github.com/osamashannak/uaeu-space/services/pkg/jsonutil"
 	"github.com/osamashannak/uaeu-space/services/pkg/logging"
 	"github.com/osamashannak/uaeu-space/services/pkg/utils"
-	"net/http"
-	"strconv"
-	"time"
 )
 
 func (s *Server) PostReply() http.Handler {
@@ -103,6 +105,7 @@ func (s *Server) PostReply() http.Handler {
 		}
 
 		var mention *string
+		var mentionedReply *model.ReviewReply
 
 		if request.ReplyID != nil {
 			replyExists, err := s.db.GetReply(ctx, *request.ReplyID)
@@ -126,6 +129,7 @@ func (s *Server) PostReply() http.Handler {
 				jsonutil.MarshalResponse(w, http.StatusNotFound, errorResponse)
 				return
 			}
+			mentionedReply = replyExists
 
 			mentionName, err := s.db.GetReplySessionName(ctx, request.ReviewID, replyExists.SessionId)
 
@@ -140,6 +144,9 @@ func (s *Server) PostReply() http.Handler {
 		if review.SessionId != nil {
 			op = *review.SessionId == profile.SessionId
 		}
+		if !op && review.UserId != nil && profile.UserId != nil {
+			op = *review.UserId == *profile.UserId
+		}
 
 		reply := model.ReviewReply{
 			ID:        int64(s.generator.Next()),
@@ -148,7 +155,9 @@ func (s *Server) PostReply() http.Handler {
 			Op:        op,
 			ReviewId:  request.ReviewID,
 			SessionId: profile.SessionId,
+			UserId:    profile.UserId,
 			MentionId: request.ReplyID,
+			Visible:   true,
 		}
 
 		err = s.db.InsertReply(ctx, &reply)
@@ -162,6 +171,8 @@ func (s *Server) PostReply() http.Handler {
 			jsonutil.MarshalResponse(w, http.StatusInternalServerError, errorResponse)
 			return
 		}
+
+		s.createReplyNotifications(ctx, profile.SessionId, profile.UserId, review, mentionedReply, author, reply.ID)
 
 		logger.Debugf("successfully posted reply with ID %d", reply.ID)
 
@@ -178,6 +189,72 @@ func (s *Server) PostReply() http.Handler {
 		})
 
 	})
+}
+
+func (s *Server) createReplyNotifications(ctx context.Context, actorSessionID int64, actorUserID *int64, review *model.Review, mentionedReply *model.ReviewReply, author string, replyID int64) {
+	logger := logging.FromContext(ctx)
+	href := "/professor/" + review.ProfessorEmail + "#review-" + strconv.FormatInt(review.ID, 10)
+	notifiedUsers := map[int64]struct{}{}
+
+	if (review.UserId != nil || review.SessionId != nil) && !sameUser(review.UserId, actorUserID) && !sameSession(review.SessionId, actorSessionID) {
+		if err := s.db.InsertNotification(
+			ctx,
+			int64(s.generator.Next()),
+			review.UserId,
+			review.SessionId,
+			actorUserID,
+			"review_reply",
+			"New reply on your review",
+			author+" replied to your review.",
+			href,
+			review.ID,
+			replyID,
+		); err != nil {
+			logger.Warnf("failed to create review reply notification: %v", err)
+		} else {
+			if review.UserId != nil {
+				notifiedUsers[*review.UserId] = struct{}{}
+			}
+		}
+	}
+
+	if mentionedReply == nil || sameUser(mentionedReply.UserId, actorUserID) || mentionedReply.SessionId == actorSessionID {
+		return
+	}
+	if mentionedReply.UserId != nil {
+		if _, alreadyNotified := notifiedUsers[*mentionedReply.UserId]; alreadyNotified {
+			return
+		}
+	}
+
+	mentionedSessionID := mentionedReply.SessionId
+	if mentionedReply.UserId == nil && mentionedSessionID == 0 {
+		return
+	}
+
+	if err := s.db.InsertNotification(
+		ctx,
+		int64(s.generator.Next()),
+		mentionedReply.UserId,
+		&mentionedSessionID,
+		actorUserID,
+		"reply_mention",
+		"New reply to your comment",
+		author+" replied to you.",
+		href,
+		review.ID,
+		replyID,
+	); err != nil {
+		logger.Warnf("failed to create reply mention notification: %v", err)
+	}
+}
+
+func sameUser(a, b *int64) bool {
+	return a != nil && b != nil && *a == *b
+}
+
+func sameSession(sessionID *int64, actorSessionID int64) bool {
+	return sessionID != nil && *sessionID == actorSessionID
 }
 
 func (s *Server) DeleteReply() http.Handler {
@@ -238,7 +315,9 @@ func (s *Server) DeleteReply() http.Handler {
 			return
 		}
 
-		if reply.SessionId != profile.SessionId {
+		ownedBySession := reply.SessionId == profile.SessionId
+		ownedByUser := reply.UserId != nil && profile.UserId != nil && *reply.UserId == *profile.UserId
+		if !ownedBySession && !ownedByUser {
 			logger.Debugf("user %d is not authorized to delete reply %d", profile.SessionId, replyId)
 			errorResponse := v1.ErrorResponse{
 				Message: "not authorized to delete this reply",
@@ -319,7 +398,7 @@ func (s *Server) GetReplies() http.Handler {
 			return
 		}
 
-		replies, err := s.db.GetRepliesIgnoreCurrent(ctx, reviewId, profile.SessionId, current)
+		replies, err := s.db.GetRepliesIgnoreCurrent(ctx, reviewId, profile.SessionId, profile.UserId, current)
 
 		if err != nil {
 			logger.Errorf("failed to get replies: %v", err)
@@ -384,7 +463,7 @@ func (s *Server) LikeReply() http.Handler {
 			return
 		}
 
-		err = s.db.LikeReply(ctx, replyId, profile.SessionId)
+		err = s.db.LikeReply(ctx, replyId, profile.SessionId, profile.UserId)
 
 		if err != nil {
 			logger.Errorf("failed to like reply: %v", err)
@@ -441,7 +520,7 @@ func (s *Server) UnlikeReply() http.Handler {
 			return
 		}
 
-		err = s.db.UnlikeReply(ctx, replyId, profile.SessionId)
+		err = s.db.UnlikeReply(ctx, replyId, profile.SessionId, profile.UserId)
 
 		if err != nil {
 			logger.Errorf("failed to unlike reply: %v", err)
@@ -531,12 +610,12 @@ func (s *Server) GetReplyName() http.Handler {
 
 		name = utils.GenerateAuthorName()
 
-		err = s.db.InsertReplyName(ctx, reviewId, profile.SessionId, name)
+		err = s.db.InsertReplyName(ctx, reviewId, profile.SessionId, profile.UserId, name)
 
 		for err != nil {
 			logger.Warnf("failed to insert reply name: %v, retrying...", err)
 			name = utils.GenerateAuthorName()
-			err = s.db.InsertReplyName(ctx, reviewId, profile.SessionId, name)
+			err = s.db.InsertReplyName(ctx, reviewId, profile.SessionId, profile.UserId, name)
 		}
 
 		logger.Debugf("generated name for review %d: %s", reviewId, name)
