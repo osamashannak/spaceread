@@ -8,26 +8,6 @@ import {useAppDispatch, useAppSelector} from "../redux/hooks.ts";
 import {clearUnreadCount, setUnreadCount} from "../redux/slice/notification_slice.ts";
 import {formatRelativeTime} from "../utils.tsx";
 
-const TEMP_FAKE_NOTIFICATIONS: NotificationAPI[] = [
-    {
-        id: "temp-preview-1",
-        type: "review_reply",
-        title: "Silver Palm replied to your review",
-        body: "Agreed. The project rubric made expectations clear.",
-        href: "/professor/cisneros@uaeu.ac.ae#1205594610982719488",
-        created_at: new Date(Date.now() - 1000 * 60 * 38)
-    },
-    {
-        id: "temp-preview-2",
-        type: "reply_mention",
-        title: "Blue Falcon replied to you",
-        body: "Yeah, that deadline week was rough.",
-        href: "/professor/cisneros@uaeu.ac.ae#1193111019627483136",
-        read_at: new Date(Date.now() - 1000 * 60 * 60 * 3),
-        created_at: new Date(Date.now() - 1000 * 60 * 60 * 4)
-    }
-];
-
 export default function Notifications() {
     const dispatch = useAppDispatch();
     const userStatus = useAppSelector(state => state.user.status);
@@ -46,15 +26,14 @@ export default function Notifications() {
             if (!active) return;
 
             if (!response) {
-                setNotifications(TEMP_FAKE_NOTIFICATIONS);
-                dispatch(setUnreadCount(1));
+                setError(true);
+                dispatch(setUnreadCount(0));
                 setLoading(false);
                 return;
             }
 
-            const mergedNotifications = [...TEMP_FAKE_NOTIFICATIONS, ...response.notifications];
-            setNotifications(mergedNotifications);
-            dispatch(setUnreadCount(response.unread_count + unreadPreviewCount()));
+            setNotifications(response.notifications);
+            dispatch(setUnreadCount(response.unread_count));
             setLoading(false);
 
             if (response.unread_count > 0) {
@@ -75,7 +54,6 @@ export default function Notifications() {
     }, [dispatch, userStatus]);
 
     const openNotification = (notification: NotificationAPI) => {
-        if (isTemporaryNotification(notification)) return;
         markNotificationRead(notification.id).then();
         dispatch(clearUnreadCount());
     }
@@ -145,14 +123,6 @@ export default function Notifications() {
             </div>
         </>
     )
-}
-
-function isTemporaryNotification(notification: NotificationAPI) {
-    return notification.id.startsWith("temp-preview-");
-}
-
-function unreadPreviewCount() {
-    return TEMP_FAKE_NOTIFICATIONS.filter(notification => !notification.read_at).length;
 }
 
 function NotificationIcon({type}: { type: NotificationAPI["type"] }) {
