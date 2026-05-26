@@ -1,41 +1,18 @@
-import {useEffect, useState} from "react";
 import styles from "../../styles/components/course/file_upload.module.scss";
-import {uploadFile} from "../../api/course.ts";
 import {formatBytes, getIconFromMIME} from "../../utils.tsx";
 
 export default function FilePreview(props: {
-    courseTag: string,
+    id: string,
     name: string,
     file: File,
-    changeName: (file: File, name: string) => void,
-    uploadFile: boolean,
-    finishedUploading: (file: File, ok: boolean) => void,
-    deleteFile: (file: File) => void
+    status: "ready" | "uploading" | "uploaded" | "failed",
+    message: string,
+    disabled: boolean,
+    changeName: (id: string, name: string) => void,
+    deleteFile: (id: string) => void
 }) {
 
-    const [progress, setProgress] = useState("Ready to upload");
-    const [name, setName] = useState(props.name);
-
-    useEffect(() => {
-        if (props.uploadFile) {
-            setProgress("Uploading...")
-
-            uploadFile(
-                name,
-                props.file,
-                props.courseTag)
-                .then((result) => {
-                    setProgress(result.ok ? "Uploaded" : result.message);
-                    props.finishedUploading(props.file, result.ok);
-                })
-                .catch(() => {
-                    setProgress("Upload failed. Please try again.");
-                    props.finishedUploading(props.file, false);
-                });
-        }
-
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [props.uploadFile]);
+    const locked = props.disabled || props.status === "uploading" || props.status === "uploaded";
 
 
     return (
@@ -47,24 +24,23 @@ export default function FilePreview(props: {
                 <input
                     type={"text"}
                     onChange={event => {
-                        setName(event.target.value);
-                        props.changeName(props.file, event.target.value);
+                        props.changeName(props.id, event.target.value);
                     }}
-                    disabled={progress !== "Ready to upload"}
+                    disabled={locked}
                     className={styles.filePreviewName}
                     defaultValue={props.name}
                     aria-label={"File name"}/>
                 <div className={styles.filePreviewMeta}>
                     <span>{formatBytes(props.file.size)}</span>
                     <span className={styles.metaDivider}/>
-                    <span>{progress}</span>
+                    <span>{props.message}</span>
                 </div>
             </div>
-            <div hidden={progress !== "Ready to upload"} className={styles.deleteWrapper}>
+            <div hidden={locked} className={styles.deleteWrapper}>
                 <button
                     className={styles.deleteIcon}
                     type={"button"}
-                    onClick={() => props.deleteFile(props.file)}
+                    onClick={() => props.deleteFile(props.id)}
                     aria-label={`Remove ${props.name}`}
                 >
                     <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="22px" height="22px"

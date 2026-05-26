@@ -1,59 +1,118 @@
-import {ChangeEvent, DragEvent, FormEvent, useState} from "react";
+import {ChangeEvent, DragEvent, FormEvent, useRef, useState} from "react";
 import styles from "../../styles/components/course/file_upload.module.scss";
 import FilePreview from "./file_preview.tsx";
+import {uploadFile} from "../../api/course.ts";
+
+type UploadStatus = "ready" | "uploading" | "uploaded" | "failed";
+
+type UploadDetails = {
+    id: string;
+    name: string;
+    file: File;
+    status: UploadStatus;
+    message: string;
+}
+
+const readyMessage = "Ready to upload";
 
 export default function FileUpload(props: { courseTag: string }) {
-    const [details, setDetails] = useState<{name: string, file: File}[]>([]);
+    const nextFileId = useRef(0);
+    const [details, setDetails] = useState<UploadDetails[]>([]);
     const [submitting, setSubmitting] = useState<boolean>(false);
-    const [finished, setFinished] = useState<File[]>([]);
     const [hasUploadError, setHasUploadError] = useState(false);
+    const [uploadComplete, setUploadComplete] = useState(false);
     const [dragging, setDragging] = useState<boolean>(false);
     const [uploadNotice, setUploadNotice] = useState<string | null>(null);
+
+    const uploadableCount = details.filter(value => value.status !== "uploaded").length;
+    const uploadSucceeded = uploadComplete && !hasUploadError;
+    const canChooseFiles = !submitting && !uploadSucceeded;
 
     const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
         // @ts-expect-error Clarity is not defined
         clarity("set", "FilesUpload", "true");
         event.preventDefault();
-        if (details.length < 1) {
+        const uploadTargets = details.filter(value => value.status !== "uploaded");
+        if (uploadTargets.length < 1) {
             setUploadNotice("Select at least one file before uploading.");
             return;
         }
         setUploadNotice(null);
         setHasUploadError(false);
+        setUploadComplete(false);
         setSubmitting(true);
+
+        setDetails((prevState) => {
+            return prevState.map(value => {
+                if (value.status === "uploaded") return value;
+
+                return {
+                    ...value,
+                    status: "uploading",
+                    message: "Uploading..."
+                };
+            });
+        });
+
+        const results = await Promise.all(uploadTargets.map(async (value) => {
+            try {
+                const result = await uploadFile(value.name, value.file, props.courseTag);
+                return {
+                    id: value.id,
+                    ok: result.ok,
+                    message: result.ok ? "Uploaded" : result.message
+                };
+            } catch {
+                return {
+                    id: value.id,
+                    ok: false,
+                    message: "Upload failed. Please try again."
+                };
+            }
+        }));
+
+        const hasError = results.some(value => !value.ok);
+        const resultById = new Map(results.map(value => [value.id, value]));
+
+        setDetails((prevState) => {
+            return prevState.map(value => {
+                const result = resultById.get(value.id);
+                if (!result) return value;
+
+                return {
+                    ...value,
+                    status: result.ok ? "uploaded" : "failed",
+                    message: result.message
+                };
+            });
+        });
+        setHasUploadError(hasError);
+        setUploadComplete(true);
+        setSubmitting(false);
     }
 
-    const changeName = (file: File, name: string) => {
+    const changeName = (id: string, name: string) => {
         setDetails((prevState) => {
             const tempState = [...prevState];
-            const index = tempState.findIndex(value => value.file === file);
+            const index = tempState.findIndex(value => value.id === id);
             if (index === -1) return tempState;
             tempState[index].name = name;
             return tempState;
         });
     }
 
-    const deleteFile = (file: File) => {
+    const deleteFile = (id: string) => {
         setDetails((prevState) => {
             const tempState = [...prevState]
-            return tempState.filter(value => value.file !== file);
+            return tempState.filter(value => value.id !== id);
         });
         setUploadNotice(null);
-    }
-
-
-    const finishedUploading = (file: File, ok: boolean) => {
-        if (!ok) {
-            setHasUploadError(true);
-        }
-
-        setFinished((prevState) => {
-            return [...prevState, file];
-        });
+        setHasUploadError(false);
+        setUploadComplete(false);
     }
 
     const addFiles = (files: File[]) => {
-        if (files.length === 0) return;
+        if (files.length === 0 || !canChooseFiles) return;
 
         if (details.length >= 10) {
             setUploadNotice("You can upload up to 10 files at a time.");
@@ -77,18 +136,26 @@ export default function FileUpload(props: { courseTag: string }) {
 
             if (fileDetails.find(value => value.name === file.name)) {
                 fileDetails.push({
+                    id: `${file.lastModified}-${file.size}-${nextFileId.current++}`,
                     name: `${Math.round(Math.random() * 1E4)}-${file.name}`,
-                    file: file
+                    file: file,
+                    status: "ready",
+                    message: readyMessage
                 });
             } else {
                 fileDetails.push({
+                    id: `${file.lastModified}-${file.size}-${nextFileId.current++}`,
                     name: file.name,
-                    file: file
+                    file: file,
+                    status: "ready",
+                    message: readyMessage
                 });
             }
         });
 
         setDetails(fileDetails);
+        setHasUploadError(false);
+        setUploadComplete(false);
 
         const notices = [];
         if (skipped.length > 0) {
@@ -102,7 +169,7 @@ export default function FileUpload(props: { courseTag: string }) {
     }
 
     const onFileSelect = (event: ChangeEvent<HTMLInputElement>) => {
-        if (!event.target.files) return;
+        if (!event.target.files || !canChooseFiles) return;
 
         addFiles(Array.from(event.target.files));
 
@@ -129,14 +196,14 @@ export default function FileUpload(props: { courseTag: string }) {
     }
 
     const isFinished = () => {
-        return submitting && details.length > 0 && finished.length === details.length;
+        return uploadComplete && details.length > 0;
     }
 
-    const submitLabel = details.length === 0
+    const submitLabel = uploadableCount === 0
         ? "Select files first"
-        : details.length === 1
+        : uploadableCount === 1
             ? "Upload 1 file"
-            : `Upload ${details.length} files`;
+            : `Upload ${uploadableCount} files`;
 
     return (
         <form className={styles.form} onSubmit={handleSubmit}>
@@ -147,11 +214,12 @@ export default function FileUpload(props: { courseTag: string }) {
                        title={""}
                        className={styles.uploadButtonHTML}
                        id={"file-upload"}
+                       disabled={!canChooseFiles}
                        multiple
                        onChange={onFileSelect}/>
                 <label
                     className={`${styles.dropZone} ${dragging ? styles.dropZoneActive : ""}`}
-                    hidden={submitting}
+                    hidden={!canChooseFiles}
                     htmlFor={"file-upload"}
                     onDragOver={onDragOver}
                     onDragLeave={onDragLeave}
@@ -183,10 +251,10 @@ export default function FileUpload(props: { courseTag: string }) {
                 <div className={styles.previewList}>
                     {
                         details.map((value) => {
-                            return <FilePreview key={`${value.name}`} file={value.file} name={value.name}
-                                                uploadFile={submitting}
-                                                courseTag={props.courseTag}
-                                                finishedUploading={finishedUploading}
+                            return <FilePreview key={value.id} id={value.id} file={value.file} name={value.name}
+                                                status={value.status}
+                                                message={value.message}
+                                                disabled={submitting}
                                                 changeName={changeName}
                                                 deleteFile={deleteFile}/>
                         })
@@ -201,9 +269,9 @@ export default function FileUpload(props: { courseTag: string }) {
                     </div>)
                 }
 
-                <input hidden={submitting}
-                       className={details.length >= 1 ? styles.enabledFormSubmit : styles.disabledFormSubmit}
-                       disabled={details.length < 1}
+                <input hidden={!canChooseFiles}
+                       className={uploadableCount >= 1 ? styles.enabledFormSubmit : styles.disabledFormSubmit}
+                       disabled={uploadableCount < 1}
                        type={"submit"} title={submitLabel}
                        value={submitLabel}/>
 
