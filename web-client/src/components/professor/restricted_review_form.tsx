@@ -122,6 +122,7 @@ export default function RestrictedReviewForm(props: { professorEmail: string; ca
 
         dispatch(
             addReview({
+                sort_index: review.sort_index,
                 course_taken: "", grade_received: "", verified: false,
                 uaeu_origin: review.uaeu_origin,
                 fadeIn: true,

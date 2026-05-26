@@ -12,9 +12,10 @@ func (db *ProfessorDB) GetReply(ctx context.Context, id int64) (*model.ReviewRep
 	var reply model.ReviewReply
 
 	err := db.Db.Pool.QueryRow(ctx,
-		`SELECT id, session_id, user_id
+		`SELECT id, review_id, session_id, user_id
 		 FROM professor.review_reply WHERE id = $1 AND deleted_at IS NULL`, id).Scan(
 		&reply.ID,
+		&reply.ReviewId,
 		&reply.SessionId,
 		&reply.UserId)
 

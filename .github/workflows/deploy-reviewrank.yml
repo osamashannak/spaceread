@@ -1,0 +1,109 @@
+name: 'Build and Deploy Review Ranking Job to Cloud Run'
+
+on:
+  push:
+    branches:
+      - 'main'
+    paths:
+      - '.github/workflows/deploy-reviewrank.yml'
+      - 'services/cmd/reviewrank/**'
+      - 'services/internal/professor/**'
+      - 'services/pkg/database/**'
+      - 'services/pkg/logging/**'
+      - 'services/Dockerfile'
+      - 'services/go.mod'
+      - 'services/go.sum'
+
+env:
+  PROJECT_ID: 'uaeu-space'
+  PROJECT_NUMBER: '503811163032'
+  REGION: 'europe-west1'
+  JOB: 'spaceread-reviewrank'
+  IMAGE_REPOSITORY: 'spaceread-prof'
+  SCHEDULER_JOB: 'spaceread-reviewrank-refresh'
+  WORKLOAD_IDENTITY_PROVIDER: 'projects/503811163032/locations/global/workloadIdentityPools/github-actions-pool/providers/spaceread'
+
+jobs:
+  deploy:
+    runs-on: 'ubuntu-latest'
+
+    permissions:
+      contents: 'read'
+      id-token: 'write'
+
+    steps:
+      - name: 'Checkout'
+        uses: 'actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332' # actions/checkout@v4
+
+      - id: 'auth'
+        name: 'Authenticate to Google Cloud'
+        uses: 'google-github-actions/auth@f112390a2df9932162083945e46d439060d66ec2' # google-github-actions/auth@v2
+        with:
+          workload_identity_provider: '${{ env.WORKLOAD_IDENTITY_PROVIDER }}'
+
+      - name: 'Set up gcloud'
+        uses: 'google-github-actions/setup-gcloud@v2'
+
+      - name: 'Docker Auth'
+        uses: 'docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567' # docker/login-action@v3
+        with:
+          username: 'oauth2accesstoken'
+          password: '${{ steps.auth.outputs.auth_token }}'
+          registry: '${{ env.REGION }}-docker.pkg.dev'
+
+      - name: 'Build and Push Container'
+        run: |-
+          DOCKER_TAG="${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.IMAGE_REPOSITORY }}/reviewrank:${{ github.sha }}"
+          docker build --file services/Dockerfile --build-arg SERVICE=reviewrank --tag "${DOCKER_TAG}" services
+          docker push "${DOCKER_TAG}"
+
+      - name: 'Deploy Cloud Run Job'
+        uses: 'google-github-actions/deploy-cloudrun@33553064113a37d688aa6937bacbdc481580be17' # google-github-actions/deploy-cloudrun@v2
+        with:
+          job: '${{ env.JOB }}'
+          region: '${{ env.REGION }}'
+          project_id: '${{ env.PROJECT_ID }}'
+          image: '${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.IMAGE_REPOSITORY }}/reviewrank:${{ github.sha }}'
+          env_vars: |-
+            DB_NAME=${{ vars.DB_NAME }}
+            DB_USER=${{ vars.DB_USER }}
+            DB_HOST=${{ vars.DB_HOST }}
+            DB_PORT=${{ vars.DB_PORT }}
+            DB_SSLMODE=${{ vars.DB_SSLMODE }}
+            DB_CONNECT_TIMEOUT=10
+            DB_POOL_MAX_CONNS=3
+            REVIEW_RANK_BATCH_SIZE=500
+          secrets: |-
+            DB_PASSWORD=DB_PASSWORD:latest
+          flags: '--tasks=1 --max-retries=1 --task-timeout=3600s'
+
+      - name: 'Ensure Scheduler Trigger'
+        run: |-
+          SCHEDULER_SA="${{ env.PROJECT_NUMBER }}-compute@developer.gserviceaccount.com"
+          JOB_URI="https://run.googleapis.com/v2/projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/jobs/${{ env.JOB }}:run"
+
+          gcloud run jobs add-iam-policy-binding "${{ env.JOB }}" \
+            --project="${{ env.PROJECT_ID }}" \
+            --region="${{ env.REGION }}" \
+            --member="serviceAccount:${SCHEDULER_SA}" \
+            --role="roles/run.invoker"
+
+          if gcloud scheduler jobs describe "${{ env.SCHEDULER_JOB }}" \
+            --project="${{ env.PROJECT_ID }}" \
+            --location="${{ env.REGION }}" >/dev/null 2>&1; then
+            gcloud scheduler jobs update http "${{ env.SCHEDULER_JOB }}" \
+              --project="${{ env.PROJECT_ID }}" \
+              --location="${{ env.REGION }}" \
+              --schedule="15 * * * *" \
+              --uri="${JOB_URI}" \
+              --http-method=POST \
+              --oauth-service-account-email="${SCHEDULER_SA}"
+          else
+            gcloud scheduler jobs create http "${{ env.SCHEDULER_JOB }}" \
+              --project="${{ env.PROJECT_ID }}" \
+              --location="${{ env.REGION }}" \
+              --schedule="15 * * * *" \
+              --uri="${JOB_URI}" \
+              --http-method=POST \
+              --oauth-service-account-email="${SCHEDULER_SA}"
+          fi

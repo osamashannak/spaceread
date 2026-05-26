@@ -5,6 +5,7 @@ import (
 	"fmt"
 	v1 "github.com/osamashannak/uaeu-space/services/internal/api/v1"
 	"github.com/osamashannak/uaeu-space/services/internal/professor/model"
+	"github.com/osamashannak/uaeu-space/services/internal/professor/ranking"
 	"github.com/osamashannak/uaeu-space/services/pkg/jsonutil"
 	"github.com/osamashannak/uaeu-space/services/pkg/logging"
 	"github.com/osamashannak/uaeu-space/services/pkg/subnetchecker"
@@ -208,6 +209,7 @@ func (s *Server) PostReview() http.Handler {
 		logger.Debugf("perspective analysis result: %+v", flags)
 
 		ipAddress := utils.GetClientIP(r)
+		now := time.Now()
 
 		review := model.Review{
 			ID:             int64(s.generator.Next()),
@@ -223,7 +225,7 @@ func (s *Server) PostReview() http.Handler {
 			IpAddress:      ipAddress,
 			SessionId:      &profile.SessionId,
 			UserId:         profile.UserId,
-			CreatedAt:      time.Now(),
+			CreatedAt:      now,
 			Gif:            gif,
 		}
 
@@ -232,6 +234,21 @@ func (s *Server) PostReview() http.Handler {
 		} else {
 			review.Attachment = nil
 		}
+
+		review.SortIndex = ranking.Compute(ranking.Review{
+			ID:                review.ID,
+			Score:             review.Score,
+			Content:           review.Content,
+			ProfessorEmail:    review.ProfessorEmail,
+			CourseTaken:       review.CourseTaken,
+			GradeReceived:     review.GradeReceived,
+			CreatedAtUnixHour: now.Unix() / int64(time.Hour/time.Second),
+			NowUnixHour:       now.Unix() / int64(time.Hour/time.Second),
+			Visible:           review.Visible,
+			UaeuOrigin:        review.UaeuOrigin,
+			HasAttachment:     review.Attachment != nil,
+			HasGif:            review.Gif != nil,
+		}).SortIndex
 
 		err = s.db.InsertReview(ctx, &review)
 
@@ -245,6 +262,13 @@ func (s *Server) PostReview() http.Handler {
 			return
 		}
 
+		s.refreshReviewAndBurstRanks(ctx, review.ID)
+		if sortIndex, ok, err := s.db.GetReviewSortIndex(ctx, review.ID); err != nil {
+			logger.Warnf("failed to reload review sort index for %d: %v", review.ID, err)
+		} else if ok {
+			review.SortIndex = sortIndex
+		}
+
 		var flagged *bool
 		if !review.Visible {
 			val := true
@@ -252,6 +276,7 @@ func (s *Server) PostReview() http.Handler {
 		}
 
 		var response = v1.ReviewPostResponse{
+			SortIndex:     review.SortIndex,
 			Text:          review.Content,
 			Score:         review.Score,
 			Positive:      review.Positive,
@@ -546,6 +571,8 @@ func (s *Server) ReportReview() http.Handler {
 			return
 		}
 
+		s.refreshReviewRank(ctx, review.ID)
+
 		logger.Debugf("review reported successfully: %d", request.ReviewID)
 
 		jsonutil.MarshalResponse(w, http.StatusOK, v1.SuccessResponse{
@@ -815,6 +842,8 @@ func (s *Server) AddReviewRating() http.Handler {
 			return
 		}
 
+		s.refreshReviewRank(ctx, request.ReviewID)
+
 		logger.Debugf("review rating added successfully for review ID: %d", request.ReviewID)
 
 		jsonutil.MarshalResponse(w, http.StatusCreated, v1.SuccessResponse{
@@ -901,6 +930,8 @@ func (s *Server) DeleteReviewRating() http.Handler {
 			jsonutil.MarshalResponse(w, http.StatusInternalServerError, errorResponse)
 			return
 		}
+
+		s.refreshReviewRank(ctx, reviewIdInt)
 
 		logger.Debugf("review rating deleted successfully for review ID: %s", reviewId)
 

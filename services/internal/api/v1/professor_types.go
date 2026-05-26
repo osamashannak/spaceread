@@ -78,6 +78,7 @@ type ReviewRatingBody struct {
 }
 
 type ReviewPostResponse struct {
+	SortIndex     int64             `json:"sort_index,string"`
 	Text          string            `json:"text"`
 	Score         int               `json:"score"`
 	Positive      bool              `json:"positive"`

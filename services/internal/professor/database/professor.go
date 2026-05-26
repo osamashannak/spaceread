@@ -101,7 +101,7 @@ func (db *ProfessorDB) GetProfessorReviews(ctx context.Context, sessionId int64,
 		LEFT JOIN professor.review_attachment ra 
 			ON r.attachment = ra.id AND ra.visible
 		WHERE professor_email = $3 AND r.deleted_at IS NULL AND r.created_at >= NOW() - INTERVAL '2 years'
-		ORDER BY r.created_at DESC;`, sessionId, userId, email)
+		ORDER BY r.sort_index DESC;`, sessionId, userId, email)
 
 	if err != nil {
 		return nil, nil, nil, nil, err

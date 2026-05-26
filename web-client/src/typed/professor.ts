@@ -20,6 +20,7 @@ export interface SimilarProfessors {
 }
 
 export interface ReviewAPI {
+    sort_index: string;
     id: string;
     author: string;
     score: number;

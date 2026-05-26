@@ -57,7 +57,8 @@ func (db *ProfessorDB) InsertReview(ctx context.Context, review *model.Review) e
 			sort_index, id, score, positive, content, attachment, professor_email, ip_address, session_id, user_id,
 			visible, uaeu_origin, language, created_at, gif, grade_received, course_taken
 		)
-		VALUES ($1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
+		review.SortIndex,
 		review.ID,
 		review.Score,
 		review.Positive,

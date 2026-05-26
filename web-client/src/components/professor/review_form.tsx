@@ -282,6 +282,7 @@ export default function ReviewForm(props: { courses: string[] | null, professorE
         setSubmitting(null);
         dispatch(
             addReview({
+                sort_index: review.sort_index,
                 uaeu_origin: review.uaeu_origin,
                 fadeIn: true,
                 self: true,

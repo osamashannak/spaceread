@@ -11,6 +11,7 @@ import {getAccountSettings} from "../api/auth.ts";
 import {useAppDispatch} from "../redux/hooks.ts";
 import {setUser} from "../redux/slice/user_slice.ts";
 import {recaptchaDisabled} from "../lib/recaptcha.ts";
+import NotificationSummaryPoller from "../components/notification_summary_poller.tsx";
 
 export default function Layout() {
 
@@ -63,6 +64,7 @@ export default function Layout() {
             </Helmet>
 
             {width > 768 ? <Header/> : <MobileNavigation/>}
+            <NotificationSummaryPoller/>
 
             <ScrollRestoration/>
 

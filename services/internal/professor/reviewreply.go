@@ -172,6 +172,8 @@ func (s *Server) PostReply() http.Handler {
 			return
 		}
 
+		s.refreshReviewRank(ctx, request.ReviewID)
+
 		s.createReplyNotifications(ctx, profile.SessionId, profile.UserId, review, mentionedReply, author, reply.ID)
 
 		logger.Debugf("successfully posted reply with ID %d", reply.ID)
@@ -337,6 +339,8 @@ func (s *Server) DeleteReply() http.Handler {
 			jsonutil.MarshalResponse(w, http.StatusInternalServerError, errorResponse)
 			return
 		}
+
+		s.refreshReviewRank(ctx, reply.ReviewId)
 
 		logger.Debugf("successfully deleted reply with ID %d", replyId)
 		jsonutil.MarshalResponse(w, http.StatusOK, v1.SuccessResponse{

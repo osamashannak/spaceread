@@ -2,7 +2,6 @@ import {Link, useNavigate} from "react-router-dom";
 import styles from "../styles/components/global/header.module.scss";
 import {useEffect, useState} from "react";
 import {useAppDispatch, useAppSelector} from "../redux/hooks.ts";
-import {getNotificationSummary} from "../api/notifications.ts";
 import {setUnreadCount} from "../redux/slice/notification_slice.ts";
 import {logout as sendLogoutRequest} from "../api/auth.ts";
 import {clearUser} from "../redux/slice/user_slice.ts";
@@ -13,25 +12,12 @@ export default function Header() {
     const dispatch = useAppDispatch();
     const username = useAppSelector(state => state.user.username);
     const isAuthenticated = useAppSelector(state => state.user.status === "authenticated");
-    const userStatus = useAppSelector(state => state.user.status);
     const unreadCount = useAppSelector(state => state.notifications.unreadCount);
     const [loggingOut, setLoggingOut] = useState(false);
 
     useEffect(() => {
         setSelected((window.location.pathname || "").toString().split('/')[1] || "");
     }, [window.location.pathname]);
-
-    useEffect(() => {
-        if (userStatus === "loading") return;
-
-        getNotificationSummary().then((response) => {
-            if (!response) {
-                dispatch(setUnreadCount(0));
-                return;
-            }
-            dispatch(setUnreadCount(response.unread_count));
-        });
-    }, [dispatch, userStatus]);
 
     async function handleLogout() {
         if (loggingOut) return;
