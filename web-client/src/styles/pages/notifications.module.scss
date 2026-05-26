@@ -2,7 +2,7 @@
   max-width: 600px;
   margin: 0 auto;
   min-height: 70vh;
-  padding-bottom: 96px;
+  padding-bottom: 120px;
 
   @media (min-width: 768px) {
     padding-top: 8px;
@@ -14,11 +14,11 @@
   border-bottom: 1px solid rgb(239, 243, 244);
   display: flex;
   justify-content: space-between;
-  padding: 14px 16px 18px;
+  padding: 16px 18px 15px;
 
   h1 {
     color: #15202b;
-    font-size: 24px;
+    font-size: 26px;
     font-weight: 800;
     line-height: 1.2;
   }
@@ -48,23 +48,35 @@
     text-decoration: none;
     width: fit-content;
   }
+
+  > span:not(.statusIcon) {
+    line-height: 1.4;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+}
+
+.emptyState {
+  border-bottom: 0;
+  padding-top: 22px;
 }
 
 .statusIcon,
 .notificationGlyph {
   align-items: center;
-  background-color: rgba(5, 154, 229, 0.08);
-  border-radius: 50%;
+  background-color: transparent;
+  border-radius: 9999px;
   color: #049AE5;
   display: flex;
   flex: 0 0 auto;
-  height: 36px;
+  height: 34px;
   justify-content: center;
-  width: 36px;
+  position: relative;
+  width: 34px;
 
   svg {
-    height: 19px;
-    width: 19px;
+    height: 21px;
+    width: 21px;
   }
 }
 
@@ -75,11 +87,11 @@
 
 .notificationItem {
   align-items: flex-start;
-  color: #111827;
+  color: #15202b;
   display: flex;
-  gap: 12px;
-  min-height: 74px;
-  padding: 14px 16px;
+  gap: 11px;
+  min-height: 86px;
+  padding: 15px 18px;
   position: relative;
   text-decoration: none;
   transition: background-color 0.2s ease;
@@ -129,27 +141,15 @@
   span {
     color: rgb(83, 100, 113);
     font-size: 14px;
-    line-height: 1.35;
+    line-height: 1.45;
   }
 }
 
 .unread {
-  background-color: rgba(5, 154, 229, 0.06);
-
-  &:before {
-    background-color: #049AE5;
-    border-radius: 999px;
-    content: "";
-    height: 8px;
-    left: 6px;
-    position: absolute;
-    top: 28px;
-    width: 8px;
-  }
+  background-color: rgba(5, 154, 229, 0.035);
 
   .notificationGlyph {
-    background-color: #049AE5;
-    color: #fff;
+    color: #049AE5;
   }
 }
 

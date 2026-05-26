@@ -12,7 +12,11 @@ import ReplyComposeModal from "../modal/reply_compose_modal.tsx";
 import GoogleAttribution from "../google_attribution.tsx";
 
 
-export default function Review(review: ReviewAPI) {
+type ReviewProps = ReviewAPI & {
+    autoOpenReplies?: boolean;
+}
+
+export default function Review(review: ReviewProps) {
 
     const [replyCompose, showReplyCompose] = useState(false);
     const [translatedText, setTranslatedText] = useState<string | null>(null);
@@ -206,7 +210,8 @@ export default function Review(review: ReviewAPI) {
                                   reviewId={review.id}/>}
 
                 {review.reply_count > 0 &&
-                    <ReplySection reviewId={review.id} comments={review.reply_count} op={review.self}/>}
+                    <ReplySection reviewId={review.id} comments={review.reply_count} op={review.self}
+                                  autoOpen={review.autoOpenReplies}/>}
             </ReplyProvider>
 
         </div>

@@ -193,7 +193,7 @@ func (s *Server) PostReply() http.Handler {
 
 func (s *Server) createReplyNotifications(ctx context.Context, actorSessionID int64, actorUserID *int64, review *model.Review, mentionedReply *model.ReviewReply, author string, replyID int64) {
 	logger := logging.FromContext(ctx)
-	href := "/professor/" + review.ProfessorEmail + "#review-" + strconv.FormatInt(review.ID, 10)
+	href := "/professor/" + review.ProfessorEmail + "#" + strconv.FormatInt(review.ID, 10)
 	notifiedUsers := map[int64]struct{}{}
 
 	if (review.UserId != nil || review.SessionId != nil) && !sameUser(review.UserId, actorUserID) && !sameSession(review.SessionId, actorSessionID) {

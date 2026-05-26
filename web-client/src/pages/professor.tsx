@@ -31,6 +31,18 @@ const ReviewSection = lazy(async () => {
     return moduleExports;
 });
 
+function reviewIdFromHash(hash: string) {
+    let value = hash.replace(/^#/, "").trim();
+
+    try {
+        value = decodeURIComponent(value);
+    } catch {
+        return "";
+    }
+
+    return /^\d+$/.test(value) ? value : "";
+}
+
 export default function Professor() {
     const {email} = useParams();
     const location = useLocation();
@@ -38,8 +50,11 @@ export default function Professor() {
     const dispatch = useDispatch();
     const professorState = useSelector(selectProfessor);
     const latestReq = useRef<symbol | null>(null);
+    const lastScrolledReviewTarget = useRef("");
 
     const professor = professorState.professor as ProfessorAPI | undefined | null;
+    const focusedReviewId = reviewIdFromHash(location.hash);
+    const professorEmail = professor?.email ?? "";
 
     // useFeedbackPopup(!!professor);
 
@@ -99,15 +114,19 @@ export default function Professor() {
     }, [professor]);
 
     useEffect(() => {
-        if (!professor || !location.hash.startsWith("#review-")) return;
+        if (!professorEmail || !focusedReviewId) return;
+
+        const scrollTarget = `${professorEmail}:${focusedReviewId}`;
+        if (lastScrolledReviewTarget.current === scrollTarget) return;
 
         let attempts = 0;
         let timeout: number | undefined;
 
         const scrollToReview = () => {
-            const element = document.getElementById(location.hash.slice(1));
+            const element = document.getElementById(`review-${focusedReviewId}`);
             if (element) {
                 element.scrollIntoView({behavior: "smooth", block: "center"});
+                lastScrolledReviewTarget.current = scrollTarget;
                 return;
             }
 
@@ -122,7 +141,7 @@ export default function Professor() {
         return () => {
             if (timeout) window.clearTimeout(timeout);
         }
-    }, [location.hash, professor]);
+    }, [focusedReviewId, professorEmail]);
 
     const isStale = email && professor && professor.email.toLowerCase() !== email.toLowerCase();
 
@@ -212,7 +231,7 @@ export default function Professor() {
                 {professor.similar_professors.length > 0 && <RelatedReviews reviews={professor.similar_professors}/>}
 
                 <Suspense fallback={<LoadingSuspense height={"400px"}/>}>
-                    <ReviewSection professorReviews={professor.reviews}/>
+                    <ReviewSection professorReviews={professor.reviews} focusedReviewId={focusedReviewId}/>
                 </Suspense>
 
             </div>

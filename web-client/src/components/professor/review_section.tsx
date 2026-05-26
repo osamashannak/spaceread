@@ -6,7 +6,7 @@ import reviewStyles from "../../styles/components/professor/review.module.scss";
 import SortReviews from "./sort_reviews.tsx";
 
 
-export default function ReviewSection(props: { professorReviews: ReviewAPI[] }) {
+export default function ReviewSection(props: { professorReviews: ReviewAPI[], focusedReviewId?: string }) {
 
     const reviews = props.professorReviews;
     const reviewCount = reviews.length;
@@ -29,7 +29,7 @@ export default function ReviewSection(props: { professorReviews: ReviewAPI[] }) 
                 {
                     reviewCount > 0 ?
                         reviews.map(value =>
-                            <Review key={value.id} {...value}/>
+                            <Review key={value.id} {...value} autoOpenReplies={props.focusedReviewId === value.id}/>
                         )
                         : <div className={reviewStyles.noComments}><span>There are no comments.</span></div>
                 }

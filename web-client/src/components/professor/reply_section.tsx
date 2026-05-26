@@ -1,22 +1,39 @@
 import styles from "../../styles/components/professor/review.module.scss";
 import ReviewReply from "./review_reply.tsx";
-import {useState} from "react";
+import {useCallback, useEffect, useRef, useState} from "react";
 import {getReviewReplies} from "../../api/professor.ts";
 import {useDispatch} from "react-redux";
 import {changeRepliesCount} from "../../redux/slice/professor_slice.ts";
 import {useReply} from "../provider/reply.tsx";
 
 
-export default function ReplySection({reviewId, comments, op}: { reviewId: string, comments: number, op: boolean }) {
+export default function ReplySection({reviewId, comments, op, autoOpen = false}: { reviewId: string, comments: number, op: boolean, autoOpen?: boolean }) {
 
     const [loading, setLoading] = useState(false);
     const [moreLoading, setMoreLoading] = useState(false);
+    const autoLoadStarted = useRef(false);
 
     const context = useReply();
 
     const dispatch = useDispatch();
 
     const unloadedReplies = comments - context.replies.length;
+
+    const loadInitialReplies = useCallback(async () => {
+        if (loading || context.replies.length) return;
+
+        setLoading(true);
+        const repliesAPI = await getReviewReplies(reviewId, []);
+        context.setReplies(repliesAPI?.replies || []);
+        setLoading(false);
+    }, [context, loading, reviewId]);
+
+    useEffect(() => {
+        if (!autoOpen || comments <= 0 || context.replies.length || autoLoadStarted.current) return;
+
+        autoLoadStarted.current = true;
+        loadInitialReplies();
+    }, [autoOpen, comments, context.replies.length, loadInitialReplies]);
 
 
     if (loading) {
@@ -39,12 +56,7 @@ export default function ReplySection({reviewId, comments, op}: { reviewId: strin
 
     if (!context.replies.length) {
         return (
-            <div className={styles.viewMoreReply} onClick={async () => {
-                setLoading(true);
-                const repliesAPI = await getReviewReplies(reviewId, []);
-                context.setReplies(repliesAPI?.replies || []);
-                setLoading(false);
-            }}>
+            <div className={styles.viewMoreReply} onClick={loadInitialReplies}>
                 --- View {unloadedReplies} {unloadedReplies === 1 ? "reply" : "replies"}
             </div>
         )

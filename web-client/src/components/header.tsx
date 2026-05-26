@@ -169,7 +169,9 @@ export default function Header() {
                                     {unreadCount > 2 ? "2+" : unreadCount}
                                 </span>}
                             </span>
-                            <span className={styles.navLinkText}>Notifications</span>
+                            <div className={styles.hide}>
+                                <span className={styles.navLinkText}>Notifications</span>
+                            </div>
                         </Link>
 
                         {/*<Link className={`${styles.navLink} ${styles.navLinkLogin}`} to={"/login"}
