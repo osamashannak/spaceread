@@ -65,15 +65,15 @@ jobs:
           project_id: '${{ env.PROJECT_ID }}'
           image: '${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.IMAGE_REPOSITORY }}/reviewrank:${{ github.sha }}'
           env_vars: |-
-            DB_NAME=${{ vars.DB_NAME }}
-            DB_USER=${{ vars.DB_USER }}
-            DB_HOST=${{ vars.DB_HOST }}
-            DB_PORT=${{ vars.DB_PORT }}
-            DB_SSLMODE=${{ vars.DB_SSLMODE }}
             DB_CONNECT_TIMEOUT=10
             DB_POOL_MAX_CONNS=3
             REVIEW_RANK_BATCH_SIZE=500
           secrets: |-
+            DB_NAME=DB_NAME:latest
+            DB_USER=DB_USER:latest
+            DB_HOST=DB_HOST:latest
+            DB_PORT=DB_PORT:latest
+            DB_SSLMODE=DB_SSLMODE:latest
             DB_PASSWORD=DB_PASSWORD:latest
           flags: '--tasks=1 --max-retries=1 --task-timeout=3600s'
 
