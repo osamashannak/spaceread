@@ -118,26 +118,24 @@ func (db *ProfessorDB) ListReviewIDsForRankingRefresh(ctx context.Context, after
 }
 
 func (db *ProfessorDB) TryAcquireReviewRankingLock(ctx context.Context) (func(context.Context) error, bool, error) {
-	conn, err := db.Db.Pool.Acquire(ctx)
+	tx, err := db.Db.Pool.Begin(ctx)
 	if err != nil {
 		return nil, false, err
 	}
 
 	var locked bool
-	if err := conn.QueryRow(ctx, `SELECT pg_try_advisory_lock($1)`, reviewRankingLockID).Scan(&locked); err != nil {
-		conn.Release()
+	if err := tx.QueryRow(ctx, `SELECT pg_try_advisory_xact_lock($1)`, reviewRankingLockID).Scan(&locked); err != nil {
+		_ = tx.Rollback(ctx)
 		return nil, false, err
 	}
 
 	if !locked {
-		conn.Release()
+		_ = tx.Rollback(ctx)
 		return nil, false, nil
 	}
 
 	unlock := func(ctx context.Context) error {
-		defer conn.Release()
-		_, err := conn.Exec(ctx, `SELECT pg_advisory_unlock($1)`, reviewRankingLockID)
-		return err
+		return tx.Rollback(ctx)
 	}
 	return unlock, true, nil
 }

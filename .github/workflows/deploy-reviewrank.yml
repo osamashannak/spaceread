@@ -16,11 +16,9 @@ on:
 
 env:
   PROJECT_ID: 'uaeu-space'
-  PROJECT_NUMBER: '503811163032'
   REGION: 'europe-west1'
   JOB: 'spaceread-reviewrank'
   IMAGE_REPOSITORY: 'spaceread-prof'
-  SCHEDULER_JOB: 'spaceread-reviewrank-refresh'
   WORKLOAD_IDENTITY_PROVIDER: 'projects/503811163032/locations/global/workloadIdentityPools/github-actions-pool/providers/spaceread'
 
 jobs:
@@ -65,34 +63,3 @@ jobs:
           project_id: '${{ env.PROJECT_ID }}'
           image: '${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.IMAGE_REPOSITORY }}/reviewrank:${{ github.sha }}'
           flags: '--tasks=1 --max-retries=1 --task-timeout=3600s'
-
-      - name: 'Ensure Scheduler Trigger'
-        run: |-
-          SCHEDULER_SA="${{ env.PROJECT_NUMBER }}-compute@developer.gserviceaccount.com"
-          JOB_URI="https://run.googleapis.com/v2/projects/${{ env.PROJECT_ID }}/locations/${{ env.REGION }}/jobs/${{ env.JOB }}:run"
-
-          gcloud run jobs add-iam-policy-binding "${{ env.JOB }}" \
-            --project="${{ env.PROJECT_ID }}" \
-            --region="${{ env.REGION }}" \
-            --member="serviceAccount:${SCHEDULER_SA}" \
-            --role="roles/run.invoker"
-
-          if gcloud scheduler jobs describe "${{ env.SCHEDULER_JOB }}" \
-            --project="${{ env.PROJECT_ID }}" \
-            --location="${{ env.REGION }}" >/dev/null 2>&1; then
-            gcloud scheduler jobs update http "${{ env.SCHEDULER_JOB }}" \
-              --project="${{ env.PROJECT_ID }}" \
-              --location="${{ env.REGION }}" \
-              --schedule="15 * * * *" \
-              --uri="${JOB_URI}" \
-              --http-method=POST \
-              --oauth-service-account-email="${SCHEDULER_SA}"
-          else
-            gcloud scheduler jobs create http "${{ env.SCHEDULER_JOB }}" \
-              --project="${{ env.PROJECT_ID }}" \
-              --location="${{ env.REGION }}" \
-              --schedule="15 * * * *" \
-              --uri="${JOB_URI}" \
-              --http-method=POST \
-              --oauth-service-account-email="${SCHEDULER_SA}"
-          fi
