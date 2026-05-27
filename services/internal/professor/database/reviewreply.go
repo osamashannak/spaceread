@@ -93,7 +93,7 @@ func (db *ProfessorDB) GetRepliesIgnoreCurrent(ctx context.Context, reviewId, se
 				   rn.name                                                       AS author,
 				   mentioned.name                                                AS mention,
 				   r.op,
-				   ((r.session_id = $3) OR ($4::bigint IS NOT NULL AND r.user_id = $4)) AS self,
+				   COALESCE((r.session_id IS NOT DISTINCT FROM $3) OR ($4::bigint IS NOT NULL AND r.user_id IS NOT DISTINCT FROM $4), FALSE) AS self,
 				   r.like_count,
 				   CASE
 					   WHEN rr.created_at IS NOT NULL THEN TRUE
