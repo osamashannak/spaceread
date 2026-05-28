@@ -20,7 +20,7 @@ import (
 )
 
 type Gateway struct {
-	sessionStore      SessionStore
+	sessionStore      authsession.SessionStore
 	authResolver      authsession.Resolver
 	gen               snowflake.Generator
 	config            Config
@@ -28,14 +28,7 @@ type Gateway struct {
 	recoveredDevSIDs  sync.Map
 }
 
-type SessionStore interface {
-	GetSessionID(ctx context.Context, token string) (*int64, error)
-	CreateSession(ctx context.Context, id int64, token, userAgent, ipAddress string) error
-	RecoverSession(ctx context.Context, id int64, token, userAgent, ipAddress string) error
-	UpdateSessionToken(ctx context.Context, id int64, token string) error
-}
-
-func New(sessionStore SessionStore, gen snowflake.Generator, cfg Config, authResolver authsession.Resolver) *Gateway {
+func New(sessionStore authsession.SessionStore, gen snowflake.Generator, cfg Config, authResolver authsession.Resolver) *Gateway {
 	return &Gateway{
 		sessionStore:      sessionStore,
 		authResolver:      authResolver,

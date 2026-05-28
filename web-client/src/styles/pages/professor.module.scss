@@ -646,6 +646,20 @@
   }
 }
 
+.sortButtonText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  line-height: 18px;
+}
+
+.selectedSortLabel {
+  color: rgb(110, 112, 114);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 14px;
+}
+
 .sortIcon {
   position: relative;
   margin: 12px;
@@ -762,4 +776,3 @@
     }
   }
 }
-

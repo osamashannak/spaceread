@@ -8,6 +8,7 @@ import (
 
 	"github.com/osamashannak/uaeu-space/services/internal/account"
 	accountDB "github.com/osamashannak/uaeu-space/services/internal/account/database"
+	authsessionstore "github.com/osamashannak/uaeu-space/services/pkg/authsession/postgres"
 	"github.com/osamashannak/uaeu-space/services/pkg/database"
 	"github.com/osamashannak/uaeu-space/services/pkg/gateway"
 	"github.com/osamashannak/uaeu-space/services/pkg/logging"
@@ -57,10 +58,11 @@ func realMain(ctx context.Context) error {
 
 	sfGenerator := snowflake.New(1)
 	accountStore := accountDB.New(db)
+	authSessionStore := authsessionstore.New(db)
 
 	logger.Info("setting up account server")
 
-	gatewayClient := gateway.New(db, *sfGenerator, cfg.Gateway, accountStore)
+	gatewayClient := gateway.New(authSessionStore, *sfGenerator, cfg.Gateway, authSessionStore)
 
 	accountServer, err := account.NewServer(accountStore, sfGenerator, gatewayClient, *cfg)
 	if err != nil {

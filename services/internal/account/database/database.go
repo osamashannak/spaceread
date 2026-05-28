@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/osamashannak/uaeu-space/services/pkg/authsession"
 	pkgdb "github.com/osamashannak/uaeu-space/services/pkg/database"
 )
 
@@ -217,36 +216,6 @@ func (db *DB) CreateLoginSession(ctx context.Context, id, userID, sessionID int6
 		VALUES ($1, $2, $3, $4, $5, $6, $7)`,
 		id, userID, sessionID, tokenHash, expiresAt, userAgent, ipAddress)
 	return err
-}
-
-func (db *DB) GetAuthenticatedUserByTokenHash(ctx context.Context, tokenHash string, sessionID int64) (*authsession.User, error) {
-	var user authsession.User
-
-	err := db.Pool.QueryRow(ctx, `
-		SELECT ls.id, u.id, u.username, u.primary_email, u.role, ls.expires_at
-		FROM account.login_session ls
-		JOIN account."user" u ON u.id = ls.user_id
-		WHERE ls.token_hash = $1
-		  AND ls.session_id = $2
-		  AND ls.revoked_at IS NULL
-		  AND ls.expires_at > now()
-		  AND u.status = 'active'`, tokenHash, sessionID).Scan(
-		&user.LoginSessionID,
-		&user.UserID,
-		&user.Username,
-		&user.Email,
-		&user.Role,
-		&user.ExpiresAt,
-	)
-
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, nil
-		}
-		return nil, err
-	}
-
-	return &user, nil
 }
 
 func (db *DB) RevokeLoginSession(ctx context.Context, tokenHash string) error {

@@ -7,7 +7,9 @@ import {useDispatch} from "react-redux";
 export default function SortReviews() {
 
     const [sortHidden, setSortHidden] = useState(true);
+    const [selectedSort, setSelectedSort] = useState(SORT_BY.relevant);
     const dispatch = useDispatch();
+    const selectedSortLabel = selectedSort === SORT_BY.newest ? "Newest" : "Relevant";
 
     useEffect(() => {
 
@@ -52,19 +54,26 @@ export default function SortReviews() {
                     </svg>
                     <div className={styles.sortIconBackground}></div>
                 </div>
-                <span>Sort by</span>
+                <div className={styles.sortButtonText}>
+                    <span>Sort by</span>
+                    <span className={styles.selectedSortLabel}>{selectedSortLabel}</span>
+                </div>
             </div>
             <div className={sortHidden ? styles.hiddenSortByMenu : styles.sortByMenu}>
                 <div className={styles.sortByMenuList}>
                     <div className={styles.sortByListItem}
                          onClick={() => {
+                             setSelectedSort(SORT_BY.relevant);
                              dispatch(sortReviews(SORT_BY.relevant));
+                             setSortHidden(true);
                          }}>
                         <span>Relevant</span>
                     </div>
                     <div className={styles.sortByListItem}
                          onClick={() => {
+                             setSelectedSort(SORT_BY.newest);
                              dispatch(sortReviews(SORT_BY.newest));
+                             setSortHidden(true);
                          }}>
                         <span>Newest</span>
                     </div>
