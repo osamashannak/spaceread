@@ -6,6 +6,9 @@ import (
 )
 
 func FormatBlobURL(accountClient, containerName, blobName, sasQuery string) string {
+	if sasQuery == "" {
+		return fmt.Sprintf("%s/%s/%s", accountClient, containerName, blobName)
+	}
 	return fmt.Sprintf("%s/%s/%s?%s", accountClient, containerName, blobName, sasQuery)
 }
 

@@ -320,7 +320,7 @@ func (s *Server) AccountSettings() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		profile, ok := s.gateway.GetProfile(r.Context())
 		if !ok || profile.UserId == nil {
-			if cookie, err := r.Cookie(s.authCookieName()); err == nil && cookie != nil && cookie.Value != "" {
+			if cookie, err := r.Cookie(s.config.Gateway.AuthCookieName); err == nil && cookie != nil && cookie.Value != "" {
 				s.clearAuthCookie(w)
 			}
 
@@ -336,7 +336,7 @@ func (s *Server) AccountSettings() http.Handler {
 
 func (s *Server) Logout() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		cookie, err := r.Cookie(s.authCookieName())
+		cookie, err := r.Cookie(s.config.Gateway.AuthCookieName)
 		if err == nil && cookie != nil && cookie.Value != "" {
 			tokenHash, err := authutil.HashToken(cookie.Value)
 			if err != nil {
@@ -421,7 +421,7 @@ func (s *Server) finishLogin(w http.ResponseWriter, r *http.Request, profile *ga
 	}
 
 	http.SetCookie(w, &http.Cookie{
-		Name:     s.authCookieName(),
+		Name:     s.config.Gateway.AuthCookieName,
 		Value:    token,
 		Domain:   s.config.Gateway.CookieDomain,
 		MaxAge:   int(authCookieMaxAge.Seconds()),
@@ -517,7 +517,7 @@ func (s *Server) suggestUsername(ctx context.Context, email string) (string, err
 
 func (s *Server) clearAuthCookie(w http.ResponseWriter) {
 	http.SetCookie(w, &http.Cookie{
-		Name:     s.authCookieName(),
+		Name:     s.config.Gateway.AuthCookieName,
 		Value:    "",
 		Domain:   s.config.Gateway.CookieDomain,
 		MaxAge:   -1,

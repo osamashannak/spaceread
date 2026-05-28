@@ -13,6 +13,7 @@ import PageNotFound from "../pages/page_not_found.tsx";
 import Feedback from "../pages/feedback.tsx";
 import {ErrorPage} from "../pages/error_page.tsx";
 import RestrictedProfessor from "../pages/restricted_professor.tsx";
+import MySpace from "../pages/my_space.tsx";
 
 const Router = createBrowserRouter([
     {
@@ -25,6 +26,10 @@ const Router = createBrowserRouter([
             {
                 path: "notifications",
                 element: <Notifications/>
+            },
+            {
+                path: "my-space",
+                element: <MySpace/>
             },
             {
                 path: "terms-of-service",

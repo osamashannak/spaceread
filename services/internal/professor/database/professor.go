@@ -6,7 +6,6 @@ import (
 	"github.com/jackc/pgx/v5"
 	v1 "github.com/osamashannak/uaeu-space/services/internal/api/v1"
 	"github.com/osamashannak/uaeu-space/services/internal/professor/model"
-	"github.com/osamashannak/uaeu-space/services/pkg/utils"
 )
 
 func (db *ProfessorDB) GetProfessors(ctx context.Context, university string) ([]v1.ProfessorInList, error) {
@@ -164,7 +163,7 @@ func (db *ProfessorDB) GetProfessorReviews(ctx context.Context, sessionId int64,
 				ID:     *attID,
 				Height: *attHeight,
 				Width:  *attWidth,
-				URL:    utils.FormatBlobURL("https://uaeuresources.blob.core.windows.net", "attachments", *attURL, ""),
+				URL:    db.formatAttachmentURL(*attURL),
 			}
 		}
 

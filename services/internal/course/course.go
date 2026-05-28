@@ -17,6 +17,7 @@ import (
 )
 
 const maxCourseUploadSize = 101 << 20
+const courseDownloadSASDuration = 15 * time.Minute
 
 func (s *Server) Get() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -302,86 +303,16 @@ func (s *Server) DownloadCourseFile() http.Handler {
 
 		ipAddress := utils.GetClientIP(r)
 
-		accessToken, err := s.db.GetAccessToken(ctx, ipAddress)
-
-		if err != nil {
-			logger.Errorf("failed to get access token for ip address %s: %v", ipAddress, err)
+		expiresOn := time.Now().Add(courseDownloadSASDuration)
+		queryParams, err := s.storage.GenerateSASToken(*blobName, net.ParseIP(ipAddress), expiresOn)
+		if err != nil || queryParams == "" {
+			logger.Errorf("failed to generate SAS token for file %s and ip address %s: %v", fileId, ipAddress, err)
 			errorResponse := v1.ErrorResponse{
 				Message: "an error occurred. please try again later.",
 				Error:   http.StatusInternalServerError,
 			}
 			jsonutil.MarshalResponse(w, http.StatusInternalServerError, errorResponse)
 			return
-		}
-
-		var queryParams string
-
-		if accessToken == nil {
-			logger.Debugf("no access token found for ip address %s", ipAddress)
-
-			expiresOn := time.Now().AddDate(0, 3, 0)
-			queryParams, err = s.storage.GenerateSASToken(net.ParseIP(ipAddress), expiresOn)
-
-			if err != nil || queryParams == "" {
-				logger.Errorf("failed to generate SAS token for ip address %s: %v", ipAddress, err)
-				errorResponse := v1.ErrorResponse{
-					Message: "an error occurred. please try again later.",
-					Error:   http.StatusInternalServerError,
-				}
-				jsonutil.MarshalResponse(w, http.StatusInternalServerError, errorResponse)
-				return
-			}
-
-			err = s.db.InsertAccessToken(ctx, &model.FileAccessToken{
-				ClientAddress: ipAddress,
-				QueryParams:   queryParams,
-				ExpiresOn:     expiresOn,
-				CreatedAt:     time.Now(),
-			})
-
-			if err != nil {
-				logger.Errorf("failed to insert access token for ip address %s: %v", ipAddress, err)
-				errorResponse := v1.ErrorResponse{
-					Message: "an error occurred. please try again later.",
-					Error:   http.StatusInternalServerError,
-				}
-				jsonutil.MarshalResponse(w, http.StatusInternalServerError, errorResponse)
-				return
-			}
-		} else if accessToken.ExpiresOn.Before(time.Now()) {
-			logger.Debugf("access token for ip address %s has expired", ipAddress)
-
-			expiresOn := time.Now().AddDate(0, 3, 0)
-			queryParams, err = s.storage.GenerateSASToken(net.ParseIP(ipAddress), expiresOn)
-
-			if err != nil || queryParams == "" {
-				logger.Errorf("failed to generate SAS token for ip address %s: %v", ipAddress, err)
-				errorResponse := v1.ErrorResponse{
-					Message: "an error occurred. please try again later.",
-					Error:   http.StatusInternalServerError,
-				}
-				jsonutil.MarshalResponse(w, http.StatusInternalServerError, errorResponse)
-				return
-			}
-
-			err = s.db.UpdateAccessToken(ctx, &model.FileAccessToken{
-				ClientAddress: ipAddress,
-				QueryParams:   queryParams,
-				ExpiresOn:     expiresOn,
-			})
-
-			if err != nil {
-				logger.Errorf("failed to update access token for ip address %s: %v", ipAddress, err)
-				errorResponse := v1.ErrorResponse{
-					Message: "an error occurred. please try again later.",
-					Error:   http.StatusInternalServerError,
-				}
-				jsonutil.MarshalResponse(w, http.StatusInternalServerError, errorResponse)
-				return
-			}
-
-		} else {
-			queryParams = accessToken.QueryParams
 		}
 
 		downloadUrl := s.storage.FormatSASURL(*blobName, queryParams)

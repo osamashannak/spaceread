@@ -77,13 +77,14 @@ func (s *BlobStorage) CreateObject(ctx context.Context, name string, contentType
 	return err
 }
 
-func (s *BlobStorage) GenerateSASToken(ipAddress net.IP, expiresOn time.Time) (string, error) {
+func (s *BlobStorage) GenerateSASToken(blobName string, ipAddress net.IP, expiresOn time.Time) (string, error) {
 	permissions := sas.BlobPermissions{
 		Read: true,
 	}
 
 	sasValues := sas.BlobSignatureValues{
 		ContainerName: s.containerName,
+		BlobName:      blobName,
 		Permissions:   permissions.String(),
 		ExpiryTime:    expiresOn,
 		Protocol:      sas.ProtocolHTTPS,

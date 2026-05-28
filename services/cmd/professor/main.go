@@ -66,7 +66,6 @@ func realMain(ctx context.Context) error {
 	}
 	defer db.Close(ctx)
 
-	professorDb := profDB.New(db)
 	accountStore := accountDB.New(db)
 
 	logger.Info("setting up snowflake generator")
@@ -115,6 +114,10 @@ func realMain(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("blobstorage.New: %w", err)
 	}
+
+	professorDb := profDB.New(db, profDB.WithAttachmentURLFormatter(func(blobName string) string {
+		return blobStorage.FormatSASURL(blobName, "")
+	}))
 
 	gatewayClient := gateway.New(db, *sfGenerator, cfg.Gateway, accountStore)
 

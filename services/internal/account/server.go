@@ -35,16 +35,10 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("POST /gate/logout", s.gateway.OptionalAuthMiddleware(s.gateway.RequireCSRF(s.Logout())))
 	mux.Handle("POST /gate/logoutAll", s.gateway.RequireAuth(s.gateway.RequireCSRF(s.LogoutAll())))
 	mux.Handle("GET /gate/account/settings", s.gateway.OptionalAuthMiddleware(s.AccountSettings()))
+	mux.Handle("GET /gate/my-space", s.gateway.RequireAuth(s.MySpace()))
 	mux.Handle("GET /gate/notifications", s.gateway.OptionalAuthMiddleware(s.ListNotifications()))
 	mux.Handle("GET /gate/notifications/summary", s.gateway.OptionalAuthMiddleware(s.NotificationSummary()))
 	mux.Handle("POST /gate/notifications/read", s.gateway.OptionalAuthMiddleware(s.gateway.RequireCSRF(s.MarkNotificationRead())))
 
 	return middleware.CORS(mux)
-}
-
-func (s *Server) authCookieName() string {
-	if s.config.Gateway.AuthCookieName != "" {
-		return s.config.Gateway.AuthCookieName
-	}
-	return "spaceread_auth"
 }
