@@ -1,4 +1,4 @@
-import {useEffect, useRef, useState} from "react";
+import {useCallback, useEffect, useRef, useState} from "react";
 import {useGoogleReCaptcha} from "react-google-recaptcha-v3";
 import styles from "../../styles/components/professor/review_form.module.scss";
 import {ReviewAPI, ReviewFormDraft} from "../../typed/professor.ts";
@@ -20,6 +20,7 @@ import ReviewAttachment from "./review_attachment.tsx";
 import {useModal} from "../provider/modal.tsx";
 import FlaggedModal from "../modal/flagged_modal.tsx";
 import {getRecaptchaToken} from "../../lib/recaptcha.ts";
+import {useToast} from "../provider/toast.tsx";
 
 export default function RestrictedReviewForm(props: { professorEmail: string; canReview: boolean }) {
     const [details, setDetails] = useState<ReviewFormDraft>({
@@ -41,8 +42,18 @@ export default function RestrictedReviewForm(props: { professorEmail: string; ca
     const reviewRef = useRef<ReviewAPI | null>(null);
 
     const attachmentUploadRef = useRef<Promise<string | undefined> | null>(null);
+    const lastAttachmentUploadErrorToastAt = useRef(0);
 
     const modal = useModal();
+    const {error: showToastError} = useToast();
+
+    const showAttachmentUploadError = useCallback(() => {
+        const now = Date.now();
+        if (now - lastAttachmentUploadErrorToastAt.current < 1500) return;
+
+        lastAttachmentUploadErrorToastAt.current = now;
+        showToastError("Attachment failed to upload. Try again.");
+    }, [showToastError]);
 
     useEffect(() => {
         if (submitting === true) {
@@ -85,11 +96,12 @@ export default function RestrictedReviewForm(props: { professorEmail: string; ca
                     return id;
                 })
                 .catch(() => {
+                    showAttachmentUploadError();
                     setDetails(prev => ({...prev, attachment: undefined}));
                     return undefined;
                 });
         }
-    }, [details.attachment?.src])
+    }, [details.attachment?.src, showAttachmentUploadError])
 
     function formFilled() {
         return (
@@ -171,7 +183,8 @@ export default function RestrictedReviewForm(props: { professorEmail: string; ca
             if (!uploadedId) {
                 // @ts-expect-error Clarity is not defined
                 clarity("set", "ReviewFailed", "true");
-                setSubmitting("error");
+                showAttachmentUploadError();
+                setSubmitting(false);
                 return;
             }
             lineRef.current?.resume();

@@ -1,4 +1,4 @@
-import {type KeyboardEvent, useEffect, useRef, useState} from "react";
+import {type KeyboardEvent, useCallback, useEffect, useRef, useState} from "react";
 import {useGoogleReCaptcha} from "react-google-recaptcha-v3";
 import styles from "../../styles/components/professor/review_form.module.scss";
 import {ReviewAPI, ReviewFormDraft} from "../../typed/professor.ts";
@@ -21,6 +21,7 @@ import ReviewAttachment from "./review_attachment.tsx";
 import {useModal} from "../provider/modal.tsx";
 import FlaggedModal from "../modal/flagged_modal.tsx";
 import {getRecaptchaToken} from "../../lib/recaptcha.ts";
+import {useToast} from "../provider/toast.tsx";
 
 // Helper to calculate star label
 const getStarLabel = (r: number) => {
@@ -163,8 +164,10 @@ export default function ReviewForm(props: { courses: string[] | null, professorE
     const reviewRef = useRef<ReviewAPI | null>(null);
 
     const attachmentUploadRef = useRef<Promise<string | undefined> | null>(null);
+    const lastAttachmentUploadErrorToastAt = useRef(0);
 
     const modal = useModal();
+    const {error: showToastError} = useToast();
 
     const courses = props.courses || [];
 
@@ -175,6 +178,14 @@ export default function ReviewForm(props: { courses: string[] | null, professorE
     const clearError = () => {
         if (activeError) setActiveError(null);
     };
+
+    const showAttachmentUploadError = useCallback(() => {
+        const now = Date.now();
+        if (now - lastAttachmentUploadErrorToastAt.current < 1500) return;
+
+        lastAttachmentUploadErrorToastAt.current = now;
+        showToastError("Attachment failed to upload. Try again.");
+    }, [showToastError]);
 
     useEffect(() => {
         function handleClickOutside(event: MouseEvent) {
@@ -240,6 +251,7 @@ export default function ReviewForm(props: { courses: string[] | null, professorE
                     return id;
                 })
                 .catch(() => {
+                    showAttachmentUploadError();
                     setDetails(prev => ({...prev, attachment: undefined}));
                     return undefined;
                 });
@@ -248,7 +260,7 @@ export default function ReviewForm(props: { courses: string[] | null, professorE
                 prev.attachment ? { ...prev, attachment: { ...prev.attachment, id: "UPLOADING" } } : prev
             );
         }
-    }, [details.attachment?.src])
+    }, [details.attachment?.src, showAttachmentUploadError])
 
     async function ensureAttachmentUploaded(): Promise<string | undefined> {
         const att = details.attachment;
@@ -364,7 +376,8 @@ export default function ReviewForm(props: { courses: string[] | null, professorE
             const uploadedId = await ensureAttachmentUploaded();
 
             if (!uploadedId) {
-                setSubmitting("error");
+                showAttachmentUploadError();
+                setSubmitting(false);
                 return;
             }
 
