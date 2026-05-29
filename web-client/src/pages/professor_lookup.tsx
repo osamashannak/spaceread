@@ -128,7 +128,7 @@ export default function ProfessorLookup() {
                             <span>reviews</span>
                         </div>
                         <div className={styles.heroSignal}>
-                            <strong>3</strong>
+                            <strong>4</strong>
                             <span>universities</span>
                         </div>
                     </div>
