@@ -19,6 +19,7 @@ import GifPicker, {ContentFilter} from "gif-picker-react";
 import {GifPreview, ReplyContent, ReviewComposeProps} from "../../typed/professor.ts";
 import {useReply} from "../provider/reply.tsx";
 import TenorAttribution from "../tenor_attribution.tsx";
+import {useToast} from "../provider/toast.tsx";
 
 
 export default function ReplyComposeModal(props: ReviewComposeProps) {
@@ -29,6 +30,7 @@ export default function ReplyComposeModal(props: ReviewComposeProps) {
     const [name, setName] = useState<string | null>(null);
 
     const context = useReply();
+    const toast = useToast();
 
     const dispatch = useDispatch();
 
@@ -90,9 +92,6 @@ export default function ReplyComposeModal(props: ReviewComposeProps) {
         // @ts-expect-error Clarity not defined
         clarity("set", "ReplySubmitted", "true");
 
-        const error = document.getElementById(`error-${props.reviewId}`);
-        error?.classList.remove(styles.showError);
-
         setSubmitting(true);
 
         const reply = await postReply(props.reviewId, {
@@ -104,8 +103,7 @@ export default function ReplyComposeModal(props: ReviewComposeProps) {
             setSubmitting(false);
             // @ts-expect-error Clarity not defined
             clarity("set", "ReplyFailed", "true");
-            const error = document.getElementById(`error-${props.reviewId}`);
-            error?.classList.add(styles.showError);
+            toast.error("Reply failed to post. Please try again later.");
             return;
         }
 
@@ -340,17 +338,13 @@ export default function ReplyComposeModal(props: ReviewComposeProps) {
                          className={submitting ? styles.veryDisabledFormSubmit : formFilled() ? styles.enabledFormSubmit : styles.disabledFormSubmit}
                          onClick={async event => {
                              event.stopPropagation();
-                             if (!formFilled()) {
+                             if (submitting || !formFilled()) {
                                  return;
                              }
                              await handleSubmit();
                          }}>
                         <span>Post</span>
                     </div>
-                </div>
-
-                <div id={`error-${props.reviewId}`} className={styles.error}>
-                    <span>Reply failed to post. Please try again later.</span>
                 </div>
 
             </div>

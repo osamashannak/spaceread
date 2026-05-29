@@ -8,17 +8,6 @@
   .searchBox {
     margin-top: 24px;
     margin-bottom: 0;
-
-    .caution {
-      font-size: 12px;
-      color: #86868b;
-      margin-top: 12px;
-
-      a {
-        text-decoration: underline;
-        text-underline-offset: 2px;
-      }
-    }
   }
 
   .url {
@@ -171,6 +160,96 @@
   font-weight: 600;
   min-height: 46px;
   padding: 0 14px;
+}
+
+.professorRequestSection {
+  margin-top: 10px;
+}
+
+.professorRequestInline {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+
+  span {
+    color: rgb(83, 100, 113);
+    font-size: 12px;
+    font-weight: 600;
+  }
+}
+
+.professorRequestButton,
+.professorRequestSubmit {
+  cursor: pointer;
+  font-family: inherit;
+  font-weight: 800;
+  transition: background-color 0.2s, border-color 0.2s, color 0.2s, opacity 0.2s;
+}
+
+.professorRequestButton {
+  background-color: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: #0579b5;
+  font-size: 12px;
+  min-height: 26px;
+  padding: 0 4px;
+
+  &:hover {
+    background-color: rgba(5, 154, 229, 0.08);
+  }
+}
+
+.professorRequestForm {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(0, 1fr) auto;
+  margin-top: 6px;
+
+  input {
+    background-color: #fff;
+    border: 1px solid #e0e8ef;
+    border-radius: 8px;
+    color: #15202b;
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    height: 38px;
+    outline: none;
+    padding: 0 12px;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    width: 100%;
+
+    &:focus {
+      border-color: #059ae5;
+      box-shadow: 0 0 0 2px rgba(5, 154, 229, 0.12);
+    }
+  }
+
+  @media (max-width: 760px) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.professorRequestSubmit {
+  background-color: #fff;
+  border: 1px solid #bdd0df;
+  border-radius: 8px;
+  color: #0579b5;
+  font-size: 12px;
+  min-height: 38px;
+  padding: 0 12px;
+  white-space: nowrap;
+
+  &:hover {
+    background-color: #f7fbfe;
+    border-color: #9ebbd0;
+  }
+
+  &:disabled {
+    cursor: default;
+    opacity: 0.6;
+  }
 }
 
 .featureList {

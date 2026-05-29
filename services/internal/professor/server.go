@@ -62,6 +62,8 @@ func (s *Server) Routes() http.Handler {
 
 	mux.Handle("GET /professor", s.gateway.OptionalAuthMiddleware(s.Get()))
 	mux.Handle("GET /professor/all", s.GetAll())
+	mux.Handle("GET /professor/request", s.gateway.Middleware(s.PrepareProfessorRequest()))
+	mux.Handle("POST /professor/request", s.gateway.OptionalAuthMiddleware(s.gateway.RequireCSRF(s.RequestProfessor())))
 
 	mux.Handle("POST /comment", s.gateway.OptionalAuthMiddleware(s.gateway.RequireCSRF(s.PostReview())))
 	mux.Handle("DELETE /comment", s.gateway.OptionalAuthMiddleware(s.gateway.RequireCSRF(s.DeleteReview())))

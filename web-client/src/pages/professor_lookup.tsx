@@ -1,8 +1,10 @@
 import styles from "../styles/pages/professor.module.scss";
 import SearchBox from "../components/searchbox.tsx";
 import UniversitySelector from "../components/professor/university_selector.tsx";
-import {createContext, useEffect, useState} from "react";
+import {createContext, type FormEvent, useEffect, useState} from "react";
 import {Helmet} from "@dr.pogodin/react-helmet";
+import {prepareProfessorRequest, submitProfessorRequest} from "../api/professor.ts";
+import {useToast} from "../components/provider/toast.tsx";
 
 export type GlobalContent = {
     university: string | null,
@@ -19,18 +21,89 @@ const universityShortNames: Record<string, string> = {
     "University of Sharjah": "UOS",
 };
 
+type ProfessorRequestDraft = {
+    professorName: string;
+    professorEmail: string;
+    college: string;
+};
+
+const emptyProfessorRequestDraft: ProfessorRequestDraft = {
+    professorName: "",
+    professorEmail: "",
+    college: "",
+};
+
+function optionalValue(value: string) {
+    const trimmed = value.trim();
+    return trimmed ? trimmed : undefined;
+}
+
 export default function ProfessorLookup() {
 
     const selectedUniversity = localStorage.getItem("selectedUniversity");
 
     const [university, setUniversity] = useState(selectedUniversity);
-    const [showProfessorHelp, setShowProfessorHelp] = useState(false);
+    const [requestOpen, setRequestOpen] = useState(false);
+    const [requestDraft, setRequestDraft] = useState<ProfessorRequestDraft>(emptyProfessorRequestDraft);
+    const [requestSubmitting, setRequestSubmitting] = useState(false);
+    const toast = useToast();
 
     useEffect(() => {
         if (!university) return;
 
         localStorage.setItem("selectedUniversity", university);
     }, [university]);
+
+    useEffect(() => {
+        if (!requestOpen) return;
+
+        void prepareProfessorRequest();
+    }, [requestOpen]);
+
+    const updateRequestDraft = (field: keyof ProfessorRequestDraft, value: string) => {
+        setRequestDraft((current) => ({
+            ...current,
+            [field]: value,
+        }));
+    };
+
+    const toggleProfessorRequest = () => {
+        setRequestOpen((current) => !current);
+    };
+
+    const handleRequestSubmit = async (event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault();
+
+        if (!university) {
+            toast.error("Select a university first.");
+            return;
+        }
+
+        if (!requestDraft.professorName.trim()) {
+            toast.error("Add the professor name.");
+            return;
+        }
+
+        setRequestSubmitting(true);
+
+        const response = await submitProfessorRequest({
+            professor_name: requestDraft.professorName.trim(),
+            university,
+            professor_email: optionalValue(requestDraft.professorEmail),
+            college: optionalValue(requestDraft.college),
+        });
+
+        setRequestSubmitting(false);
+
+        if (!response?.success) {
+            toast.error("Request failed. Try again in a moment.");
+            return;
+        }
+
+        setRequestDraft(emptyProfessorRequestDraft);
+        setRequestOpen(false);
+        toast.success("Request sent. We will add them after checking the details.");
+    };
 
     return (
         <>
@@ -75,18 +148,10 @@ export default function ProfessorLookup() {
 
                             {university ? (
                                 <>
-                                    <div
-                                        onFocus={() => setShowProfessorHelp(true)}
-                                        onChange={() => setShowProfessorHelp(true)}>
-                                        <SearchBox
-                                            type={"professor"}
-                                            placeholder={"Search by professor name or email"}
-                                        />
-                                    </div>
-                                    {showProfessorHelp && (
-                                        <p className={styles.caution}>Can't find your professor? DM us on <a
-                                            href={"https://instagram.com/uaeu.space"}>Instagram</a></p>
-                                    )}
+                                    <SearchBox
+                                        type={"professor"}
+                                        placeholder={"Search by professor name or email"}
+                                    />
                                 </>
                             ) : (
                                 <div className={styles.emptySearchState}>
@@ -96,6 +161,54 @@ export default function ProfessorLookup() {
                         </div>
                     </UniversityContext.Provider>
                 </section>
+
+                {university && (
+                    <section className={styles.professorRequestSection}>
+                        <div className={styles.professorRequestInline}>
+                            <span>Missing professor?</span>
+                            <button
+                                type="button"
+                                className={styles.professorRequestButton}
+                                onClick={toggleProfessorRequest}
+                            >
+                                {requestOpen ? "Close" : "Request add"}
+                            </button>
+                        </div>
+                        {requestOpen && (
+                            <form className={styles.professorRequestForm} onSubmit={handleRequestSubmit}>
+                                <input
+                                    value={requestDraft.professorName}
+                                    onChange={(event) => updateRequestDraft("professorName", event.target.value)}
+                                    maxLength={120}
+                                    placeholder="Professor name"
+                                    aria-label="Professor name"
+                                />
+                                <input
+                                    value={requestDraft.professorEmail}
+                                    onChange={(event) => updateRequestDraft("professorEmail", event.target.value)}
+                                    maxLength={254}
+                                    placeholder="Email (optional)"
+                                    aria-label="Professor email"
+                                    inputMode="email"
+                                />
+                                <input
+                                    value={requestDraft.college}
+                                    onChange={(event) => updateRequestDraft("college", event.target.value)}
+                                    maxLength={500}
+                                    placeholder="College (optional)"
+                                    aria-label="College"
+                                />
+                                <button
+                                    type="submit"
+                                    className={styles.professorRequestSubmit}
+                                    disabled={requestSubmitting}
+                                >
+                                    {requestSubmitting ? "Sending..." : "Send"}
+                                </button>
+                            </form>
+                        )}
+                    </section>
+                )}
             </div>
         </>
     )

@@ -11,6 +11,16 @@ type Professor struct {
 	University string
 }
 
+type ProfessorRequest struct {
+	ID             int64
+	ProfessorName  string
+	ProfessorEmail *string
+	University     string
+	College        *string
+	SessionId      int64
+	UserId         *int64
+}
+
 type Review struct {
 	SortIndex      int64
 	ID             int64

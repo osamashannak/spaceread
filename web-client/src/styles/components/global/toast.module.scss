@@ -1,0 +1,138 @@
+.toastRegion {
+  bottom: 24px;
+  left: 50%;
+  pointer-events: none;
+  position: fixed;
+  transform: translateX(-50%);
+  width: min(420px, calc(100vw - 24px));
+  z-index: 1000;
+
+  @media (max-width: 768px) {
+    bottom: 76px;
+  }
+}
+
+.toast {
+  align-items: center;
+  animation: toastEnter 260ms cubic-bezier(0.2, 0.9, 0.2, 1) both;
+  background-color: #fff;
+  border: 1px solid #dbe4ec;
+  border-radius: 10px;
+  box-shadow: 0 10px 30px rgba(21, 32, 43, 0.12);
+  color: #15202b;
+  display: flex;
+  gap: 10px;
+  min-height: 48px;
+  padding: 10px 10px 10px 12px;
+  pointer-events: auto;
+  transform-origin: bottom center;
+  will-change: opacity, transform;
+}
+
+.closing {
+  animation: toastExit 180ms ease-in both;
+}
+
+.toastMarker {
+  border-radius: 9999px;
+  flex: 0 0 auto;
+  height: 9px;
+  width: 9px;
+}
+
+.success {
+  .toastMarker {
+    background-color: #19a05f;
+  }
+}
+
+.error {
+  .toastMarker {
+    background-color: #d45d3d;
+  }
+}
+
+.info {
+  .toastMarker {
+    background-color: #059ae5;
+  }
+}
+
+.toastText {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+
+  strong {
+    font-size: 12px;
+    font-weight: 800;
+    line-height: 1.2;
+  }
+
+  span {
+    color: rgb(83, 100, 113);
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.35;
+  }
+}
+
+.toastClose {
+  align-items: center;
+  background-color: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: rgb(83, 100, 113);
+  cursor: pointer;
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-family: inherit;
+  font-size: 18px;
+  font-weight: 700;
+  height: 28px;
+  justify-content: center;
+  line-height: 1;
+  width: 28px;
+
+  &:hover {
+    background-color: #edf2f6;
+  }
+}
+
+@keyframes toastEnter {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.98);
+  }
+
+  70% {
+    opacity: 1;
+    transform: translateY(-2px) scale(1);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes toastExit {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+
+  to {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toast,
+  .closing {
+    animation-duration: 1ms;
+  }
+}

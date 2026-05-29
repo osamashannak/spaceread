@@ -2,7 +2,7 @@ import {deleteReview} from "../../api/professor.ts";
 import {useDispatch} from "react-redux";
 import {removeReview} from "../../redux/slice/professor_slice.ts";
 import styles from "../../styles/components/global/modal.module.scss";
-import {useState} from "react";
+import {useToast} from "../provider/toast.tsx";
 
 
 export default function ReviewDeletionModal({reviewId, onClose}: {
@@ -11,7 +11,7 @@ export default function ReviewDeletionModal({reviewId, onClose}: {
 }) {
 
     const dispatch = useDispatch();
-    const [responseMessage, setResponseMessage] = useState("");
+    const toast = useToast();
 
     return (
         <div className={styles.background}>
@@ -25,10 +25,11 @@ export default function ReviewDeletionModal({reviewId, onClose}: {
                         if (status?.success) {
                             dispatch(removeReview(reviewId));
                             onClose();
+                            toast.success("Review deleted.");
                             return;
                         }
 
-                        setResponseMessage("An error occurred while deleting the review.");
+                        toast.error("An error occurred while deleting the review.");
 
                     }}>Delete
                     </div>
@@ -36,9 +37,6 @@ export default function ReviewDeletionModal({reviewId, onClose}: {
                         onClose();
                     }}>Cancel
                     </div>
-                </div>
-                <div className={styles.responseMessage}>
-                    <span>{responseMessage}</span>
                 </div>
             </div>
         </div>

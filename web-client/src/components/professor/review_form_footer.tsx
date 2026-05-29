@@ -7,6 +7,7 @@ import {
     ReviewFormDraft
 } from "../../typed/professor.ts";
 import GifPicker, {ContentFilter} from "gif-picker-react";
+import {useToast} from "../provider/toast.tsx";
 
 
 export default function ReviewFormFooter(props: {
@@ -15,6 +16,7 @@ export default function ReviewFormFooter(props: {
 }) {
 
     const {details, setDetails} = props;
+    const toast = useToast();
     const uploadInputId = useId();
     const gifPickerId = useId();
     const [emojiOpen, setEmojiOpen] = useState(false);
@@ -23,7 +25,7 @@ export default function ReviewFormFooter(props: {
     const uploadImage = (event: ChangeEvent<HTMLInputElement>) => {
 
         if (details.attachment) {
-            alert("You may only choose 1 image.");
+            toast.error("You may only choose 1 image.");
             event.target.value = "";
             return;
         }
@@ -35,7 +37,7 @@ export default function ReviewFormFooter(props: {
         event.target.value = "";
 
         if (files.length === 0) {
-            alert("File type not supported.");
+            toast.error("File type not supported.");
             return;
         }
 
@@ -64,7 +66,7 @@ export default function ReviewFormFooter(props: {
                 addImage(compressedFile);
             },
             error() {
-                alert("Failed to upload the image.");
+                toast.error("Failed to upload the image.");
             },
         });
 
@@ -124,12 +126,12 @@ export default function ReviewFormFooter(props: {
 
         img.onload = async () => {
             if (img.height < 50 || img.width < 50) {
-                alert("Image must be at least 50 pixels in width and height.");
+                toast.error("Image must be at least 50 pixels in width and height.");
                 return;
             }
 
             if (img.height > 16000 || img.width > 16000) {
-                alert("Image must be at most 16000 pixels in width and height.");
+                toast.error("Image must be at most 16000 pixels in width and height.");
                 return;
             }
 

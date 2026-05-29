@@ -7,6 +7,7 @@ import MobileNavigation from "../components/mobile_navigation.tsx";
 import {useEffect, useState} from "react";
 import {Helmet} from "@dr.pogodin/react-helmet";
 import {ModalProvider} from "../components/provider/modal.tsx";
+import {ToastProvider} from "../components/provider/toast.tsx";
 import {getAccountSettings} from "../api/auth.ts";
 import {useAppDispatch} from "../redux/hooks.ts";
 import {setUser} from "../redux/slice/user_slice.ts";
@@ -69,22 +70,24 @@ export default function Layout() {
             <ScrollRestoration/>
 
             <main>
-                {recaptchaDisabled ? (
-                    <ModalProvider>
-                        <Outlet/>
-                    </ModalProvider>
-                ) : (
-                    <GoogleReCaptchaProvider
-                        reCaptchaKey={import.meta.env.VITE_GOOGLE_RECAPTCHA_SITE_KEY}
-                        useEnterprise={true}
-                        scriptProps={{
-                            async: true
-                        }}>
+                <ToastProvider>
+                    {recaptchaDisabled ? (
                         <ModalProvider>
                             <Outlet/>
                         </ModalProvider>
-                    </GoogleReCaptchaProvider>
-                )}
+                    ) : (
+                        <GoogleReCaptchaProvider
+                            reCaptchaKey={import.meta.env.VITE_GOOGLE_RECAPTCHA_SITE_KEY}
+                            useEnterprise={true}
+                            scriptProps={{
+                                async: true
+                            }}>
+                            <ModalProvider>
+                                <Outlet/>
+                            </ModalProvider>
+                        </GoogleReCaptchaProvider>
+                    )}
+                </ToastProvider>
             </main>
 
             <Footer/>

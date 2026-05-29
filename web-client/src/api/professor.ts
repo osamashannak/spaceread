@@ -1,5 +1,6 @@
 import {
     ProfessorAPI,
+    ProfessorRequestFormAPI,
     ReviewAPI,
     ReviewFormAPI,
     ReviewReplyAPI
@@ -22,6 +23,43 @@ export const getProfessorsList = async (university: string) => {
     }
 
     return response as ProfessorItem[];
+}
+
+export const prepareProfessorRequest = async () => {
+    try {
+        await fetch(HOST + "/professor/request", {
+            credentials: "include",
+        });
+    } catch (error) {
+        return false;
+    }
+
+    return true;
+}
+
+export const submitProfessorRequest = async (options: ProfessorRequestFormAPI) => {
+    let response;
+
+    try {
+        const request = await fetch(HOST + "/professor/request", {
+            method: "POST",
+            headers: {
+                'Content-Type': 'application/json',
+                ...csrfHeader()
+            },
+            body: JSON.stringify(options),
+            credentials: "include"
+        });
+        response = await request.json();
+    } catch (error) {
+        return undefined;
+    }
+
+    if (response.error) {
+        return undefined;
+    }
+
+    return response as { id: string, success: boolean, message: string };
 }
 
 export const getProfessor = async (id: string, abortController: AbortController) => {

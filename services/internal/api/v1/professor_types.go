@@ -7,6 +7,19 @@ type ProfessorInList struct {
 	Name  string `json:"name"`
 }
 
+type ProfessorRequestBody struct {
+	ProfessorName  *string `json:"professor_name" required:"true"`
+	ProfessorEmail *string `json:"professor_email"`
+	University     *string `json:"university" required:"true"`
+	College        *string `json:"college"`
+}
+
+type ProfessorRequestResponse struct {
+	ID      int64  `json:"id,string"`
+	Success bool   `json:"success"`
+	Message string `json:"message"`
+}
+
 type ProfessorResponse struct {
 	Email             string             `json:"email"`
 	Name              string             `json:"name"`

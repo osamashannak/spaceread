@@ -1,6 +1,7 @@
 import styles from "../../styles/components/global/modal.module.scss";
-import {useRef, useState} from "react";
+import {useRef} from "react";
 import {reportReview} from "../../api/professor.ts";
+import {useToast} from "../provider/toast.tsx";
 
 export default function ReportReviewModal(props: {
     reviewId: string,
@@ -8,25 +9,7 @@ export default function ReportReviewModal(props: {
 }) {
 
     const reasonRef = useRef<HTMLTextAreaElement>(null);
-    const responseMessageRef = useRef<HTMLSpanElement>(null);
-    const [showConfirmation, setShowConfirmation] = useState(false);
-
-    if (showConfirmation) {
-        return (
-            <div className={styles.background}>
-                <div className={styles.modalBody}>
-                    <span className={styles.title}>Thank you for your report!</span>
-                    <div className={styles.text}>Your report has been submitted successfully.</div>
-                    <div className={styles.modalButtons}>
-                        <div className={styles.buttonOk} onClick={() => {
-                            props.onClose();
-                        }}>Close
-                        </div>
-                    </div>
-                </div>
-            </div>
-        );
-    }
+    const toast = useToast();
 
     return (
         <div className={styles.background}>
@@ -47,22 +30,19 @@ export default function ReportReviewModal(props: {
                 </div>
                 <textarea ref={reasonRef} className={styles.textArea}/>
                 <div className={styles.modalButtons}>
-                    <button className={styles.buttonOk} onClick={() => {
+                    <button className={styles.buttonOk} onClick={async () => {
                         const reason = (reasonRef.current?.value ?? "").trim();
+                        const response = await reportReview(props.reviewId, reason);
 
-                        reportReview(props.reviewId, reason).then((response) => {
-                            if (!response) {
-                                responseMessageRef.current!.innerText = "Failed to report review. Please try again later.";
-                            } else {
-                                setShowConfirmation(true);
-                            }
-                        });
+                        if (!response) {
+                            toast.error("Failed to report review. Please try again later.");
+                            return;
+                        }
 
+                        props.onClose();
+                        toast.success("Report submitted.");
                     }}>Report
                     </button>
-                </div>
-                <div className={styles.responseMessage}>
-                    <span ref={responseMessageRef}></span>
                 </div>
             </div>
         </div>

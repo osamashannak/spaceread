@@ -85,20 +85,6 @@
   -webkit-user-select: none;
 }
 
-.uploadNotice {
-  width: fit-content;
-  max-width: 100%;
-  margin-top: 0.75rem;
-  padding: 8px 10px;
-  color: rgb(128, 76, 0);
-  background-color: rgba(255, 196, 87, 0.16);
-  border: 1px solid rgba(255, 196, 87, 0.35);
-  border-radius: 8px;
-  font-size: 12px;
-  font-weight: 500;
-  line-height: 1.45;
-}
-
 .uploadButtonLabel {
   flex: 0 0 auto;
   display: inline-flex;

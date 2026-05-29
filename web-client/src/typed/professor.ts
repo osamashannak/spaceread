@@ -10,6 +10,13 @@ export interface ProfessorAPI {
     similar_professors: SimilarProfessors[]
 }
 
+export interface ProfessorRequestFormAPI {
+    professor_name: string;
+    university: string;
+    professor_email?: string;
+    college?: string;
+}
+
 export interface SimilarProfessors {
     professor_email: string;
     professor_name: string;

@@ -2,6 +2,7 @@ import {ChangeEvent, DragEvent, FormEvent, useRef, useState} from "react";
 import styles from "../../styles/components/course/file_upload.module.scss";
 import FilePreview from "./file_preview.tsx";
 import {uploadFile} from "../../api/course.ts";
+import {useToast} from "../provider/toast.tsx";
 
 type UploadStatus = "ready" | "uploading" | "uploaded" | "failed";
 
@@ -17,12 +18,12 @@ const readyMessage = "Ready to upload";
 
 export default function FileUpload(props: { courseTag: string }) {
     const nextFileId = useRef(0);
+    const toast = useToast();
     const [details, setDetails] = useState<UploadDetails[]>([]);
     const [submitting, setSubmitting] = useState<boolean>(false);
     const [hasUploadError, setHasUploadError] = useState(false);
     const [uploadComplete, setUploadComplete] = useState(false);
     const [dragging, setDragging] = useState<boolean>(false);
-    const [uploadNotice, setUploadNotice] = useState<string | null>(null);
 
     const uploadableCount = details.filter(value => value.status !== "uploaded").length;
     const uploadSucceeded = uploadComplete && !hasUploadError;
@@ -34,10 +35,9 @@ export default function FileUpload(props: { courseTag: string }) {
         event.preventDefault();
         const uploadTargets = details.filter(value => value.status !== "uploaded");
         if (uploadTargets.length < 1) {
-            setUploadNotice("Select at least one file before uploading.");
+            toast.error("Select at least one file before uploading.");
             return;
         }
-        setUploadNotice(null);
         setHasUploadError(false);
         setUploadComplete(false);
         setSubmitting(true);
@@ -89,6 +89,12 @@ export default function FileUpload(props: { courseTag: string }) {
         setHasUploadError(hasError);
         setUploadComplete(true);
         setSubmitting(false);
+
+        if (hasError) {
+            toast.error("Some files could not be uploaded. Check the file messages and try again.");
+        } else {
+            toast.success("Files uploaded. They will appear after review.");
+        }
     }
 
     const changeName = (id: string, name: string) => {
@@ -106,7 +112,6 @@ export default function FileUpload(props: { courseTag: string }) {
             const tempState = [...prevState]
             return tempState.filter(value => value.id !== id);
         });
-        setUploadNotice(null);
         setHasUploadError(false);
         setUploadComplete(false);
     }
@@ -115,7 +120,7 @@ export default function FileUpload(props: { courseTag: string }) {
         if (files.length === 0 || !canChooseFiles) return;
 
         if (details.length >= 10) {
-            setUploadNotice("You can upload up to 10 files at a time.");
+            toast.error("You can upload up to 10 files at a time.");
             return;
         }
 
@@ -165,7 +170,9 @@ export default function FileUpload(props: { courseTag: string }) {
             notices.push(`${skippedForLimit} ${skippedForLimit === 1 ? "file was" : "files were"} not added because the limit is 10 files.`);
         }
 
-        setUploadNotice(notices.length > 0 ? notices.join(" ") : null);
+        if (notices.length > 0) {
+            toast.error(notices.join(" "));
+        }
     }
 
     const onFileSelect = (event: ChangeEvent<HTMLInputElement>) => {
@@ -193,10 +200,6 @@ export default function FileUpload(props: { courseTag: string }) {
         if (submitting) return;
 
         addFiles(Array.from(event.dataTransfer.files));
-    }
-
-    const isFinished = () => {
-        return uploadComplete && details.length > 0;
     }
 
     const submitLabel = uploadableCount === 0
@@ -244,8 +247,6 @@ export default function FileUpload(props: { courseTag: string }) {
                     <span>Max 100 MB per file</span>
                 </div>
 
-                {uploadNotice && <div className={styles.uploadNotice} role={"status"}>{uploadNotice}</div>}
-
                 {details.length > 0 && <div className={styles.previewHeader}>Selected files</div>}
 
                 <div className={styles.previewList}>
@@ -260,14 +261,6 @@ export default function FileUpload(props: { courseTag: string }) {
                         })
                     }
                 </div>
-
-                {
-                    isFinished() && (<div style={{marginTop: "3rem", fontWeight: 400}}>
-                        {hasUploadError
-                            ? "Some files could not be uploaded. Check the messages above and try those files again."
-                            : <>Thank you.<br/>Uploaded files will be shown here after being reviewed.</>}
-                    </div>)
-                }
 
                 <input hidden={!canChooseFiles}
                        className={uploadableCount >= 1 ? styles.enabledFormSubmit : styles.disabledFormSubmit}
