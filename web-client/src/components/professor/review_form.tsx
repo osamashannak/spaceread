@@ -1,4 +1,4 @@
-import {type KeyboardEvent, useCallback, useEffect, useRef, useState} from "react";
+import {type KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState} from "react";
 import {useGoogleReCaptcha} from "react-google-recaptcha-v3";
 import styles from "../../styles/components/professor/review_form.module.scss";
 import {ReviewAPI, ReviewFormDraft} from "../../typed/professor.ts";
@@ -22,6 +22,9 @@ import {useModal} from "../provider/modal.tsx";
 import FlaggedModal from "../modal/flagged_modal.tsx";
 import {getRecaptchaToken} from "../../lib/recaptcha.ts";
 import {useToast} from "../provider/toast.tsx";
+import {getCoursesList} from "../../api/course.ts";
+import type {CourseItem} from "../../typed/searchbox.ts";
+import {createSearchIndex, searchPreparedIndex} from "../../lib/search.ts";
 
 // Helper to calculate star label
 const getStarLabel = (r: number) => {
@@ -33,6 +36,32 @@ const getStarLabel = (r: number) => {
 };
 
 const ratingOptions = [1, 2, 3, 4, 5];
+const DEFAULT_PROFESSOR_COURSE_LIMIT = 12;
+const PROFESSOR_COURSE_SEARCH_LIMIT = 6;
+const CATALOG_COURSE_SEARCH_LIMIT = 8;
+const COURSE_SUGGESTION_LIMIT = 12;
+
+function normalizeCourseTag(value: string): string {
+    return value.replace(/\s+/g, "").toUpperCase();
+}
+
+function uniqueCoursesByTag(courses: CourseItem[]): CourseItem[] {
+    const seen = new Set<string>();
+    const uniqueCourses: CourseItem[] = [];
+
+    for (const course of courses) {
+        const tag = normalizeCourseTag(course.tag);
+        if (!tag || seen.has(tag)) continue;
+
+        seen.add(tag);
+        uniqueCourses.push({
+            ...course,
+            tag,
+        });
+    }
+
+    return uniqueCourses;
+}
 
 function StarIcon(props: { filled: boolean }) {
     return (
@@ -152,6 +181,9 @@ export default function ReviewForm(props: { courses: string[] | null, professorE
         !props.canReview ? null : false
     );
     const [showCourseMenu, setShowCourseMenu] = useState(false);
+    const [courseCatalog, setCourseCatalog] = useState<CourseItem[]>([]);
+    const [courseCatalogLoaded, setCourseCatalogLoaded] = useState(false);
+    const [courseCatalogLoading, setCourseCatalogLoading] = useState(false);
     const [mode, setMode] = useState<"GUEST" | "VERIFIED">(localStorage.getItem("is_verified_student") === "true" ? "VERIFIED" : "GUEST");
     const {executeRecaptcha} = useGoogleReCaptcha();
 
@@ -162,6 +194,7 @@ export default function ReviewForm(props: { courses: string[] | null, professorE
     const comboboxRef = useRef<HTMLDivElement>(null);
     const lineRef = useRef<Line | null>(null);
     const reviewRef = useRef<ReviewAPI | null>(null);
+    const courseCatalogRequestRef = useRef<Promise<void> | null>(null);
 
     const attachmentUploadRef = useRef<Promise<string | undefined> | null>(null);
     const lastAttachmentUploadErrorToastAt = useRef(0);
@@ -169,11 +202,81 @@ export default function ReviewForm(props: { courses: string[] | null, professorE
     const modal = useModal();
     const {error: showToastError} = useToast();
 
-    const courses = props.courses || [];
-
-    const filteredCourses = courses.filter(c =>
-        c.toLowerCase().includes(details.course_taken.toLowerCase())
+    const professorCourseTags = useMemo(
+        () => Array.from(new Set((props.courses || []).map(normalizeCourseTag).filter(Boolean))),
+        [props.courses]
     );
+
+    const courseCatalogByTag = useMemo(() => {
+        const coursesByTag = new Map<string, CourseItem>();
+        for (const course of courseCatalog) {
+            coursesByTag.set(normalizeCourseTag(course.tag), course);
+        }
+        return coursesByTag;
+    }, [courseCatalog]);
+
+    const professorCourseItems = useMemo<CourseItem[]>(
+        () => professorCourseTags.map(tag => {
+            const catalogCourse = courseCatalogByTag.get(tag);
+            return {
+                tag,
+                name: catalogCourse?.name ?? "",
+            };
+        }),
+        [courseCatalogByTag, professorCourseTags]
+    );
+
+    const professorCourseIndex = useMemo(
+        () => createSearchIndex(professorCourseItems, "course"),
+        [professorCourseItems]
+    );
+
+    const catalogCourseIndex = useMemo(
+        () => createSearchIndex(courseCatalog, "course"),
+        [courseCatalog]
+    );
+
+    const courseSuggestions = useMemo<CourseItem[]>(() => {
+        const query = details.course_taken.trim();
+
+        if (!query) {
+            return professorCourseItems.slice(0, DEFAULT_PROFESSOR_COURSE_LIMIT);
+        }
+
+        const professorMatches = searchPreparedIndex(
+            professorCourseIndex,
+            query,
+            PROFESSOR_COURSE_SEARCH_LIMIT
+        ) as CourseItem[];
+        const professorTags = new Set(professorCourseItems.map(course => normalizeCourseTag(course.tag)));
+
+        const catalogMatches = (searchPreparedIndex(
+            catalogCourseIndex,
+            query,
+            CATALOG_COURSE_SEARCH_LIMIT + professorMatches.length
+        ) as CourseItem[]).filter(course => !professorTags.has(normalizeCourseTag(course.tag)));
+
+        return uniqueCoursesByTag([...professorMatches, ...catalogMatches]).slice(0, COURSE_SUGGESTION_LIMIT);
+    }, [catalogCourseIndex, details.course_taken, professorCourseIndex, professorCourseItems]);
+
+    const ensureCourseCatalogLoaded = useCallback(() => {
+        if (courseCatalogLoaded || courseCatalogRequestRef.current) return;
+
+        setCourseCatalogLoading(true);
+        const request = getCoursesList()
+            .then(courses => {
+                if (courses) {
+                    setCourseCatalog(uniqueCoursesByTag(courses));
+                    setCourseCatalogLoaded(true);
+                }
+            })
+            .finally(() => {
+                setCourseCatalogLoading(false);
+                courseCatalogRequestRef.current = null;
+            });
+
+        courseCatalogRequestRef.current = request;
+    }, [courseCatalogLoaded]);
 
     const clearError = () => {
         if (activeError) setActiveError(null);
@@ -196,6 +299,12 @@ export default function ReviewForm(props: { courses: string[] | null, professorE
         document.addEventListener("mousedown", handleClickOutside);
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, []);
+
+    useEffect(() => {
+        if (showCourseMenu) {
+            ensureCourseCatalogLoaded();
+        }
+    }, [ensureCourseCatalogLoaded, showCourseMenu]);
 
     useEffect(() => {
         const handleStorageChange = () => {
@@ -605,29 +714,41 @@ export default function ReviewForm(props: { courses: string[] | null, professorE
                             onChange={(e) => {
                                 setDetails(prev => ({...prev, course_taken: e.target.value.toUpperCase()}));
                                 setShowCourseMenu(true);
+                                ensureCourseCatalogLoaded();
                                 clearError();
                             }}
-                            onFocus={() => setShowCourseMenu(true)}
+                            onFocus={() => {
+                                setShowCourseMenu(true);
+                                ensureCourseCatalogLoaded();
+                            }}
+                            onClick={(event) => {
+                                event.stopPropagation();
+                                setShowCourseMenu(true);
+                                ensureCourseCatalogLoaded();
+                            }}
                         />
 
                         {showCourseMenu && (
                             <div className={styles.comboboxMenu}>
-                                {filteredCourses.length > 0 ? (
-                                    filteredCourses.map((c) => (
+                                {courseSuggestions.length > 0 ? (
+                                    courseSuggestions.map((course) => (
                                         <div
-                                            key={c}
+                                            key={course.tag}
                                             className={styles.comboboxItem}
                                             onClick={() => {
-                                                setDetails(prev => ({...prev, course_taken: c}));
+                                                setDetails(prev => ({...prev, course_taken: course.tag}));
                                                 setShowCourseMenu(false);
                                             }}
                                         >
-                                            {c}
+                                            <span className={styles.comboboxCourseTag}>{course.tag}</span>
+                                            {course.name && (
+                                                <span className={styles.comboboxCourseName}>{course.name}</span>
+                                            )}
                                         </div>
                                     ))
                                 ) : (
                                     <div className={styles.noResults}>
-                                        No matches.
+                                        {courseCatalogLoading ? "Loading courses..." : "No matches."}
                                     </div>
                                 )}
                             </div>
