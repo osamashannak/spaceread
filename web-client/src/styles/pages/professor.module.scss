@@ -388,12 +388,37 @@
       border-color: #eef3f7;
     }
 
+    .uniTitleRow {
+      align-items: center;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      min-width: 0;
+    }
+
     .uniName {
       font-size: 14px;
       font-weight: 800;
 
       @media (max-width: 768px) {
         font-size: 12px;
+      }
+    }
+
+    .newUniversityBadge {
+      background-color: #eef8fd;
+      border: 1px solid #d0ebf8;
+      border-radius: 5px;
+      color: #0579b5;
+      font-size: 9px;
+      font-weight: 800;
+      line-height: 1;
+      padding: 3px 5px;
+      text-transform: uppercase;
+
+      @media (max-width: 768px) {
+        font-size: 8px;
+        padding: 2px 4px;
       }
     }
 

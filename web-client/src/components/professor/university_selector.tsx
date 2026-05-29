@@ -30,6 +30,7 @@ const universities = [
         shortName: "AUS",
         image: aus,
         accent: "aus",
+        isNew: true,
     },
 ];
 
@@ -59,7 +60,10 @@ export default function UniversitySelector() {
                             aria-pressed={selected}
                             className={`${styles.university} ${selected ? styles.selected : ""} ${styles[item.accent]}`}>
                             <img src={item.image} alt={item.shortName} width={64}/>
-                            <span className={styles.uniName}>{item.shortName}</span>
+                            <span className={styles.uniTitleRow}>
+                                <span className={styles.uniName}>{item.shortName}</span>
+                                {item.isNew ? <span className={styles.newUniversityBadge}>New</span> : null}
+                            </span>
                             <span className={styles.uniFullName}>{item.name}</span>
                         </button>
                     );
