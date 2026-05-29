@@ -4,6 +4,7 @@ import {UniversityContext} from "../../pages/professor_lookup.tsx";
 import uos from "../../assets/images/university/uos.png";
 import uaeu from "../../assets/images/university/uaeu.png";
 import ku from "../../assets/images/university/ku.png";
+import aus from "../../assets/images/university/aus.png";
 
 const universities = [
     {
@@ -23,6 +24,12 @@ const universities = [
         shortName: "UOS",
         image: uos,
         accent: "uos",
+    },
+    {
+        name: "American University of Sharjah",
+        shortName: "AUS",
+        image: aus,
+        accent: "aus",
     },
 ];
 

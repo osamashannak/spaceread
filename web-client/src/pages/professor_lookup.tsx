@@ -19,6 +19,7 @@ const universityShortNames: Record<string, string> = {
     "United Arab Emirates University": "UAEU",
     "Khalifa University": "KU",
     "University of Sharjah": "UOS",
+    "American University of Sharjah": "AUS",
 };
 
 type ProfessorRequestDraft = {

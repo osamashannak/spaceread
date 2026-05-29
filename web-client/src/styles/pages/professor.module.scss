@@ -384,6 +384,10 @@
       border-color: #eef3f7;
     }
 
+    .aus {
+      border-color: #eef3f7;
+    }
+
     .uniName {
       font-size: 14px;
       font-weight: 800;
@@ -436,6 +440,17 @@
     }
 
     .selected.uos {
+      border-color: #059ae5;
+      box-shadow: 0 0 0 1px rgba(5, 154, 229, 0.08);
+
+      &:focus,
+      &:focus-visible {
+        border-color: #059ae5 !important;
+        box-shadow: 0 0 0 2px rgba(5, 154, 229, 0.12) !important;
+      }
+    }
+
+    .selected.aus {
       border-color: #059ae5;
       box-shadow: 0 0 0 1px rgba(5, 154, 229, 0.08);
 
