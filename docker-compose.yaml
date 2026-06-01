@@ -131,6 +131,20 @@ services:
       migrate:
         condition: service_completed_successfully
 
+  admin:
+    build:
+      context: ./services
+      dockerfile: Dockerfile
+      args:
+        SERVICE: admin
+    environment:
+      <<: *api-environment
+    ports:
+      - "${ADMIN_PORT:-8084}:8080"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
   web:
     image: node:22.18.0-alpine
     working_dir: /app
@@ -141,7 +155,7 @@ services:
       VITE_AUTH_ENDPOINT: ${VITE_AUTH_ENDPOINT:-/api/auth}
       VITE_CSRF_COOKIE_NAME: ${CSRF_COOKIE_NAME:-spaceread_csrf_dev}
       VITE_RECAPTCHA_DISABLED: ${VITE_RECAPTCHA_DISABLED:-true}
-      VITE_ALLOWED_LOGIN_REDIRECT_ORIGINS: ${VITE_ALLOWED_LOGIN_REDIRECT_ORIGINS:-http://localhost:5174}
+      VITE_ALLOWED_LOGIN_REDIRECT_ORIGINS: ${VITE_ALLOWED_LOGIN_REDIRECT_ORIGINS:-http://localhost:5174,http://127.0.0.1:5174}
       VITE_GOOGLE_RECAPTCHA_SITE_KEY: ${VITE_GOOGLE_RECAPTCHA_SITE_KEY:-local}
       VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID:-503811163032-7sb2rm7k4r4knulc0ig7ubp9jcjanaco.apps.googleusercontent.com}
       VITE_GOOGLE_TENOR_API_KEY: ${VITE_GOOGLE_TENOR_API_KEY:-}
@@ -161,6 +175,25 @@ services:
       account:
         condition: service_started
 
+  admin-web:
+    image: node:22.18.0-alpine
+    working_dir: /app
+    command: sh -c "npm install; exec npm run dev -- --host 0.0.0.0 --port 5174"
+    environment:
+      VITE_ADMIN_ENDPOINT: ${VITE_ADMIN_ENDPOINT:-/api/admin}
+      VITE_CSRF_COOKIE_NAME: ${CSRF_COOKIE_NAME:-spaceread_csrf_dev}
+      VITE_PUBLIC_SITE_URL: ${VITE_PUBLIC_SITE_URL:-http://localhost:5173}
+      VITE_ADMIN_PROXY_TARGET: http://admin:8080
+    ports:
+      - "${ADMIN_WEB_PORT:-5174}:5174"
+    volumes:
+      - ./admin-client:/app
+      - admin-node-modules:/app/node_modules
+    depends_on:
+      admin:
+        condition: service_started
+
 volumes:
   postgres-data:
   web-node-modules:
+  admin-node-modules:

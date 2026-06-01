@@ -1,0 +1,75 @@
+name: 'Build and Deploy Admin Frontend'
+
+on:
+  push:
+    branches:
+      - 'main'
+    paths:
+      - '.github/workflows/deploy-admin-client.yml'
+      - 'admin-client/**'
+
+jobs:
+  build-and-deploy:
+    runs-on: 'ubuntu-latest'
+
+    env:
+      ADMIN_PREFIX: 'admin'
+      ADMIN_SITE_BUCKET: 'spaceread.net'
+      ADMIN_STATIC_BUCKET: 'static.spaceread.net'
+
+    permissions:
+      contents: 'read'
+      id-token: 'write'
+
+    defaults:
+      run:
+        working-directory: admin-client
+
+    steps:
+      - name: 'Checkout code'
+        uses: 'actions/checkout@v4'
+
+      - name: 'Set short SHA'
+        run: echo "VERSION=${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+
+      - name: 'Setup Node.js'
+        uses: 'actions/setup-node@v4'
+        with:
+          node-version: '22.18.0'
+          cache: 'npm'
+          cache-dependency-path: 'admin-client/package-lock.json'
+
+      - name: 'Install dependencies'
+        run: npm ci
+
+      - name: 'Build Vite app'
+        run: npm run build
+        env:
+          VITE_ADMIN_APP_VERSION: '${{ env.VERSION }}'
+          VITE_ADMIN_ASSETS_URL: 'https://static.spaceread.net/admin'
+          VITE_ADMIN_ENDPOINT: 'https://admin.api.spaceread.net'
+          VITE_CSRF_COOKIE_NAME: 'sr_c'
+          VITE_PUBLIC_SITE_URL: 'https://spaceread.net'
+
+      - name: 'Configure AWS credentials'
+        uses: 'aws-actions/configure-aws-credentials@v4.3.1'
+        with:
+          role-to-assume: 'arn:aws:iam::734946078607:role/github-action'
+          aws-region: 'me-central-1'
+
+      - name: 'Upload versioned assets'
+        run: |-
+          aws s3 sync dist "s3://${ADMIN_STATIC_BUCKET}/${ADMIN_PREFIX}/${VERSION}" \
+            --exclude "index.html"
+
+      - name: 'Upload HTML'
+        run: |-
+          aws s3 cp dist/index.html "s3://${ADMIN_SITE_BUCKET}/${ADMIN_PREFIX}/www/index.html" \
+            --cache-control "private, no-cache, s-maxage=0, max-age=0, must-revalidate, no-store" \
+            --expires "Tue, 31 Mar 1981 09:00:00 GMT" \
+            --content-type "text/html; charset=utf-8"
+
+      - name: 'Upload versioned HTML'
+        run: |-
+          aws s3 cp "s3://${ADMIN_SITE_BUCKET}/${ADMIN_PREFIX}/www/index.html" "s3://${ADMIN_SITE_BUCKET}/${ADMIN_PREFIX}/index-${VERSION}.html" \
+            --metadata-directive COPY

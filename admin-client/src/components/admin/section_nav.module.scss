@@ -1,0 +1,49 @@
+.nav {
+  display: grid;
+  gap: 22px;
+}
+
+.sectionLabel {
+  color: hsl(var(--muted-foreground));
+  font-size: 10px;
+  font-weight: 800;
+  margin: 0 0 8px 8px;
+  text-transform: uppercase;
+}
+
+.items {
+  display: grid;
+  gap: 4px;
+}
+
+.link {
+  align-items: center;
+  border-radius: 999px;
+  color: hsl(var(--foreground));
+  display: flex;
+  font-size: 14px;
+  font-weight: 700;
+  gap: 12px;
+  min-height: 46px;
+  padding: 0 14px;
+  transition: background 0.16s ease, color 0.16s ease;
+
+  svg {
+    flex: 0 0 auto;
+    height: 20px;
+    width: 20px;
+  }
+
+  &:hover {
+    background: hsl(var(--spaceread-red) / 0.09);
+  }
+}
+
+.active {
+  background: hsl(var(--spaceread-blue) / 0.12);
+  color: hsl(var(--spaceread-blue));
+
+  &:hover {
+    background: hsl(var(--spaceread-blue) / 0.16);
+  }
+}

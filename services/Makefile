@@ -6,13 +6,14 @@ NAME ?= $(name)
 STEPS ?= 1
 VERSION ?= 1
 
-.PHONY: help test fmt tidy run-course run-professor seed migrate-create migrate-up migrate-down migrate-steps migrate-force migrate-version
+.PHONY: help test fmt tidy run-admin run-course run-professor seed migrate-create migrate-up migrate-down migrate-steps migrate-force migrate-version
 
 help:
 	@echo "Backend shortcuts"
 	@echo "  make test                         Run Go tests"
 	@echo "  make fmt                          Format Go files"
 	@echo "  make tidy                         Tidy Go modules"
+	@echo "  make run-admin                    Run admin API"
 	@echo "  make run-professor                Run professor API"
 	@echo "  make run-course                   Run course API"
 	@echo "  make seed                         Seed the configured local development DB"
@@ -31,6 +32,9 @@ fmt:
 
 tidy:
 	go mod tidy
+
+run-admin:
+	go run ./cmd/admin
 
 run-course:
 	go run ./cmd/course

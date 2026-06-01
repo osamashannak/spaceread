@@ -1,0 +1,41 @@
+.list {
+  align-items: center;
+  background: hsl(var(--secondary));
+  border-radius: var(--radius);
+  display: inline-flex;
+  gap: 2px;
+  min-height: 38px;
+  padding: 3px;
+}
+
+.trigger {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: calc(var(--radius) - 2px);
+  color: hsl(var(--muted-foreground));
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 13px;
+  font-weight: 700;
+  justify-content: center;
+  min-height: 32px;
+  padding: 0 12px;
+  transition: background 0.16s ease, color 0.16s ease, box-shadow 0.16s ease;
+  white-space: nowrap;
+
+  &[data-state="active"] {
+    background: #fff;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+    color: hsl(var(--foreground));
+  }
+
+  &:focus-visible {
+    box-shadow: 0 0 0 3px hsl(var(--ring) / 0.18);
+    outline: none;
+  }
+}
+
+.content {
+  margin-top: 16px;
+}

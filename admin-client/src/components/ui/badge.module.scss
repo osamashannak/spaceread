@@ -1,0 +1,48 @@
+.badge {
+  align-items: center;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+  max-width: 100%;
+  min-height: 24px;
+  padding: 0 9px;
+  white-space: nowrap;
+}
+
+.default {
+  background: hsl(var(--secondary));
+  color: hsl(var(--secondary-foreground));
+}
+
+.success {
+  background: #ecfdf3;
+  border-color: #bbf7d0;
+  color: #166534;
+}
+
+.warning {
+  background: #fffbeb;
+  border-color: #fde68a;
+  color: #92400e;
+}
+
+.danger {
+  background: #fff1f2;
+  border-color: #fecdd3;
+  color: #be123c;
+}
+
+.info {
+  background: #eff8ff;
+  border-color: #bae6fd;
+  color: #075985;
+}
+
+.outline {
+  background: #fff;
+  border-color: hsl(var(--border));
+  color: hsl(var(--foreground));
+}

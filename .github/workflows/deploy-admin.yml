@@ -1,13 +1,14 @@
-name: 'Build and Deploy Course Microservice to Cloud Run'
+name: 'Build and Deploy Admin Microservice to Cloud Run'
 
 on:
   push:
     branches:
       - 'main'
     paths:
-      - 'services/cmd/course/**'
+      - '.github/workflows/deploy-admin.yml'
+      - 'services/cmd/admin/**'
+      - 'services/internal/admin/**'
       - 'services/internal/api/**'
-      - 'services/internal/course/**'
       - 'services/internal/middleware/**'
       - 'services/pkg/**'
       - 'services/Dockerfile'
@@ -17,7 +18,7 @@ on:
 env:
   PROJECT_ID: 'uaeu-space'
   REGION: 'europe-west1'
-  SERVICE: 'spaceread-course'
+  SERVICE: 'spaceread-admin'
   WORKLOAD_IDENTITY_PROVIDER: 'projects/503811163032/locations/global/workloadIdentityPools/github-actions-pool/providers/spaceread'
 
 jobs:
@@ -47,10 +48,10 @@ jobs:
 
       - name: 'Build and Push Container'
         run: |-
-          DOCKER_TAG="${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.SERVICE }}/course:${{ github.sha }}"
-          docker build --file services/Dockerfile --build-arg SERVICE=course --tag "${DOCKER_TAG}" services
+          DOCKER_TAG="${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.SERVICE }}/admin:${{ github.sha }}"
+          docker build --file services/Dockerfile --build-arg SERVICE=admin --tag "${DOCKER_TAG}" services
           docker push "${DOCKER_TAG}"
-        
+
       - name: 'Deploy to Cloud Run'
         id: 'deploy'
         uses: 'google-github-actions/deploy-cloudrun@33553064113a37d688aa6937bacbdc481580be17' # google-github-actions/deploy-cloudrun@v2
@@ -58,8 +59,8 @@ jobs:
           service: '${{ env.SERVICE }}'
           region: '${{ env.REGION }}'
           project_id: '${{ env.PROJECT_ID }}'
-          image: '${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.SERVICE }}/course:${{ github.sha }}'
+          image: '${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.SERVICE }}/admin:${{ github.sha }}'
 
       - name: 'Show output'
-        run: |2-
+        run: |-
           echo "${{ steps.deploy.outputs.url }}"

@@ -4,6 +4,7 @@ import "net/http"
 
 var AllowedOrigins = []string{
 	"https://spaceread.net",
+	"https://admin.spaceread.net",
 }
 
 func CORS(next http.Handler) http.Handler {

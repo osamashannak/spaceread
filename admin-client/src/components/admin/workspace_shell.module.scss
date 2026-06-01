@@ -1,0 +1,139 @@
+.shell {
+  background: #fff;
+  color: hsl(var(--foreground));
+  min-height: 100vh;
+}
+
+.sidebar {
+  background: hsl(var(--ops-sidebar));
+  border-right: 1px solid hsl(var(--ops-sidebar-border));
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  left: 0;
+  position: fixed;
+  top: 0;
+  width: 280px;
+  z-index: 30;
+}
+
+.brand {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  min-height: 76px;
+  padding: 18px 20px 14px;
+}
+
+.logo {
+  height: 38px;
+  width: 38px;
+}
+
+.brandText {
+  min-width: 0;
+}
+
+.brandName {
+  background: linear-gradient(90deg, #0599e5 0%, #add8ff 100%);
+  -webkit-background-clip: text;
+  color: transparent;
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1.1;
+  margin: 0;
+}
+
+.brandLabel {
+  color: hsl(var(--muted-foreground));
+  font-size: 11px;
+  font-weight: 600;
+  margin: 3px 0 0;
+}
+
+.navWrap {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px 14px 18px;
+}
+
+.mobileBar {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.94);
+  border-bottom: 1px solid hsl(var(--border));
+  display: none;
+  gap: 10px;
+  min-height: 58px;
+  padding: 0 12px;
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+.mobileTitle {
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.menuButton {
+  align-items: center;
+  background: #fff;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+  color: hsl(var(--foreground));
+  cursor: pointer;
+  display: inline-flex;
+  height: 38px;
+  justify-content: center;
+  width: 38px;
+}
+
+.content {
+  min-height: 100vh;
+  padding-left: 280px;
+}
+
+.main {
+  padding: 18px;
+}
+
+.backdrop {
+  background: rgba(21, 32, 43, 0.34);
+  border: 0;
+  bottom: 0;
+  display: none;
+  left: 0;
+  position: fixed;
+  right: 0;
+  top: 0;
+  z-index: 25;
+}
+
+@media (max-width: 980px) {
+  .sidebar {
+    box-shadow: 12px 0 30px rgba(15, 23, 42, 0.14);
+    transform: translateX(-100%);
+    transition: transform 0.18s ease;
+  }
+
+  .sidebarOpen {
+    transform: translateX(0);
+  }
+
+  .backdropOpen {
+    display: block;
+  }
+
+  .content {
+    padding-left: 0;
+  }
+
+  .mobileBar {
+    display: flex;
+  }
+
+  .main {
+    padding: 12px;
+  }
+}

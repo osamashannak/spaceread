@@ -5,6 +5,7 @@ on:
     branches:
       - 'main'
     paths:
+      - '.github/workflows/deploy-web-client.yml'
       - 'web-client/**'
 
 jobs:
@@ -12,6 +13,7 @@ jobs:
     runs-on: 'ubuntu-latest'
 
     permissions:
+      contents: 'read'
       id-token: 'write'
 
     defaults:
@@ -20,23 +22,25 @@ jobs:
 
     steps:
       - name: 'Checkout code'
-        uses: 'actions/checkout@v3'
+        uses: 'actions/checkout@v4'
 
       - name: 'Set short SHA'
-        run: echo "VERSION=${GITHUB_SHA::7}" >> $GITHUB_ENV
+        run: echo "VERSION=${GITHUB_SHA::7}" >> "$GITHUB_ENV"
 
       - name: 'Setup Node.js'
-        uses: 'actions/setup-node@v3'
+        uses: 'actions/setup-node@v4'
         with:
-          node-version: '20'
+          node-version: '22.18.0'
+          cache: 'npm'
+          cache-dependency-path: 'web-client/package-lock.json'
 
       - name: 'Install dependencies'
-        run: npm install
+        run: npm ci
 
       - name: 'Build Vite app'
         run: npm run build
         env:
-          VITE_APP_VERSION: ${{ env.VERSION }}
+          VITE_APP_VERSION: '${{ env.VERSION }}'
 
       - name: 'Configure AWS credentials'
         uses: 'aws-actions/configure-aws-credentials@v4.3.1'
@@ -46,17 +50,17 @@ jobs:
 
       - name: Upload versioned build
         run: |
-          aws s3 sync dist s3://static.spaceread.net/${{ env.VERSION }} \
-          --exclude "index.html"
+          aws s3 sync dist "s3://static.spaceread.net/${VERSION}" \
+            --exclude "index.html"
 
       - name: Upload HTML (latest)
         run: |
           aws s3 cp dist/index.html s3://spaceread.net/www/index.html \
-          --cache-control "private, no-cache, s-maxage=0, max-age=0, must-revalidate, no-store" \
-          --expires "Tue, 31 Mar 1981 09:00:00 GMT" \
-          --content-type "text/html; charset=utf-8" 
+            --cache-control "private, no-cache, s-maxage=0, max-age=0, must-revalidate, no-store" \
+            --expires "Tue, 31 Mar 1981 09:00:00 GMT" \
+            --content-type "text/html; charset=utf-8"
 
       - name: Upload HTML (versioned)
         run: |
-          aws s3 cp s3://spaceread.net/www/index.html s3://spaceread.net/index-${VERSION}.html \
-          --metadata-directive COPY
+          aws s3 cp s3://spaceread.net/www/index.html "s3://spaceread.net/index-${VERSION}.html" \
+            --metadata-directive COPY

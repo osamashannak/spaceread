@@ -45,8 +45,11 @@ docker compose up --build
 It exposes:
 
 - Web client: `http://localhost:5173`
+- Admin client: `http://localhost:5174`
 - Course API: `http://localhost:8081`
 - Professor API: `http://localhost:8082`
+- Account API: `http://localhost:8083`
+- Admin API: `http://localhost:8084`
 - Postgres: `localhost:5432`
 
 Compose runs the database migrations before starting the APIs. The default database credentials are local-only: database `spaceread`, user `spaceread`, password `spaceread`.

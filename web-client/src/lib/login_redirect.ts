@@ -1,11 +1,6 @@
-const defaultAllowedOrigins = [
-    "http://localhost:5174",
-    "http://127.0.0.1:5174"
-];
-
 function getAllowedOrigins() {
     const configured = import.meta.env.VITE_ALLOWED_LOGIN_REDIRECT_ORIGINS as string | undefined;
-    if (!configured) return defaultAllowedOrigins;
+    if (!configured) return [];
 
     return configured
         .split(",")

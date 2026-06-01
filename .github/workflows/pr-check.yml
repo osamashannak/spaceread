@@ -1,29 +1,38 @@
-name: 'Check Vite Frontend PR'
+name: 'Check Frontend PR'
 
 on:
   pull_request:
     paths:
+      - '.github/workflows/pr-check.yml'
+      - 'admin-client/**'
       - 'web-client/**'
 
 jobs:
   build-and-test:
     runs-on: 'ubuntu-latest'
 
-    defaults:
-      run:
-        working-directory: web-client
+    strategy:
+      fail-fast: false
+      matrix:
+        client:
+          - 'admin-client'
+          - 'web-client'
 
     steps:
       - name: 'Checkout code'
-        uses: 'actions/checkout@v3'
+        uses: 'actions/checkout@v4'
 
       - name: 'Setup Node.js'
-        uses: 'actions/setup-node@v3'
+        uses: 'actions/setup-node@v4'
         with:
-          node-version: '20'
+          node-version: '22.18.0'
+          cache: 'npm'
+          cache-dependency-path: '${{ matrix.client }}/package-lock.json'
 
       - name: 'Install dependencies'
-        run: npm install
+        run: npm ci
+        working-directory: '${{ matrix.client }}'
 
       - name: 'Build Vite app (Dry Run)'
         run: npm run build
+        working-directory: '${{ matrix.client }}'
