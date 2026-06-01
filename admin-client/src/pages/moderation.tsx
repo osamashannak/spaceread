@@ -174,7 +174,7 @@ function sourceText(review: ReviewRecord) {
 
 function publicReviewUrl(review: ReviewRecord) {
     const publicClientOrigin = stripTrailingSlash(import.meta.env.VITE_PUBLIC_SITE_URL || "https://spaceread.net");
-    return `${publicClientOrigin}/professor/${encodeURIComponent(review.professorEmail)}#review-${review.id}`;
+    return `${publicClientOrigin}/professor/${encodeURIComponent(review.professorEmail)}#${review.id}`;
 }
 
 function mediaTypeLabel(mimeType: string) {
