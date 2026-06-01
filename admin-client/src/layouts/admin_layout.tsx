@@ -6,6 +6,7 @@ import {
 import {AdminAccessGate} from "@/layouts/admin_access_gate";
 import {WorkspaceShell} from "@/components/admin/workspace_shell";
 import type {NavSection} from "@/components/admin/section_nav";
+import {AdminEntityDrawerProvider} from "@/components/admin/entity_drawer";
 
 const navSections: NavSection[] = [
     {
@@ -28,12 +29,14 @@ export function AdminLayout() {
 
     return (
         <AdminAccessGate>
-            <WorkspaceShell
-                title={title}
-                sections={navSections}
-            >
-                <Outlet/>
-            </WorkspaceShell>
+            <AdminEntityDrawerProvider>
+                <WorkspaceShell
+                    title={title}
+                    sections={navSections}
+                >
+                    <Outlet/>
+                </WorkspaceShell>
+            </AdminEntityDrawerProvider>
         </AdminAccessGate>
     );
 }

@@ -267,7 +267,7 @@
 
     &::before {
       color: hsl(var(--muted-foreground));
-      content: "•";
+      content: "\2022";
       margin-right: 7px;
     }
   }
@@ -302,7 +302,7 @@
 
     &:not(:first-child)::before {
       color: hsl(var(--muted-foreground));
-      content: "•";
+      content: "\2022";
       margin: 0 7px;
     }
   }

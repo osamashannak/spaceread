@@ -64,7 +64,6 @@ export function AdminAccessGate({children}: { children: ReactNode }) {
             <AccessScreen
                 icon={<LogIn size={22}/>}
                 title="Sign in required"
-                message="Use an admin account to open SpaceRead Admin."
                 actions={(
                     <Button asChild>
                         <a href={adminLoginUrl()}>Sign in</a>
@@ -79,12 +78,6 @@ export function AdminAccessGate({children}: { children: ReactNode }) {
             <AccessScreen
                 icon={<ShieldAlert size={22}/>}
                 title="Admin access required"
-                message="You are signed in, but this account is not allowed to use the admin panel."
-                actions={(
-                    <Button asChild variant="outline">
-                        <a href={adminLoginUrl()}>Use another account</a>
-                    </Button>
-                )}
             />
         );
     }
@@ -112,7 +105,7 @@ function AccessScreen({
 }: {
     icon: ReactNode;
     title: string;
-    message: string;
+    message?: string;
     actions?: ReactNode;
 }) {
     return (
@@ -129,7 +122,7 @@ function AccessScreen({
                     <div className={styles.icon}>{icon}</div>
                     <div className={styles.copy}>
                         <h1>{title}</h1>
-                        <p>{message}</p>
+                        {message && <p>{message}</p>}
                     </div>
                 </div>
                 {actions && <div className={styles.actions}>{actions}</div>}

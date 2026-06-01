@@ -709,7 +709,8 @@ func (db *AdminDB) attachReplies(ctx context.Context, ids []int64, reviewsByID m
 			r.op,
 			r.like_count,
 			r.session_id,
-			r.user_id
+			r.user_id,
+			s.ip_address::text
 		FROM professor.review_reply r
 		LEFT JOIN professor.reply_name rn
 			ON rn.review_id = r.review_id AND rn.session_id = r.session_id
@@ -717,6 +718,7 @@ func (db *AdminDB) attachReplies(ctx context.Context, ids []int64, reviewsByID m
 			ON mention_reply.id = r.mention_id
 		LEFT JOIN professor.reply_name mentioned
 			ON mentioned.review_id = r.review_id AND mentioned.session_id = mention_reply.session_id
+		LEFT JOIN account.session s ON s.id = r.session_id
 		WHERE r.review_id = ANY($1::bigint[])
 		ORDER BY r.created_at ASC`,
 		ids,
@@ -747,6 +749,7 @@ func (db *AdminDB) attachReplies(ctx context.Context, ids []int64, reviewsByID m
 			&reply.LikeCount,
 			&reply.SessionID,
 			&reply.UserID,
+			&reply.IPAddress,
 		); err != nil {
 			return err
 		}

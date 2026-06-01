@@ -50,6 +50,13 @@ export type AdminDecisionResponse = {
     action: string;
 };
 
+export type AdminReplyDecisionResponse = {
+    success: boolean;
+    review: AdminReview;
+    reply: AdminReviewReply;
+    action: string;
+};
+
 export type AdminReview = {
     sort_index: string;
     id: string;
@@ -140,6 +147,7 @@ export type AdminReviewReply = {
     like_count: number;
     session_id: string;
     user_id?: string;
+    ip_address?: string;
 };
 
 export type AdminReviewRating = {
@@ -177,6 +185,221 @@ export type AdminModerationAction = {
     created_at: string;
 };
 
+export type AdminReviewReplyResponse = {
+    reply: AdminReviewReply;
+    parent_review: AdminReview;
+    likes: AdminReplyLike[];
+    signals: AdminModerationSignal[];
+    action_history: AdminModerationAction[];
+};
+
+export type AdminReplyLike = {
+    reply_id: string;
+    session_id: string;
+    user_id?: string;
+    ip_address?: string;
+    created_at: string;
+};
+
+export type AdminEntitySession = {
+    id: string;
+    user_id?: string;
+    user_agent?: string;
+    ip_address: string;
+    created_at?: string;
+};
+
+export type AdminUserAccount = {
+    id: string;
+    username: string;
+    email: string;
+    role: string;
+    status: string;
+    created_at: string;
+    last_login_at?: string;
+};
+
+export type AdminUserIdentity = {
+    id: string;
+    provider: string;
+    email: string;
+    email_verified: boolean;
+    created_at: string;
+};
+
+export type AdminLoginSession = {
+    id: string;
+    user_id: string;
+    session_id: string;
+    created_at: string;
+    last_seen_at?: string;
+    expires_at: string;
+    revoked_at?: string;
+    user_agent?: string;
+    ip_address?: string;
+};
+
+export type AdminEntityStats = {
+    hidden_content_count: number;
+    open_report_count: number;
+    signal_count: number;
+    recent_activity_count: number;
+    distinct_session_count?: number;
+    distinct_user_count?: number;
+    first_seen?: string;
+    last_seen?: string;
+};
+
+export type AdminEntityActivity = {
+    reviews: AdminReviewSummary[];
+    replies: AdminReviewReplySummary[];
+    reports: AdminReviewReportSummary[];
+    ratings: AdminReviewRatingSummary[];
+    reply_likes: AdminReplyLike[];
+    professor_requests: AdminProfessorRequestSummary[];
+    course_files: AdminCourseFileSummary[];
+    attachments: AdminReviewAttachmentSummary[];
+    signals: AdminModerationSignal[];
+    actions: AdminModerationAction[];
+};
+
+export type AdminReviewSummary = {
+    id: string;
+    professor_email: string;
+    professor_name: string;
+    score: number;
+    positive: boolean;
+    text: string;
+    created_at: string;
+    visible: boolean;
+    reviewed: boolean;
+    deleted_at?: string;
+    like_count: number;
+    dislike_count: number;
+    reply_count: number;
+    session_id?: string;
+    user_id?: string;
+    ip_address?: string;
+    open_report_count: number;
+    signal_count: number;
+    media_kind?: "attachment" | "gif";
+};
+
+export type AdminReviewReplySummary = {
+    id: string;
+    review_id: string;
+    professor_email: string;
+    professor_name: string;
+    text: string;
+    created_at: string;
+    visible: boolean;
+    reviewed: boolean;
+    deleted_at?: string;
+    author?: string;
+    mention?: string;
+    op: boolean;
+    like_count: number;
+    session_id: string;
+    user_id?: string;
+    ip_address?: string;
+};
+
+export type AdminReviewReportSummary = {
+    id: string;
+    review_id: string;
+    reason: string;
+    session_id: string;
+    user_id?: string;
+    created_at: string;
+    resolved: boolean;
+    resolved_at?: string;
+    review_text: string;
+    professor_name: string;
+};
+
+export type AdminReviewRatingSummary = {
+    review_id: string;
+    professor_name: string;
+    value: "like" | "dislike";
+    session_id: string;
+    user_id?: string;
+    ip_address: string;
+    created_at: string;
+};
+
+export type AdminReviewAttachmentSummary = {
+    id: string;
+    review_id?: string;
+    mime_type: string;
+    size: number;
+    width: number;
+    height: number;
+    visible: boolean;
+    reviewed: boolean;
+    blob_name: string;
+    ip_address?: string;
+    created_at: string;
+    url: string;
+};
+
+export type AdminProfessorRequestSummary = {
+    id: string;
+    professor_name: string;
+    professor_email?: string;
+    university: string;
+    college?: string;
+    status: string;
+    session_id: string;
+    user_id?: string;
+    created_at: string;
+    reviewed_at?: string;
+    reviewer_user_id?: string;
+    moderation_reason_code?: string;
+    moderation_note?: string;
+};
+
+export type AdminCourseFileSummary = {
+    id: string;
+    name: string;
+    type: string;
+    size: number;
+    visible: boolean;
+    reviewed: boolean;
+    course_tag: string;
+    download_count: number;
+    created_at: string;
+    user_id?: string;
+    session_id?: string;
+    reviewed_at?: string;
+    reviewer_user_id?: string;
+    moderation_reason_code?: string;
+    moderation_note?: string;
+};
+
+export type AdminSessionDetailResponse = {
+    session: AdminEntitySession;
+    stats: AdminEntityStats;
+    activity: AdminEntityActivity;
+    login_sessions: AdminLoginSession[];
+};
+
+export type AdminUserDetailResponse = {
+    user: AdminUserAccount;
+    identities: AdminUserIdentity[];
+    sessions: AdminEntitySession[];
+    login_sessions: AdminLoginSession[];
+    stats: AdminEntityStats;
+    activity: AdminEntityActivity;
+};
+
+export type AdminIPDetailResponse = {
+    ip_address: string;
+    stats: AdminEntityStats;
+    sessions: AdminEntitySession[];
+    login_sessions: AdminLoginSession[];
+    activity: AdminEntityActivity;
+};
+
 export async function listAdminReasons(signal?: AbortSignal) {
     return adminFetch<AdminReasonsResponse>("/reasons", {signal});
 }
@@ -187,6 +410,26 @@ export async function getAdminSession(signal?: AbortSignal) {
 
 export async function listAdminReviews(signal?: AbortSignal) {
     return adminFetch<AdminReviewListResponse>("/reviews?limit=100", {signal});
+}
+
+export async function getAdminReview(reviewId: string, signal?: AbortSignal) {
+    return adminFetch<{ review: AdminReview }>(`/reviews/${encodeURIComponent(reviewId)}`, {signal});
+}
+
+export async function getAdminReviewReply(replyId: string, signal?: AbortSignal) {
+    return adminFetch<AdminReviewReplyResponse>(`/review-replies/${encodeURIComponent(replyId)}`, {signal});
+}
+
+export async function getAdminSessionDetail(sessionId: string, signal?: AbortSignal) {
+    return adminFetch<AdminSessionDetailResponse>(`/sessions/${encodeURIComponent(sessionId)}`, {signal});
+}
+
+export async function getAdminUserDetail(userId: string, signal?: AbortSignal) {
+    return adminFetch<AdminUserDetailResponse>(`/users/${encodeURIComponent(userId)}`, {signal});
+}
+
+export async function getAdminIPDetail(address: string, signal?: AbortSignal) {
+    return adminFetch<AdminIPDetailResponse>(`/ip-addresses/lookup?address=${encodeURIComponent(address)}`, {signal});
 }
 
 export async function setReviewVisibility(
@@ -201,6 +444,33 @@ export async function setReviewVisibility(
 
 export async function saveReviewNote(reviewId: string, body: { note: string }) {
     return adminFetch<AdminDecisionResponse>(`/reviews/${encodeURIComponent(reviewId)}/note`, {
+        method: "POST",
+        body: JSON.stringify(body),
+    });
+}
+
+export async function setReviewReplyVisibility(
+    replyId: string,
+    body: { visible: boolean; reason_code?: string; note?: string },
+) {
+    return adminFetch<AdminReplyDecisionResponse>(`/review-replies/${encodeURIComponent(replyId)}/visibility`, {
+        method: "POST",
+        body: JSON.stringify(body),
+    });
+}
+
+export async function markReviewReplyReviewed(
+    replyId: string,
+    body: { reason_code?: string; note?: string },
+) {
+    return adminFetch<AdminReplyDecisionResponse>(`/review-replies/${encodeURIComponent(replyId)}/review`, {
+        method: "POST",
+        body: JSON.stringify(body),
+    });
+}
+
+export async function saveReviewReplyNote(replyId: string, body: { note: string }) {
+    return adminFetch<AdminReplyDecisionResponse>(`/review-replies/${encodeURIComponent(replyId)}/note`, {
         method: "POST",
         body: JSON.stringify(body),
     });
