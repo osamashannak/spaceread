@@ -422,10 +422,11 @@ func (db *AdminDB) listReviewIDs(ctx context.Context, opts ListReviewOptions) ([
 		LEFT JOIN report_counts rc ON rc.review_id = r.id
 		LEFT JOIN signal_counts sc ON sc.target_id = r.id::text
 		WHERE ($3::boolean OR r.deleted_at IS NULL)
+		  AND NOT (r.visible = false AND r.reviewed = true)
+		  AND (r.reviewed = false OR COALESCE(rc.open_report_count, 0) > 0)
 		ORDER BY
 			COALESCE(rc.open_report_count, 0) DESC,
 			COALESCE(sc.signal_count, 0) DESC,
-			r.reviewed ASC,
 			r.created_at DESC
 		LIMIT $1 OFFSET $2`,
 		opts.Limit,

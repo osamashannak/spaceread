@@ -163,6 +163,12 @@ function priorityScore(review: ReviewRecord) {
     return openReports(review).length * 10 + review.signals.length * 6 + (!review.visible && !review.reviewed ? 3 : 0);
 }
 
+function belongsInReviewQueue(review: ReviewRecord) {
+    if (review.deletedAt) return false;
+    if (!review.visible && review.reviewed) return false;
+    return !review.reviewed || openReports(review).length > 0;
+}
+
 function visibilityText(review: ReviewRecord) {
     if (review.deletedAt) return "Deleted by user";
     return review.visible ? "Visible to users" : "Hidden from users";
@@ -547,6 +553,12 @@ export function ModerationPage() {
     }
 
     function replaceReview(review: ReviewRecord) {
+        if (!belongsInReviewQueue(review)) {
+            setReviews(current => current.filter(item => item.id !== review.id));
+            closePanel();
+            return;
+        }
+
         setReviews(current => current.map(item => item.id === review.id ? review : item));
         setSelectedId(review.id);
         setNote(review.moderationNote || "");
@@ -679,8 +691,8 @@ export function ModerationPage() {
                             <div className={styles.stateNotice}>
                                 <CheckCircle2 size={17}/>
                                 <div>
-                                    <strong>No reviews found.</strong>
-                                    <span>Reviews will appear here when they exist in the database.</span>
+                                    <strong>No reviews need moderation.</strong>
+                                    <span>New or unreviewed reviews will appear here.</span>
                                 </div>
                             </div>
                         )}
