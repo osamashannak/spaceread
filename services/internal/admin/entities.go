@@ -3,6 +3,7 @@ package admin
 import (
 	"net/http"
 	"net/netip"
+	"strings"
 
 	admindb "github.com/osamashannak/uaeu-space/services/internal/admin/database"
 	v1 "github.com/osamashannak/uaeu-space/services/internal/api/v1"
@@ -78,20 +79,20 @@ func (s *Server) GetUserDetail() http.Handler {
 
 func (s *Server) GetIPDetail() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		address := r.URL.Query().Get("address")
+		address := strings.TrimSpace(r.URL.Query().Get("address"))
 		if address == "" {
 			writeError(w, http.StatusBadRequest, "ip address is required")
 			return
 		}
-		parsed, err := netip.ParseAddr(address)
-		if err != nil {
+		parsed, ok := parseIPAddress(address)
+		if !ok {
 			writeError(w, http.StatusBadRequest, "invalid ip address")
 			return
 		}
 
-		detail, err := s.db.GetIPDetail(r.Context(), parsed.String())
+		detail, err := s.db.GetIPDetail(r.Context(), parsed)
 		if err != nil {
-			logging.FromContext(r.Context()).Errorf("failed to get ip address %s: %v", parsed.String(), err)
+			logging.FromContext(r.Context()).Errorf("failed to get ip address %s: %v", parsed, err)
 			writeError(w, http.StatusInternalServerError, "failed to get ip address")
 			return
 		}
@@ -102,6 +103,16 @@ func (s *Server) GetIPDetail() http.Handler {
 
 		jsonutil.MarshalResponse(w, http.StatusOK, detail)
 	})
+}
+
+func parseIPAddress(value string) (string, bool) {
+	if parsed, err := netip.ParseAddr(value); err == nil {
+		return parsed.String(), true
+	}
+	if parsed, err := netip.ParsePrefix(value); err == nil {
+		return parsed.String(), true
+	}
+	return "", false
 }
 
 func (s *Server) SetReviewReplyVisibility() http.Handler {

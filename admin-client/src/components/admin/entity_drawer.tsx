@@ -1428,12 +1428,17 @@ function formatBytes(bytes: number) {
 }
 
 function maskIpAddress(value: string, visible: boolean) {
-    if (visible) return value;
-    const parts = value.split(".");
+    const displayValue = displayIpAddress(value);
+    if (visible) return displayValue;
+    const parts = displayValue.split(".");
     if (parts.length === 4) {
         return `${parts[0]}.${parts[1]}.xxx.xxx`;
     }
-    return value.replace(/[A-Fa-f0-9]/g, "x");
+    return displayValue.replace(/[A-Fa-f0-9]/g, "x");
+}
+
+function displayIpAddress(value: string) {
+    return value.replace(/\/32$/, "").replace(/\/128$/, "");
 }
 
 function maskEmail(value: string, visible: boolean) {
