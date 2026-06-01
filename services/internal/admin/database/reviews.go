@@ -977,15 +977,15 @@ func insertActionLog(ctx context.Context, tx txRunner, input actionLogInput) err
 			previous_state,
 			next_state
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+		VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::jsonb)`,
 		input.ActorUserID,
 		input.TargetType,
 		input.TargetID,
 		input.Action,
 		input.ReasonCode,
 		input.Note,
-		input.PreviousState,
-		input.NextState,
+		jsonbParam(input.PreviousState),
+		jsonbParam(input.NextState),
 	)
 	return err
 }
@@ -1078,6 +1078,13 @@ func rawJSONPtr(data []byte) *json.RawMessage {
 	}
 	msg := json.RawMessage(data)
 	return &msg
+}
+
+func jsonbParam(data []byte) any {
+	if len(data) == 0 {
+		return nil
+	}
+	return string(data)
 }
 
 func attachSignal(reviewsByID map[int64]*v1.AdminReview, signal v1.AdminModerationSignal) {
