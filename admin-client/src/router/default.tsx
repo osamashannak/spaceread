@@ -9,8 +9,6 @@ export const router = createBrowserRouter([
         children: [
             {index: true, element: <Navigate to="/reviews" replace/>},
             {path: "reviews", element: <ModerationPage/>},
-            {path: "moderation", element: <Navigate to="/reviews" replace/>},
-            {path: "policy", element: <Navigate to="/reviews" replace/>},
             {path: "*", element: <Navigate to="/reviews" replace/>},
         ],
     },

@@ -1,3 +1,5 @@
+import {dispatchAdminAuthLost} from "@/lib/admin_auth";
+
 const adminEndpoint = stripTrailingSlash(import.meta.env.VITE_ADMIN_ENDPOINT || "/api/admin");
 const csrfCookieName = import.meta.env.VITE_CSRF_COOKIE_NAME || "sr_c";
 
@@ -30,6 +32,15 @@ export type AdminReviewListResponse = {
 
 export type AdminReasonsResponse = {
     reasons: AdminReason[];
+};
+
+export type AdminSessionResponse = {
+    user: {
+        id: string;
+        username?: string;
+        email?: string;
+        role: string;
+    };
 };
 
 export type AdminDecisionResponse = {
@@ -170,6 +181,10 @@ export async function listAdminReasons(signal?: AbortSignal) {
     return adminFetch<AdminReasonsResponse>("/reasons", {signal});
 }
 
+export async function getAdminSession(signal?: AbortSignal) {
+    return adminFetch<AdminSessionResponse>("/session", {signal});
+}
+
 export async function listAdminReviews(signal?: AbortSignal) {
     return adminFetch<AdminReviewListResponse>("/reviews?limit=100", {signal});
 }
@@ -224,6 +239,9 @@ async function adminFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
     });
 
     if (!response.ok) {
+        if (response.status === 401 || response.status === 403) {
+            dispatchAdminAuthLost(response.status);
+        }
         throw await apiError(response);
     }
 

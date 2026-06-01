@@ -18,6 +18,7 @@ import {
 import {Badge} from "@/components/ui/badge";
 import {Button} from "@/components/ui/button";
 import {Textarea} from "@/components/ui/textarea";
+import {adminLoginUrl} from "@/lib/admin_auth";
 import {
     AdminApiError,
     type AdminDecisionResponse,
@@ -142,8 +143,6 @@ type ReviewRecord = {
     moderationNote?: string;
 };
 
-const publicClientOrigin = stripTrailingSlash(import.meta.env.VITE_PUBLIC_SITE_URL || "https://spaceread.net");
-
 const dateFormatter = new Intl.DateTimeFormat(undefined, {
     dateStyle: "medium",
     timeStyle: "short",
@@ -174,6 +173,7 @@ function sourceText(review: ReviewRecord) {
 }
 
 function publicReviewUrl(review: ReviewRecord) {
+    const publicClientOrigin = stripTrailingSlash(import.meta.env.VITE_PUBLIC_SITE_URL || "https://spaceread.net");
     return `${publicClientOrigin}/professor/${encodeURIComponent(review.professorEmail)}#review-${review.id}`;
 }
 
@@ -355,10 +355,6 @@ function normalizeReview(review: AdminReview): ReviewRecord {
 
 function stripTrailingSlash(value: string) {
     return value.replace(/\/+$/, "");
-}
-
-function loginUrl() {
-    return `${publicClientOrigin}/login?next=${encodeURIComponent(window.location.href)}`;
 }
 
 function isAbortError(error: unknown) {
@@ -673,7 +669,7 @@ export function ModerationPage() {
                                 </div>
                                 {(loadErrorStatus === 401 || loadErrorStatus === 403) && (
                                     <Button asChild size="sm" variant="outline">
-                                        <a href={loginUrl()}>Sign in</a>
+                                        <a href={adminLoginUrl()}>Sign in</a>
                                     </Button>
                                 )}
                             </div>

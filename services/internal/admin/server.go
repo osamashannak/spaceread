@@ -26,6 +26,7 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("GET /healthz", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	}))
+	mux.Handle("GET /session", s.gateway.RequireAdmin(s.Session()))
 	mux.Handle("GET /reasons", s.gateway.RequireAdmin(s.ListReasons()))
 	mux.Handle("GET /reviews", s.gateway.RequireAdmin(s.ListReviews()))
 	mux.Handle("GET /reviews/{reviewID}", s.gateway.RequireAdmin(s.GetReview()))

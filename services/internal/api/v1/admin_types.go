@@ -5,6 +5,17 @@ import (
 	"time"
 )
 
+type AdminSessionResponse struct {
+	User AdminSessionUser `json:"user"`
+}
+
+type AdminSessionUser struct {
+	ID       int64   `json:"id,string"`
+	Username *string `json:"username,omitempty"`
+	Email    *string `json:"email,omitempty"`
+	Role     string  `json:"role"`
+}
+
 type AdminReason struct {
 	Code            string  `json:"code"`
 	Label           string  `json:"label"`
