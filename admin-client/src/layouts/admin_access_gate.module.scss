@@ -1,32 +1,31 @@
 .screen {
   align-items: center;
   animation: gateIn 0.18s ease-out both;
-  background:
-    linear-gradient(180deg, rgba(249, 251, 253, 0.94), rgba(255, 255, 255, 0.98)),
-    #fff;
+  background: #fff;
   color: hsl(var(--foreground));
-  display: grid;
-  min-height: 100vh;
-  padding: 24px;
+  display: flex;
+  justify-content: center;
+  min-height: 100svh;
+  padding: 28px;
 }
 
 .panel {
   margin: 0 auto;
-  max-width: 440px;
-  text-align: center;
+  max-width: 460px;
+  text-align: left;
   width: 100%;
 }
 
 .brand {
   align-items: center;
-  display: inline-flex;
+  display: flex;
   gap: 10px;
-  margin-bottom: 26px;
+  margin-bottom: 28px;
 }
 
 .brand img {
-  height: 40px;
-  width: 40px;
+  height: 34px;
+  width: 34px;
 }
 
 .brand strong {
@@ -34,7 +33,7 @@
   -webkit-background-clip: text;
   color: transparent;
   display: block;
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 800;
   line-height: 1.1;
 }
@@ -42,49 +41,62 @@
 .brand span {
   color: hsl(var(--muted-foreground));
   display: block;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
-  line-height: 1.2;
-  text-align: left;
+  line-height: 1.25;
+  margin-top: 2px;
+}
+
+.brandText {
+  min-width: 0;
+}
+
+.statusRow {
+  align-items: flex-start;
+  border-bottom: 1px solid hsl(var(--border));
+  border-top: 1px solid hsl(var(--border));
+  display: grid;
+  gap: 16px;
+  grid-template-columns: auto minmax(0, 1fr);
+  padding: 22px 0;
 }
 
 .icon {
   align-items: center;
-  background: hsl(var(--accent));
-  border: 1px solid hsl(var(--border));
+  background: hsl(var(--primary) / 0.08);
+  border: 1px solid hsl(var(--primary) / 0.16);
   border-radius: 999px;
   color: hsl(var(--primary));
-  display: inline-flex;
-  height: 52px;
+  display: flex;
+  height: 42px;
   justify-content: center;
-  margin-bottom: 16px;
-  width: 52px;
+  width: 42px;
 }
 
 .spin {
   animation: spin 0.8s linear infinite;
 }
 
-.panel h1 {
-  font-size: 28px;
+.copy h1 {
+  font-size: 22px;
   letter-spacing: 0;
-  line-height: 1.15;
+  line-height: 1.2;
   margin: 0;
 }
 
-.panel p {
+.copy p {
   color: hsl(var(--muted-foreground));
-  font-size: 15px;
-  line-height: 1.6;
-  margin: 12px 0 0;
+  font-size: 14px;
+  line-height: 1.55;
+  margin: 8px 0 0;
 }
 
 .actions {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
-  justify-content: center;
-  margin-top: 22px;
+  justify-content: flex-start;
+  margin-top: 18px;
 }
 
 @keyframes gateIn {
@@ -107,5 +119,21 @@
   .screen,
   .spin {
     animation-duration: 1ms;
+  }
+}
+
+@media (max-width: 520px) {
+  .screen {
+    align-items: flex-start;
+    padding: 24px 18px;
+  }
+
+  .statusRow {
+    gap: 12px;
+    padding: 18px 0;
+  }
+
+  .copy h1 {
+    font-size: 20px;
   }
 }

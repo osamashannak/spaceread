@@ -118,16 +118,20 @@ function AccessScreen({
     return (
         <main className={styles.screen}>
             <section className={styles.panel}>
-                <div className={styles.brand}>
+                <header className={styles.brand}>
                     <img src={logo} alt="SpaceRead"/>
-                    <div>
+                    <div className={styles.brandText}>
                         <strong>SpaceRead</strong>
                         <span>Admin</span>
                     </div>
+                </header>
+                <div className={styles.statusRow}>
+                    <div className={styles.icon}>{icon}</div>
+                    <div className={styles.copy}>
+                        <h1>{title}</h1>
+                        <p>{message}</p>
+                    </div>
                 </div>
-                <div className={styles.icon}>{icon}</div>
-                <h1>{title}</h1>
-                <p>{message}</p>
                 {actions && <div className={styles.actions}>{actions}</div>}
             </section>
         </main>
@@ -141,6 +145,14 @@ function gateStateFromError(error: unknown): GateState {
         return {status: "error", message: error.message || "Admin API is unavailable."};
     }
 
-    if (error instanceof Error) return {status: "error", message: error.message};
+    if (error instanceof Error) return {status: "error", message: accessErrorMessage(error.message)};
     return {status: "error", message: "Admin API is unavailable."};
+}
+
+function accessErrorMessage(message: string) {
+    const normalized = message.trim().toLowerCase();
+    if (!normalized || normalized === "failed to fetch" || normalized.includes("networkerror")) {
+        return "Admin API could not be reached.";
+    }
+    return message;
 }
