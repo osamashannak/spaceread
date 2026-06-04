@@ -22,6 +22,7 @@ var (
 type ListReviewOptions struct {
 	Limit                int
 	Offset               int
+	Sort                 string
 	NeedsAttention       bool
 	Deleted              string
 	Visible              *bool
@@ -657,6 +658,7 @@ func (db *AdminDB) listReviewIDs(ctx context.Context, opts ListReviewOptions) ([
 	if len(conditions) > 0 {
 		where = strings.Join(conditions, "\n\t\t\tAND ")
 	}
+	orderBy := reviewListOrderBy(opts.Sort)
 
 	query := fmt.Sprintf(`
 		WITH signal_source AS (
@@ -685,11 +687,8 @@ func (db *AdminDB) listReviewIDs(ctx context.Context, opts ListReviewOptions) ([
 		LEFT JOIN report_counts rc ON rc.review_id = r.id
 		LEFT JOIN signal_counts sc ON sc.target_id = r.id::text
 		WHERE %s
-		ORDER BY
-			COALESCE(rc.open_report_count, 0) DESC,
-			COALESCE(sc.signal_count, 0) DESC,
-			r.created_at DESC
-		LIMIT $1 OFFSET $2`, where)
+		ORDER BY %s
+		LIMIT $1 OFFSET $2`, where, orderBy)
 
 	rows, err := db.db.Pool.Query(ctx, query, args...)
 	if err != nil {
@@ -707,6 +706,21 @@ func (db *AdminDB) listReviewIDs(ctx context.Context, opts ListReviewOptions) ([
 	}
 
 	return ids, rows.Err()
+}
+
+func reviewListOrderBy(sort string) string {
+	switch sort {
+	case "oldest":
+		return "r.created_at ASC, r.id ASC"
+	case "most_reports":
+		return "COALESCE(rc.open_report_count, 0) DESC, r.created_at DESC, r.id DESC"
+	case "most_signals":
+		return "COALESCE(sc.signal_count, 0) DESC, r.created_at DESC, r.id DESC"
+	case "random":
+		return "random()"
+	default:
+		return "r.created_at DESC, r.id DESC"
+	}
 }
 
 func (db *AdminDB) loadReviews(ctx context.Context, ids []int64) ([]v1.AdminReview, error) {

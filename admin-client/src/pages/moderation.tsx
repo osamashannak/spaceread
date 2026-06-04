@@ -39,6 +39,7 @@ type SelectFilterKey = {
 type FilterSectionKey = "common" | "status" | "identity" | "content" | "metrics";
 
 const defaultReviewFilters: AdminReviewFilters = {
+    sort: "newest",
     needs_attention: true,
     deleted: "exclude",
     visible: "any",
@@ -85,6 +86,7 @@ const stateFilters: {
     label: string;
     options: { label: string; value: string }[];
 }[] = [
+    {key: "sort", label: "Sort", options: [{label: "Newest first", value: "newest"}, {label: "Oldest first", value: "oldest"}, {label: "Most reports", value: "most_reports"}, {label: "Most signals", value: "most_signals"}, {label: "Random on refresh", value: "random"}]},
     {key: "deleted", label: "Deleted", options: [{label: "Exclude", value: "exclude"}, {label: "Include", value: "include"}, {label: "Only", value: "only"}]},
     {key: "visible", label: "Visibility", options: [{label: "Any", value: "any"}, {label: "Visible", value: "visible"}, {label: "Hidden", value: "hidden"}]},
     {key: "reviewed", label: "Reviewed", options: [{label: "Any", value: "any"}, {label: "Reviewed", value: "reviewed"}, {label: "Not reviewed", value: "not_reviewed"}]},
@@ -134,7 +136,7 @@ const filterSections: { key: FilterSectionKey; label: string }[] = [
 ];
 
 const sectionSelectFilterKeys: Record<FilterSectionKey, SelectFilterKey[]> = {
-    common: [],
+    common: ["sort"],
     status: ["deleted", "visible", "reviewed", "positive", "student_verified", "uaeu_origin", "media", "open_reports", "signals"],
     identity: ["has_session", "has_user", "has_ip"],
     content: [],
@@ -158,7 +160,7 @@ const sectionRangeFilterKeys: Record<FilterSectionKey, SelectFilterKey[]> = {
 };
 
 const sectionFilterKeys: Record<FilterSectionKey, ReviewFilterKey[]> = {
-    common: ["needs_attention", "search"],
+    common: ["sort", "needs_attention", "search"],
     status: ["deleted", "visible", "reviewed", "positive", "student_verified", "uaeu_origin", "media", "open_reports", "signals"],
     identity: ["has_session", "has_user", "has_ip", "review_id", "professor_email", "professor_name", "professor_college", "professor_university", "reviewer_user_id", "session_id", "user_id", "ip_address"],
     content: ["language", "course_taken", "grade_received", "moderation_reason_code"],
@@ -252,9 +254,7 @@ export function ModerationPage() {
         return () => window.removeEventListener("admin-review-updated", onReviewUpdated);
     }, [filters]);
 
-    const orderedReviews = useMemo(() => (
-        [...reviews].sort((a, b) => priorityScore(b) - priorityScore(a) || new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-    ), [reviews]);
+    const orderedReviews = useMemo(() => sortReviews(reviews, filters.sort), [filters.sort, reviews]);
     const defaultFiltersSelected = filtersEqual(filters, defaultReviewFilters);
     const appliedFilterChips = useMemo(() => filterChips(filters), [filters]);
     const draftFilterCount = countActiveFilters(draftFilters);
@@ -385,7 +385,7 @@ export function ModerationPage() {
                                     )}
 
                                     {activeSelectFilters.length > 0 && (
-                                        <FilterGroup title="State">
+                                        <FilterGroup title={activeFilterSection === "common" ? "Ordering" : "State"}>
                                             <div className={styles.fieldGrid}>
                                                 {activeSelectFilters.map(filter => (
                                                     <label className={styles.filterField} key={filter.key}>
@@ -617,8 +617,21 @@ function reviewStatus(review: AdminReview): { label: string; tone: Tone } {
     return {label: "Hidden from users", tone: "danger"};
 }
 
-function priorityScore(review: AdminReview) {
-    return openReports(review).length * 10 + review.signals.length * 6 + (!review.visible && !review.reviewed ? 3 : 0);
+function sortReviews(reviews: AdminReview[], sort: AdminReviewFilters["sort"]) {
+    if (sort === "random") return reviews;
+
+    return [...reviews].sort((a, b) => {
+        switch (sort) {
+        case "oldest":
+            return timestamp(a.created_at) - timestamp(b.created_at) || a.id.localeCompare(b.id);
+        case "most_reports":
+            return openReports(b).length - openReports(a).length || timestamp(b.created_at) - timestamp(a.created_at);
+        case "most_signals":
+            return b.signals.length - a.signals.length || timestamp(b.created_at) - timestamp(a.created_at);
+        default:
+            return timestamp(b.created_at) - timestamp(a.created_at) || b.id.localeCompare(a.id);
+        }
+    });
 }
 
 function reviewMatchesFilters(review: AdminReview, filters: AdminReviewFilters) {
@@ -803,4 +816,10 @@ function formatDateTime(value?: string) {
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return value;
     return dateFormatter.format(date);
+}
+
+function timestamp(value?: string) {
+    if (!value) return 0;
+    const parsed = new Date(value).getTime();
+    return Number.isNaN(parsed) ? 0 : parsed;
 }

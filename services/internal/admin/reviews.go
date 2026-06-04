@@ -102,6 +102,7 @@ func (s *Server) ListReviews() http.Handler {
 		reviews, err := s.db.ListReviews(r.Context(), admindb.ListReviewOptions{
 			Limit:                limit,
 			Offset:               offset,
+			Sort:                 parseChoiceQuery(r, "sort", "newest", "newest", "oldest", "most_reports", "most_signals", "random"),
 			NeedsAttention:       parseBoolQuery(r, "needs_attention", true),
 			Deleted:              parseChoiceQuery(r, "deleted", "exclude", "exclude", "include", "only"),
 			Visible:              parseBoolChoiceQuery(r, "visible", "visible", "hidden"),

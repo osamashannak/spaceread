@@ -31,6 +31,7 @@ export type AdminReviewListResponse = {
 };
 
 export type AdminReviewFilters = {
+    sort: "newest" | "oldest" | "most_reports" | "most_signals" | "random";
     needs_attention: boolean;
     deleted: "exclude" | "include" | "only";
     visible: "any" | "visible" | "hidden";
