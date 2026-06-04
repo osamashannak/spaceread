@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	admindb "github.com/osamashannak/uaeu-space/services/internal/admin/database"
 	v1 "github.com/osamashannak/uaeu-space/services/internal/api/v1"
@@ -97,12 +98,49 @@ func (s *Server) ListReviews() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		limit := parseBoundedInt(r.URL.Query().Get("limit"), defaultReviewLimit, 1, maxReviewLimit)
 		offset := parseBoundedInt(r.URL.Query().Get("offset"), 0, 0, 1_000_000)
-		includeDeleted := strings.EqualFold(r.URL.Query().Get("include_deleted"), "true")
 
 		reviews, err := s.db.ListReviews(r.Context(), admindb.ListReviewOptions{
-			Limit:          limit,
-			Offset:         offset,
-			IncludeDeleted: includeDeleted,
+			Limit:                limit,
+			Offset:               offset,
+			NeedsAttention:       parseBoolQuery(r, "needs_attention", true),
+			Deleted:              parseChoiceQuery(r, "deleted", "exclude", "exclude", "include", "only"),
+			Visible:              parseBoolChoiceQuery(r, "visible", "visible", "hidden"),
+			Reviewed:             parseBoolChoiceQuery(r, "reviewed", "reviewed", "not_reviewed"),
+			Positive:             parseBoolChoiceQuery(r, "positive", "recommended", "not_recommended"),
+			StudentVerified:      parseBoolChoiceQuery(r, "student_verified", "verified", "not_verified"),
+			UaeuOrigin:           parseBoolChoiceQuery(r, "uaeu_origin", "uaeu", "non_uaeu"),
+			Media:                parseChoiceQuery(r, "media", "any", "any", "with_media", "without_media", "attachment", "gif"),
+			OpenReports:          parseChoiceQuery(r, "open_reports", "any", "any", "has", "none"),
+			Signals:              parseChoiceQuery(r, "signals", "any", "any", "has", "none"),
+			HasSession:           parseChoiceQuery(r, "has_session", "any", "any", "has", "none"),
+			HasUser:              parseChoiceQuery(r, "has_user", "any", "any", "has", "none"),
+			HasIP:                parseChoiceQuery(r, "has_ip", "any", "any", "has", "none"),
+			Search:               strings.TrimSpace(r.URL.Query().Get("search")),
+			ReviewID:             parseOptionalInt64(r.URL.Query().Get("review_id")),
+			ProfessorEmail:       strings.TrimSpace(r.URL.Query().Get("professor_email")),
+			ProfessorName:        strings.TrimSpace(r.URL.Query().Get("professor_name")),
+			ProfessorCollege:     strings.TrimSpace(r.URL.Query().Get("professor_college")),
+			ProfessorUniversity:  strings.TrimSpace(r.URL.Query().Get("professor_university")),
+			Language:             strings.TrimSpace(r.URL.Query().Get("language")),
+			CourseTaken:          strings.TrimSpace(r.URL.Query().Get("course_taken")),
+			GradeReceived:        strings.TrimSpace(r.URL.Query().Get("grade_received")),
+			ModerationReasonCode: strings.TrimSpace(r.URL.Query().Get("moderation_reason_code")),
+			ReviewerUserID:       parseOptionalInt64(r.URL.Query().Get("reviewer_user_id")),
+			SessionID:            parseOptionalInt64(r.URL.Query().Get("session_id")),
+			UserID:               parseOptionalInt64(r.URL.Query().Get("user_id")),
+			IPAddress:            strings.TrimSpace(r.URL.Query().Get("ip_address")),
+			ScoreMin:             parseOptionalInt(r.URL.Query().Get("score_min")),
+			ScoreMax:             parseOptionalInt(r.URL.Query().Get("score_max")),
+			LikeMin:              parseOptionalInt(r.URL.Query().Get("like_min")),
+			LikeMax:              parseOptionalInt(r.URL.Query().Get("like_max")),
+			DislikeMin:           parseOptionalInt(r.URL.Query().Get("dislike_min")),
+			DislikeMax:           parseOptionalInt(r.URL.Query().Get("dislike_max")),
+			ReplyMin:             parseOptionalInt64(r.URL.Query().Get("reply_min")),
+			ReplyMax:             parseOptionalInt64(r.URL.Query().Get("reply_max")),
+			CreatedFrom:          parseOptionalTime(r.URL.Query().Get("created_from")),
+			CreatedTo:            parseOptionalEndTime(r.URL.Query().Get("created_to")),
+			ReviewedFrom:         parseOptionalTime(r.URL.Query().Get("reviewed_from")),
+			ReviewedTo:           parseOptionalEndTime(r.URL.Query().Get("reviewed_to")),
 		})
 		if err != nil {
 			logging.FromContext(r.Context()).Errorf("failed to list reviews: %v", err)
@@ -321,6 +359,94 @@ func parseBoundedInt(value string, fallback, min, max int) int {
 		return max
 	}
 	return parsed
+}
+
+func parseBoolQuery(r *http.Request, key string, fallback bool) bool {
+	value := r.URL.Query().Get(key)
+	if value == "" {
+		return fallback
+	}
+	return strings.EqualFold(value, "true")
+}
+
+func parseBoolChoiceQuery(r *http.Request, key, trueValue, falseValue string) *bool {
+	value := strings.TrimSpace(r.URL.Query().Get(key))
+	switch value {
+	case trueValue:
+		result := true
+		return &result
+	case falseValue:
+		result := false
+		return &result
+	default:
+		return nil
+	}
+}
+
+func parseChoiceQuery(r *http.Request, key, fallback string, allowed ...string) string {
+	value := strings.TrimSpace(r.URL.Query().Get(key))
+	if value == "" {
+		return fallback
+	}
+	for _, option := range allowed {
+		if value == option {
+			return value
+		}
+	}
+	return fallback
+}
+
+func parseOptionalInt(value string) *int {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil {
+		return nil
+	}
+	return &parsed
+}
+
+func parseOptionalInt64(value string) *int64 {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
+	}
+	parsed, err := strconv.ParseInt(value, 10, 64)
+	if err != nil {
+		return nil
+	}
+	return &parsed
+}
+
+func parseOptionalTime(value string) *time.Time {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
+	}
+	if parsed, err := time.Parse(time.RFC3339, value); err == nil {
+		return &parsed
+	}
+	if parsed, err := time.Parse("2006-01-02", value); err == nil {
+		return &parsed
+	}
+	return nil
+}
+
+func parseOptionalEndTime(value string) *time.Time {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
+	}
+	if parsed, err := time.Parse(time.RFC3339, value); err == nil {
+		return &parsed
+	}
+	if parsed, err := time.Parse("2006-01-02", value); err == nil {
+		end := parsed.AddDate(0, 0, 1).Add(-time.Nanosecond)
+		return &end
+	}
+	return nil
 }
 
 func cleanOptionalText(value *string) *string {

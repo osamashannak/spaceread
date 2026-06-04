@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -19,9 +20,47 @@ var (
 )
 
 type ListReviewOptions struct {
-	Limit          int
-	Offset         int
-	IncludeDeleted bool
+	Limit                int
+	Offset               int
+	NeedsAttention       bool
+	Deleted              string
+	Visible              *bool
+	Reviewed             *bool
+	Positive             *bool
+	StudentVerified      *bool
+	UaeuOrigin           *bool
+	Media                string
+	OpenReports          string
+	Signals              string
+	HasSession           string
+	HasUser              string
+	HasIP                string
+	Search               string
+	ReviewID             *int64
+	ProfessorEmail       string
+	ProfessorName        string
+	ProfessorCollege     string
+	ProfessorUniversity  string
+	Language             string
+	CourseTaken          string
+	GradeReceived        string
+	ModerationReasonCode string
+	ReviewerUserID       *int64
+	SessionID            *int64
+	UserID               *int64
+	IPAddress            string
+	ScoreMin             *int
+	ScoreMax             *int
+	LikeMin              *int
+	LikeMax              *int
+	DislikeMin           *int
+	DislikeMax           *int
+	ReplyMin             *int64
+	ReplyMax             *int64
+	CreatedFrom          *time.Time
+	CreatedTo            *time.Time
+	ReviewedFrom         *time.Time
+	ReviewedTo           *time.Time
 }
 
 type ReviewVisibilityDecision struct {
@@ -450,7 +489,176 @@ func (db *AdminDB) SaveReviewNote(ctx context.Context, decision ReviewNoteDecisi
 }
 
 func (db *AdminDB) listReviewIDs(ctx context.Context, opts ListReviewOptions) ([]int64, error) {
-	rows, err := db.db.Pool.Query(ctx, `
+	args := []any{opts.Limit, opts.Offset}
+	conditions := make([]string, 0)
+	nextArg := func(value any) string {
+		args = append(args, value)
+		return fmt.Sprintf("$%d", len(args))
+	}
+	add := func(condition string) {
+		conditions = append(conditions, condition)
+	}
+	addBool := func(column string, value *bool) {
+		if value != nil {
+			add(fmt.Sprintf("%s = %s", column, nextArg(*value)))
+		}
+	}
+	addText := func(column, value string) {
+		if value != "" {
+			add(fmt.Sprintf("%s ILIKE %s", column, nextArg("%"+value+"%")))
+		}
+	}
+	addExactText := func(column, value string) {
+		if value != "" {
+			add(fmt.Sprintf("%s = %s", column, nextArg(value)))
+		}
+	}
+	addIntMin := func(column string, value *int) {
+		if value != nil {
+			add(fmt.Sprintf("%s >= %s", column, nextArg(*value)))
+		}
+	}
+	addIntMax := func(column string, value *int) {
+		if value != nil {
+			add(fmt.Sprintf("%s <= %s", column, nextArg(*value)))
+		}
+	}
+	addInt64Min := func(column string, value *int64) {
+		if value != nil {
+			add(fmt.Sprintf("%s >= %s", column, nextArg(*value)))
+		}
+	}
+	addInt64Max := func(column string, value *int64) {
+		if value != nil {
+			add(fmt.Sprintf("%s <= %s", column, nextArg(*value)))
+		}
+	}
+	addTimeMin := func(column string, value *time.Time) {
+		if value != nil {
+			add(fmt.Sprintf("%s >= %s", column, nextArg(*value)))
+		}
+	}
+	addTimeMax := func(column string, value *time.Time) {
+		if value != nil {
+			add(fmt.Sprintf("%s <= %s", column, nextArg(*value)))
+		}
+	}
+
+	if opts.NeedsAttention {
+		add("r.deleted_at IS NULL")
+		add("NOT (r.visible = false AND r.reviewed = true)")
+		add("(r.reviewed = false OR COALESCE(rc.open_report_count, 0) > 0)")
+	} else {
+		switch opts.Deleted {
+		case "include":
+		case "only":
+			add("r.deleted_at IS NOT NULL")
+		default:
+			add("r.deleted_at IS NULL")
+		}
+	}
+
+	addBool("r.visible", opts.Visible)
+	addBool("r.reviewed", opts.Reviewed)
+	addBool("r.positive", opts.Positive)
+	addBool("r.student_verified", opts.StudentVerified)
+	addBool("r.uaeu_origin", opts.UaeuOrigin)
+
+	switch opts.Media {
+	case "with_media":
+		add("(r.attachment IS NOT NULL OR r.gif IS NOT NULL)")
+	case "without_media":
+		add("r.attachment IS NULL AND r.gif IS NULL")
+	case "attachment":
+		add("r.attachment IS NOT NULL")
+	case "gif":
+		add("r.gif IS NOT NULL")
+	}
+	addPresenceCondition := func(column, mode string) {
+		switch mode {
+		case "has":
+			add(column + " IS NOT NULL")
+		case "none":
+			add(column + " IS NULL")
+		}
+	}
+	addPresenceCondition("r.session_id", opts.HasSession)
+	addPresenceCondition("r.user_id", opts.HasUser)
+	addPresenceCondition("r.ip_address", opts.HasIP)
+
+	switch opts.OpenReports {
+	case "has":
+		add("COALESCE(rc.open_report_count, 0) > 0")
+	case "none":
+		add("COALESCE(rc.open_report_count, 0) = 0")
+	}
+	switch opts.Signals {
+	case "has":
+		add("COALESCE(sc.signal_count, 0) > 0")
+	case "none":
+		add("COALESCE(sc.signal_count, 0) = 0")
+	}
+
+	if opts.Search != "" {
+		param := nextArg("%" + opts.Search + "%")
+		add(fmt.Sprintf(`(
+			r.id::text ILIKE %[1]s
+			OR r.professor_email ILIKE %[1]s
+			OR COALESCE(p.name, '') ILIKE %[1]s
+			OR COALESCE(p.college, '') ILIKE %[1]s
+			OR COALESCE(p.university, '') ILIKE %[1]s
+			OR r.content ILIKE %[1]s
+			OR COALESCE(r.course_taken, '') ILIKE %[1]s
+			OR COALESCE(r.grade_received, '') ILIKE %[1]s
+			OR r.language ILIKE %[1]s
+			OR COALESCE(r.moderation_reason_code, '') ILIKE %[1]s
+			OR COALESCE(r.moderation_note, '') ILIKE %[1]s
+		)`, param))
+	}
+
+	if opts.ReviewID != nil {
+		add(fmt.Sprintf("r.id = %s", nextArg(*opts.ReviewID)))
+	}
+	addText("r.professor_email", opts.ProfessorEmail)
+	addText("COALESCE(p.name, '')", opts.ProfessorName)
+	addText("COALESCE(p.college, '')", opts.ProfessorCollege)
+	addText("COALESCE(p.university, '')", opts.ProfessorUniversity)
+	addExactText("r.language", opts.Language)
+	addText("COALESCE(r.course_taken, '')", opts.CourseTaken)
+	addText("COALESCE(r.grade_received, '')", opts.GradeReceived)
+	addExactText("COALESCE(r.moderation_reason_code, '')", opts.ModerationReasonCode)
+	if opts.ReviewerUserID != nil {
+		add(fmt.Sprintf("r.reviewer_user_id = %s", nextArg(*opts.ReviewerUserID)))
+	}
+	if opts.SessionID != nil {
+		add(fmt.Sprintf("r.session_id = %s", nextArg(*opts.SessionID)))
+	}
+	if opts.UserID != nil {
+		add(fmt.Sprintf("r.user_id = %s", nextArg(*opts.UserID)))
+	}
+	if opts.IPAddress != "" {
+		add(fmt.Sprintf("r.ip_address::text ILIKE %s", nextArg("%"+opts.IPAddress+"%")))
+	}
+
+	addIntMin("r.score", opts.ScoreMin)
+	addIntMax("r.score", opts.ScoreMax)
+	addIntMin("r.like_count", opts.LikeMin)
+	addIntMax("r.like_count", opts.LikeMax)
+	addIntMin("r.dislike_count", opts.DislikeMin)
+	addIntMax("r.dislike_count", opts.DislikeMax)
+	addInt64Min("r.reply_count", opts.ReplyMin)
+	addInt64Max("r.reply_count", opts.ReplyMax)
+	addTimeMin("r.created_at", opts.CreatedFrom)
+	addTimeMax("r.created_at", opts.CreatedTo)
+	addTimeMin("r.reviewed_at", opts.ReviewedFrom)
+	addTimeMax("r.reviewed_at", opts.ReviewedTo)
+
+	where := "TRUE"
+	if len(conditions) > 0 {
+		where = strings.Join(conditions, "\n\t\t\tAND ")
+	}
+
+	query := fmt.Sprintf(`
 		WITH signal_source AS (
 			SELECT target_id
 			FROM moderation.signal
@@ -473,20 +681,17 @@ func (db *AdminDB) listReviewIDs(ctx context.Context, opts ListReviewOptions) ([
 		)
 		SELECT r.id
 		FROM professor.review r
+		LEFT JOIN professor.professor p ON p.email = r.professor_email
 		LEFT JOIN report_counts rc ON rc.review_id = r.id
 		LEFT JOIN signal_counts sc ON sc.target_id = r.id::text
-		WHERE ($3::boolean OR r.deleted_at IS NULL)
-		  AND NOT (r.visible = false AND r.reviewed = true)
-		  AND (r.reviewed = false OR COALESCE(rc.open_report_count, 0) > 0)
+		WHERE %s
 		ORDER BY
 			COALESCE(rc.open_report_count, 0) DESC,
 			COALESCE(sc.signal_count, 0) DESC,
 			r.created_at DESC
-		LIMIT $1 OFFSET $2`,
-		opts.Limit,
-		opts.Offset,
-		opts.IncludeDeleted,
-	)
+		LIMIT $1 OFFSET $2`, where)
+
+	rows, err := db.db.Pool.Query(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}

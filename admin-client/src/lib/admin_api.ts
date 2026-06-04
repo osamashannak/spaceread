@@ -30,6 +30,48 @@ export type AdminReviewListResponse = {
     offset: number;
 };
 
+export type AdminReviewFilters = {
+    needs_attention: boolean;
+    deleted: "exclude" | "include" | "only";
+    visible: "any" | "visible" | "hidden";
+    reviewed: "any" | "reviewed" | "not_reviewed";
+    positive: "any" | "recommended" | "not_recommended";
+    student_verified: "any" | "verified" | "not_verified";
+    uaeu_origin: "any" | "uaeu" | "non_uaeu";
+    media: "any" | "with_media" | "without_media" | "attachment" | "gif";
+    open_reports: "any" | "has" | "none";
+    signals: "any" | "has" | "none";
+    has_session: "any" | "has" | "none";
+    has_user: "any" | "has" | "none";
+    has_ip: "any" | "has" | "none";
+    search: string;
+    review_id: string;
+    professor_email: string;
+    professor_name: string;
+    professor_college: string;
+    professor_university: string;
+    language: string;
+    course_taken: string;
+    grade_received: string;
+    moderation_reason_code: string;
+    reviewer_user_id: string;
+    session_id: string;
+    user_id: string;
+    ip_address: string;
+    score_min: string;
+    score_max: string;
+    like_min: string;
+    like_max: string;
+    dislike_min: string;
+    dislike_max: string;
+    reply_min: string;
+    reply_max: string;
+    created_from: string;
+    created_to: string;
+    reviewed_from: string;
+    reviewed_to: string;
+};
+
 export type AdminReasonsResponse = {
     reasons: AdminReason[];
 };
@@ -429,8 +471,16 @@ export async function getAdminSession(signal?: AbortSignal) {
     return adminFetch<AdminSessionResponse>("/session", {signal});
 }
 
-export async function listAdminReviews(signal?: AbortSignal) {
-    return adminFetch<AdminReviewListResponse>("/reviews?limit=100", {signal});
+export async function listAdminReviews(signal?: AbortSignal, filters?: AdminReviewFilters) {
+    const params = new URLSearchParams({limit: "100"});
+    if (filters) {
+        for (const [key, value] of Object.entries(filters)) {
+            if (value !== "" && value !== "any") {
+                params.set(key, String(value));
+            }
+        }
+    }
+    return adminFetch<AdminReviewListResponse>(`/reviews?${params.toString()}`, {signal});
 }
 
 export async function getAdminReview(reviewId: string, signal?: AbortSignal) {
