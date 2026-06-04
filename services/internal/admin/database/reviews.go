@@ -13,7 +13,10 @@ import (
 	v1 "github.com/osamashannak/uaeu-space/services/internal/api/v1"
 )
 
-var ErrNotFound = errors.New("admin target not found")
+var (
+	ErrConflict = errors.New("admin target conflict")
+	ErrNotFound = errors.New("admin target not found")
+)
 
 type ListReviewOptions struct {
 	Limit          int
@@ -36,6 +39,16 @@ type AttachmentVisibilityDecision struct {
 	ActorUserID  *int64
 	ReasonCode   *string
 	Note         *string
+}
+
+type ReasonUpdate struct {
+	CurrentCode     string
+	Code            string
+	Label           string
+	PolicyArea      string
+	PolicyReference *string
+	Active          bool
+	SortOrder       int16
 }
 
 type ReviewNoteDecision struct {
@@ -85,6 +98,47 @@ func (db *AdminDB) ReasonExists(ctx context.Context, code string) (bool, error) 
 		`SELECT EXISTS(SELECT 1 FROM moderation.reason WHERE code = $1 AND active)`, code).
 		Scan(&exists)
 	return exists, err
+}
+
+func (db *AdminDB) UpdateReason(ctx context.Context, update ReasonUpdate) (*v1.AdminReason, error) {
+	var reason v1.AdminReason
+	err := db.db.Pool.QueryRow(ctx, `
+		UPDATE moderation.reason
+		SET
+			code = $2,
+			label = $3,
+			policy_area = $4,
+			policy_reference = $5,
+			active = $6,
+			sort_order = $7
+		WHERE code = $1
+		RETURNING code, label, policy_area, policy_reference, active, sort_order`,
+		update.CurrentCode,
+		update.Code,
+		update.Label,
+		update.PolicyArea,
+		update.PolicyReference,
+		update.Active,
+		update.SortOrder,
+	).Scan(
+		&reason.Code,
+		&reason.Label,
+		&reason.PolicyArea,
+		&reason.PolicyReference,
+		&reason.Active,
+		&reason.SortOrder,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrNotFound
+		}
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return nil, ErrConflict
+		}
+		return nil, err
+	}
+	return &reason, nil
 }
 
 func (db *AdminDB) ListReviews(ctx context.Context, opts ListReviewOptions) ([]v1.AdminReview, error) {

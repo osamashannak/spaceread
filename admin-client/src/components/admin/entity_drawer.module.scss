@@ -1,6 +1,7 @@
 .layer {
   height: 100dvh;
   inset: 0;
+  overscroll-behavior: none;
   position: fixed;
   width: 100vw;
   z-index: 80;
@@ -26,6 +27,7 @@
   margin-left: auto;
   max-width: 100%;
   min-width: 0;
+  overscroll-behavior: contain;
   overflow-y: auto;
   position: relative;
   transform-origin: right center;

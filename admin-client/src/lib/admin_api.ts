@@ -34,6 +34,10 @@ export type AdminReasonsResponse = {
     reasons: AdminReason[];
 };
 
+export type AdminReasonResponse = {
+    reason: AdminReason;
+};
+
 export type AdminSessionResponse = {
     user: {
         id: string;
@@ -402,6 +406,23 @@ export type AdminIPDetailResponse = {
 
 export async function listAdminReasons(signal?: AbortSignal) {
     return adminFetch<AdminReasonsResponse>("/reasons", {signal});
+}
+
+export async function updateAdminReason(
+    code: string,
+    body: {
+        code: string;
+        label: string;
+        policy_area: string;
+        policy_reference?: string;
+        active: boolean;
+        sort_order: number;
+    },
+) {
+    return adminFetch<AdminReasonResponse>(`/reasons/${encodeURIComponent(code)}`, {
+        method: "POST",
+        body: JSON.stringify(body),
+    });
 }
 
 export async function getAdminSession(signal?: AbortSignal) {

@@ -104,14 +104,32 @@ export function AdminEntityDrawerProvider({children}: { children: ReactNode }) {
     const [isClosing, setIsClosing] = useState(false);
     const [showSensitive, setShowSensitive] = useState(false);
     const [reasons, setReasons] = useState<AdminReason[]>([]);
+    const drawerOpen = Boolean(current || pending);
+
+    const refreshReasons = useCallback((signal?: AbortSignal) => {
+        listAdminReasons(signal)
+            .then(response => setReasons(response.reasons))
+            .catch(() => {
+                if (!signal?.aborted) {
+                    setReasons([]);
+                }
+            });
+    }, []);
 
     useEffect(() => {
         const controller = new AbortController();
-        listAdminReasons(controller.signal)
-            .then(response => setReasons(response.reasons))
-            .catch(() => setReasons([]));
+        refreshReasons(controller.signal);
         return () => controller.abort();
-    }, []);
+    }, [refreshReasons]);
+
+    useEffect(() => {
+        function onReasonsUpdated() {
+            refreshReasons();
+        }
+
+        window.addEventListener("admin-reasons-updated", onReasonsUpdated);
+        return () => window.removeEventListener("admin-reasons-updated", onReasonsUpdated);
+    }, [refreshReasons]);
 
     const closeDrawer = useCallback(() => {
         if (!current && !pending) return;
@@ -181,7 +199,31 @@ export function AdminEntityDrawerProvider({children}: { children: ReactNode }) {
     }, [pending]);
 
     useEffect(() => {
-        if (!current && !pending) return;
+        if (!drawerOpen) return;
+
+        const previousBodyOverflow = document.body.style.overflow;
+        const previousBodyOverscroll = document.body.style.overscrollBehavior;
+        const previousBodyPaddingRight = document.body.style.paddingRight;
+        const previousDocumentOverscroll = document.documentElement.style.overscrollBehavior;
+        const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+
+        document.body.style.overflow = "hidden";
+        document.body.style.overscrollBehavior = "none";
+        if (scrollbarWidth > 0) {
+            document.body.style.paddingRight = `${scrollbarWidth}px`;
+        }
+        document.documentElement.style.overscrollBehavior = "none";
+
+        return () => {
+            document.body.style.overflow = previousBodyOverflow;
+            document.body.style.overscrollBehavior = previousBodyOverscroll;
+            document.body.style.paddingRight = previousBodyPaddingRight;
+            document.documentElement.style.overscrollBehavior = previousDocumentOverscroll;
+        };
+    }, [drawerOpen]);
+
+    useEffect(() => {
+        if (!drawerOpen) return;
 
         function onKeyDown(event: KeyboardEvent) {
             if (event.key === "Escape") {
@@ -191,7 +233,7 @@ export function AdminEntityDrawerProvider({children}: { children: ReactNode }) {
 
         window.addEventListener("keydown", onKeyDown);
         return () => window.removeEventListener("keydown", onKeyDown);
-    }, [closeDrawer, current, pending]);
+    }, [closeDrawer, drawerOpen]);
 
     const value = useMemo<DrawerContextValue>(() => ({
         openEntity,
@@ -203,7 +245,7 @@ export function AdminEntityDrawerProvider({children}: { children: ReactNode }) {
     return (
         <DrawerContext.Provider value={value}>
             {children}
-            {(current || pending) && createPortal((
+            {drawerOpen && createPortal((
                 <div className={cn(styles.layer, isClosing && styles.closing)}>
                     <button aria-label="Close drawer" className={styles.backdrop} type="button" onClick={closeDrawer}/>
                     <aside aria-label="Entity details" aria-modal="true" className={styles.drawer} role="dialog">
@@ -389,7 +431,8 @@ function ReviewDrawer({
     showSensitive: boolean;
     onReload: () => void;
 }) {
-    const [reason, setReason] = useState(review.moderation_reason_code || reasons[0]?.code || "");
+    const reasonOptions = useMemo(() => activeReasonOptions(reasons), [reasons]);
+    const [reason, setReason] = useState(defaultReasonCode(reasonOptions, review.moderation_reason_code));
     const [note, setNote] = useState(review.moderation_note || "");
     const [pendingAction, setPendingAction] = useState<string | null>(null);
     const [message, setMessage] = useState("");
@@ -397,9 +440,9 @@ function ReviewDrawer({
     const openReports = review.reports.filter(report => !report.resolved);
 
     useEffect(() => {
-        setReason(review.moderation_reason_code || reasons[0]?.code || "");
+        setReason(defaultReasonCode(reasonOptions, review.moderation_reason_code));
         setNote(review.moderation_note || "");
-    }, [reasons, review.id, review.moderation_note, review.moderation_reason_code]);
+    }, [reasonOptions, review.id, review.moderation_note, review.moderation_reason_code]);
 
     async function runAction(action: string, callback: () => Promise<{ review: AdminReview; message: string }>) {
         setPendingAction(action);
@@ -473,12 +516,12 @@ function ReviewDrawer({
             <ActionsSection actions={review.action_history}/>
 
             <DecisionBox
-                disabled={!reasons.length || Boolean(pendingAction)}
+                disabled={!reasonOptions.length || Boolean(pendingAction)}
                 error={error}
                 message={message}
                 note={note}
                 reason={reason}
-                reasons={reasons}
+                reasons={reasonOptions}
                 onNoteChange={setNote}
                 onReasonChange={setReason}
             >
@@ -528,7 +571,8 @@ function ReplyDrawer({
     showSensitive: boolean;
     onReload: () => void;
 }) {
-    const [reason, setReason] = useState(detail.reply.moderation_reason_code || reasons[0]?.code || "");
+    const reasonOptions = useMemo(() => activeReasonOptions(reasons), [reasons]);
+    const [reason, setReason] = useState(defaultReasonCode(reasonOptions, detail.reply.moderation_reason_code));
     const [note, setNote] = useState(detail.reply.moderation_note || "");
     const [pendingAction, setPendingAction] = useState<string | null>(null);
     const [message, setMessage] = useState("");
@@ -537,9 +581,9 @@ function ReplyDrawer({
     const status = replyStatus(reply);
 
     useEffect(() => {
-        setReason(detail.reply.moderation_reason_code || reasons[0]?.code || "");
+        setReason(defaultReasonCode(reasonOptions, detail.reply.moderation_reason_code));
         setNote(detail.reply.moderation_note || "");
-    }, [detail.reply.id, detail.reply.moderation_note, detail.reply.moderation_reason_code, reasons]);
+    }, [detail.reply.id, detail.reply.moderation_note, detail.reply.moderation_reason_code, reasonOptions]);
 
     async function runReplyAction(action: string, callback: () => Promise<AdminReplyDecisionResponse>, successMessage: string) {
         setPendingAction(action);
@@ -625,12 +669,12 @@ function ReplyDrawer({
             <ActionsSection actions={detail.action_history}/>
 
             <DecisionBox
-                disabled={!reasons.length || Boolean(pendingAction)}
+                disabled={!reasonOptions.length || Boolean(pendingAction)}
                 error={error}
                 message={message}
                 note={note}
                 reason={reason}
-                reasons={reasons}
+                reasons={reasonOptions}
                 onNoteChange={setNote}
                 onReasonChange={setReason}
             >
@@ -1396,6 +1440,19 @@ function publicReviewUrl(review: AdminReview) {
 
 function emitReviewUpdated(review: AdminReview) {
     window.dispatchEvent(new CustomEvent<AdminReview>("admin-review-updated", {detail: review}));
+}
+
+function activeReasonOptions(reasons: AdminReason[]) {
+    return reasons
+        .filter(reason => reason.active)
+        .sort((a, b) => a.sort_order - b.sort_order || a.code.localeCompare(b.code));
+}
+
+function defaultReasonCode(reasons: AdminReason[], currentCode?: string) {
+    if (currentCode && reasons.some(reason => reason.code === currentCode)) {
+        return currentCode;
+    }
+    return reasons[0]?.code || "";
 }
 
 const dateFormatter = new Intl.DateTimeFormat(undefined, {

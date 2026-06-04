@@ -29,6 +29,19 @@ type AdminReasonsResponse struct {
 	Reasons []AdminReason `json:"reasons"`
 }
 
+type AdminReasonResponse struct {
+	Reason AdminReason `json:"reason"`
+}
+
+type AdminReasonUpdateRequest struct {
+	Code            *string `json:"code" required:"true"`
+	Label           *string `json:"label" required:"true"`
+	PolicyArea      *string `json:"policy_area" required:"true"`
+	PolicyReference *string `json:"policy_reference"`
+	Active          *bool   `json:"active" required:"true"`
+	SortOrder       *int16  `json:"sort_order" required:"true"`
+}
+
 type AdminReviewListResponse struct {
 	Reviews []AdminReview `json:"reviews"`
 	Limit   int           `json:"limit"`

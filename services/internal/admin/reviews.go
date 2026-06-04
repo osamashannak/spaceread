@@ -31,6 +31,68 @@ func (s *Server) ListReasons() http.Handler {
 	})
 }
 
+func (s *Server) UpdateReason() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		currentCode := strings.TrimSpace(r.PathValue("reasonCode"))
+		if !validReasonCode(currentCode) {
+			writeError(w, http.StatusBadRequest, "invalid moderation reason code")
+			return
+		}
+
+		var request v1.AdminReasonUpdateRequest
+		code, err := jsonutil.Unmarshal(w, r, &request)
+		if err != nil {
+			jsonutil.MarshalResponse(w, code, v1.ErrorResponse{Error: code, Message: err.Error()})
+			return
+		}
+
+		nextCode := strings.TrimSpace(*request.Code)
+		label := strings.TrimSpace(*request.Label)
+		policyArea := strings.TrimSpace(*request.PolicyArea)
+		policyReference := cleanOptionalText(request.PolicyReference)
+
+		switch {
+		case !validReasonCode(nextCode):
+			writeError(w, http.StatusBadRequest, "invalid moderation reason code")
+			return
+		case label == "":
+			writeError(w, http.StatusBadRequest, "label is required")
+			return
+		case policyArea == "":
+			writeError(w, http.StatusBadRequest, "policy_area is required")
+			return
+		case *request.SortOrder < 0:
+			writeError(w, http.StatusBadRequest, "sort_order must be zero or greater")
+			return
+		}
+
+		reason, err := s.db.UpdateReason(r.Context(), admindb.ReasonUpdate{
+			CurrentCode:     currentCode,
+			Code:            nextCode,
+			Label:           label,
+			PolicyArea:      policyArea,
+			PolicyReference: policyReference,
+			Active:          *request.Active,
+			SortOrder:       *request.SortOrder,
+		})
+		if err != nil {
+			if errors.Is(err, admindb.ErrNotFound) {
+				writeError(w, http.StatusNotFound, "moderation reason not found")
+				return
+			}
+			if errors.Is(err, admindb.ErrConflict) {
+				writeError(w, http.StatusConflict, "moderation reason code already exists")
+				return
+			}
+			logging.FromContext(r.Context()).Errorf("failed to update moderation reason %q: %v", currentCode, err)
+			writeError(w, http.StatusInternalServerError, "failed to update moderation reason")
+			return
+		}
+
+		jsonutil.MarshalResponse(w, http.StatusOK, v1.AdminReasonResponse{Reason: *reason})
+	})
+}
+
 func (s *Server) ListReviews() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		limit := parseBoundedInt(r.URL.Query().Get("limit"), defaultReviewLimit, 1, maxReviewLimit)
@@ -270,6 +332,22 @@ func cleanOptionalText(value *string) *string {
 		return nil
 	}
 	return &cleaned
+}
+
+func validReasonCode(code string) bool {
+	if code == "" || len(code) > 80 {
+		return false
+	}
+	for _, char := range code {
+		switch {
+		case char >= 'a' && char <= 'z':
+		case char >= '0' && char <= '9':
+		case char == '_':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 func writeError(w http.ResponseWriter, status int, message string) {
