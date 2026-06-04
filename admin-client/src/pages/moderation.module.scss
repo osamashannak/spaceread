@@ -80,6 +80,181 @@
   position: relative;
 }
 
+.filterSheetLayer {
+  height: 100dvh;
+  inset: 0;
+  position: fixed;
+  width: 100vw;
+  z-index: 90;
+}
+
+.filterSheetBackdrop {
+  background: hsl(var(--foreground) / 0.16);
+  border: 0;
+  cursor: pointer;
+  height: 100%;
+  inset: 0;
+  position: absolute;
+  width: 100%;
+}
+
+.filterSheet {
+  animation: drawerSlideIn 0.2s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  background: #fff;
+  border-left: 1px solid hsl(var(--border));
+  box-shadow: -18px 0 45px hsl(var(--foreground) / 0.14);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  height: 100dvh;
+  margin-left: auto;
+  min-width: 0;
+  overscroll-behavior: contain;
+  position: relative;
+  width: min(620px, calc(100vw - 24px));
+}
+
+.filterSheetHeader {
+  align-items: flex-start;
+  background: #fff;
+  border-bottom: 1px solid #dce5ec;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  min-width: 0;
+  padding: 16px 18px 14px;
+
+  > div {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+  }
+
+  span {
+    align-items: center;
+    color: hsl(var(--spaceread-blue));
+    display: inline-flex;
+    font-size: 11px;
+    font-weight: 800;
+    gap: 6px;
+    text-transform: uppercase;
+  }
+
+  h2 {
+    color: hsl(var(--foreground));
+    font-size: 20px;
+    font-weight: 800;
+    line-height: 1.2;
+    margin: 0;
+  }
+
+  p {
+    color: hsl(var(--muted-foreground));
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.4;
+    margin: 0;
+  }
+}
+
+.filterSheetBody {
+  display: grid;
+  grid-template-columns: 164px minmax(0, 1fr);
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.filterSectionNav {
+  background: #f8fbfc;
+  border-right: 1px solid #dce5ec;
+  display: grid;
+  gap: 4px;
+  align-content: start;
+  min-width: 0;
+  overscroll-behavior: contain;
+  overflow-y: auto;
+  padding: 10px;
+}
+
+.filterSectionButton {
+  align-items: center;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  color: hsl(var(--muted-foreground));
+  cursor: pointer;
+  display: flex;
+  font-size: 12px;
+  font-weight: 800;
+  gap: 8px;
+  justify-content: space-between;
+  min-height: 34px;
+  padding: 0 9px;
+  text-align: left;
+  transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease;
+
+  &:focus-visible {
+    box-shadow: 0 0 0 3px hsl(var(--ring) / 0.16);
+    outline: none;
+  }
+}
+
+.filterSectionActive {
+  background: #fff;
+  border-color: #bae6fd;
+  color: hsl(var(--foreground));
+  box-shadow: 0 1px 2px hsl(var(--foreground) / 0.06);
+}
+
+.filterSectionContent {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+  min-height: 0;
+  min-width: 0;
+  overscroll-behavior: contain;
+  overflow-y: auto;
+  padding: 14px;
+}
+
+.filterSectionHeader {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  min-width: 0;
+
+  strong {
+    color: hsl(var(--foreground));
+    font-size: 14px;
+    font-weight: 800;
+    line-height: 1.3;
+  }
+
+  span {
+    color: hsl(var(--muted-foreground));
+    font-size: 11px;
+    font-weight: 800;
+  }
+}
+
+.fieldGrid,
+.rangeGrid {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.filterSheetFooter {
+  align-items: center;
+  border-top: 1px solid #dce5ec;
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  min-width: 0;
+  padding: 12px 14px;
+}
+
 .filterBar {
   align-items: center;
   display: flex;
@@ -1437,6 +1612,30 @@
     left: -1px;
     max-height: min(76vh, 680px);
     right: -1px;
+  }
+
+  .filterSheet {
+    width: 100vw;
+  }
+
+  .filterSheetBody {
+    grid-template-columns: 1fr;
+  }
+
+  .filterSectionNav {
+    border-bottom: 1px solid #dce5ec;
+    border-right: 0;
+    display: flex;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  .filterSectionButton {
+    flex: 0 0 auto;
+  }
+
+  .filterSheetFooter {
+    justify-content: flex-start;
   }
 
   .stateNotice {
