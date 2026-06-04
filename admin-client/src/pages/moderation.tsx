@@ -1,4 +1,5 @@
 import {type KeyboardEvent, type ReactNode, useCallback, useEffect, useMemo, useState} from "react";
+import {createPortal} from "react-dom";
 import {
     AlertCircle,
     CheckCircle2,
@@ -35,6 +36,7 @@ type ReviewFilterKey = keyof AdminReviewFilters;
 type SelectFilterKey = {
     [K in ReviewFilterKey]: AdminReviewFilters[K] extends string ? K : never
 }[ReviewFilterKey];
+type FilterSectionKey = "common" | "status" | "identity" | "content" | "metrics";
 
 const defaultReviewFilters: AdminReviewFilters = {
     needs_attention: true,
@@ -123,6 +125,46 @@ const rangeFilters: { label: string; minKey: SelectFilterKey; maxKey: SelectFilt
     {label: "Reviewed at", minKey: "reviewed_from", maxKey: "reviewed_to", type: "date"},
 ];
 
+const filterSections: { key: FilterSectionKey; label: string }[] = [
+    {key: "common", label: "Common"},
+    {key: "status", label: "Status"},
+    {key: "identity", label: "Identity"},
+    {key: "content", label: "Content"},
+    {key: "metrics", label: "Metrics"},
+];
+
+const sectionSelectFilterKeys: Record<FilterSectionKey, SelectFilterKey[]> = {
+    common: [],
+    status: ["deleted", "visible", "reviewed", "positive", "student_verified", "uaeu_origin", "media", "open_reports", "signals"],
+    identity: ["has_session", "has_user", "has_ip"],
+    content: [],
+    metrics: [],
+};
+
+const sectionTextFilterKeys: Record<FilterSectionKey, SelectFilterKey[]> = {
+    common: ["search"],
+    status: [],
+    identity: ["review_id", "professor_email", "professor_name", "professor_college", "professor_university", "reviewer_user_id", "session_id", "user_id", "ip_address"],
+    content: ["language", "course_taken", "grade_received", "moderation_reason_code"],
+    metrics: [],
+};
+
+const sectionRangeFilterKeys: Record<FilterSectionKey, SelectFilterKey[]> = {
+    common: [],
+    status: [],
+    identity: [],
+    content: [],
+    metrics: ["score_min", "like_min", "dislike_min", "reply_min", "created_from", "reviewed_from"],
+};
+
+const sectionFilterKeys: Record<FilterSectionKey, ReviewFilterKey[]> = {
+    common: ["needs_attention", "search"],
+    status: ["deleted", "visible", "reviewed", "positive", "student_verified", "uaeu_origin", "media", "open_reports", "signals"],
+    identity: ["has_session", "has_user", "has_ip", "review_id", "professor_email", "professor_name", "professor_college", "professor_university", "reviewer_user_id", "session_id", "user_id", "ip_address"],
+    content: ["language", "course_taken", "grade_received", "moderation_reason_code"],
+    metrics: ["score_min", "score_max", "like_min", "like_max", "dislike_min", "dislike_max", "reply_min", "reply_max", "created_from", "created_to", "reviewed_from", "reviewed_to"],
+};
+
 const dateFormatter = new Intl.DateTimeFormat(undefined, {
     dateStyle: "medium",
     timeStyle: "short",
@@ -137,6 +179,7 @@ export function ModerationPage() {
     const [filters, setFilters] = useState<AdminReviewFilters>(defaultReviewFilters);
     const [draftFilters, setDraftFilters] = useState<AdminReviewFilters>(defaultReviewFilters);
     const [filtersOpen, setFiltersOpen] = useState(false);
+    const [activeFilterSection, setActiveFilterSection] = useState<FilterSectionKey>("common");
     const {openEntity} = useAdminEntityDrawer();
 
     const loadReviews = useCallback((mode: "initial" | "refresh" = "initial") => {
@@ -170,6 +213,30 @@ export function ModerationPage() {
     useEffect(() => loadReviews("initial"), [loadReviews]);
 
     useEffect(() => {
+        if (!filtersOpen) return;
+
+        const previousBodyOverflow = document.body.style.overflow;
+        const previousBodyOverscroll = document.body.style.overscrollBehavior;
+        const previousBodyPaddingRight = document.body.style.paddingRight;
+        const previousDocumentOverscroll = document.documentElement.style.overscrollBehavior;
+        const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+
+        document.body.style.overflow = "hidden";
+        document.body.style.overscrollBehavior = "none";
+        if (scrollbarWidth > 0) {
+            document.body.style.paddingRight = `${scrollbarWidth}px`;
+        }
+        document.documentElement.style.overscrollBehavior = "none";
+
+        return () => {
+            document.body.style.overflow = previousBodyOverflow;
+            document.body.style.overscrollBehavior = previousBodyOverscroll;
+            document.body.style.paddingRight = previousBodyPaddingRight;
+            document.documentElement.style.overscrollBehavior = previousDocumentOverscroll;
+        };
+    }, [filtersOpen]);
+
+    useEffect(() => {
         function onReviewUpdated(event: Event) {
             const review = (event as CustomEvent<AdminReview>).detail;
             setReviews(current => {
@@ -192,6 +259,9 @@ export function ModerationPage() {
     const appliedFilterChips = useMemo(() => filterChips(filters), [filters]);
     const draftFilterCount = countActiveFilters(draftFilters);
     const draftDirty = !filtersEqual(draftFilters, filters);
+    const activeSelectFilters = stateFilters.filter(filter => sectionSelectFilterKeys[activeFilterSection].includes(filter.key));
+    const activeTextFilters = textFilters.filter(filter => sectionTextFilterKeys[activeFilterSection].includes(filter.key));
+    const activeRangeFilters = rangeFilters.filter(filter => sectionRangeFilterKeys[activeFilterSection].includes(filter.minKey));
 
     function openReview(review: AdminReview) {
         setSelectedId(review.id);
@@ -203,9 +273,22 @@ export function ModerationPage() {
     }
 
     function applyFilters() {
-        setFilters(draftFilters);
+        setFilters({...draftFilters});
         setFiltersOpen(false);
         setSelectedId(null);
+    }
+
+    function openFilters() {
+        setDraftFilters(filters);
+        setFiltersOpen(true);
+    }
+
+    function toggleFilters() {
+        if (filtersOpen) {
+            cancelFilters();
+            return;
+        }
+        openFilters();
     }
 
     function cancelFilters() {
@@ -235,13 +318,12 @@ export function ModerationPage() {
 
             <section className={styles.filters} aria-label="Review filters">
                 <div className={styles.filterBar}>
-                    <button className={cn(styles.filterSummaryButton, filtersOpen && styles.filterSummaryOpen)} type="button" onClick={() => setFiltersOpen(value => !value)}>
+                    <button className={cn(styles.filterSummaryButton, filtersOpen && styles.filterSummaryOpen)} type="button" onClick={toggleFilters}>
                         <SlidersHorizontal size={16}/>
                         <span>Filters</span>
                         <Badge className={styles.filterCountBadge} variant={defaultFiltersSelected ? "info" : "warning"}>
                             {defaultFiltersSelected ? "Default" : `${appliedFilterChips.length} active`}
                         </Badge>
-                        {draftDirty && <Badge className={styles.filterCountBadge} variant="outline">Unsaved</Badge>}
                     </button>
                     <div className={styles.appliedChips}>
                         {appliedFilterChips.slice(0, 5).map(chip => (
@@ -249,100 +331,141 @@ export function ModerationPage() {
                         ))}
                         {appliedFilterChips.length > 5 && <span>+{appliedFilterChips.length - 5}</span>}
                     </div>
-                    <div className={styles.filterBarActions}>
-                        <Button disabled={!draftDirty} size="sm" type="button" onClick={applyFilters}>
-                            <CheckCircle2 size={15}/>
-                            Apply
-                        </Button>
-                    </div>
                 </div>
-                {filtersOpen && (
-                    <div className={styles.filterPanel}>
-                        <div className={styles.filterPanelHead}>
-                            <div>
-                                <span><Filter size={14}/> Advanced filters</span>
-                                <strong>{draftFilters.needs_attention ? "Default queue is still on" : `${draftFilterCount} staged fields`}</strong>
-                            </div>
-                            <Button size="icon" type="button" variant="ghost" aria-label="Close filters" onClick={cancelFilters}>
-                                <X size={16}/>
-                            </Button>
-                        </div>
-                        <div className={styles.quickFilterRow}>
-                            <label className={cn(styles.filterToggle, draftFilters.needs_attention && styles.filterActive)}>
-                                <input
-                                    checked={draftFilters.needs_attention}
-                                    type="checkbox"
-                                    onChange={event => updateFilter("needs_attention", event.target.checked)}
-                                />
-                                <span>Needs attention</span>
-                            </label>
-                        </div>
-                        <div className={styles.filterGrid}>
-                            <FilterGroup title="State fields">
-                                {stateFilters.map(filter => (
-                                    <label className={styles.filterField} key={filter.key}>
-                                        <span>{filter.label}</span>
-                                        <select
-                                            className={styles.selectInput}
-                                            value={draftFilters[filter.key]}
-                                            onChange={event => updateFilter(filter.key, event.target.value as AdminReviewFilters[typeof filter.key])}
-                                        >
-                                            {filter.options.map(option => (
-                                                <option key={option.value} value={option.value}>{option.label}</option>
-                                            ))}
-                                        </select>
-                                    </label>
-                                ))}
-                            </FilterGroup>
-                            <FilterGroup title="Text and IDs">
-                                {textFilters.map(filter => (
-                                    <label className={styles.filterField} key={filter.key}>
-                                        <span>{filter.label}</span>
-                                        <Input
-                                            placeholder={filter.placeholder}
-                                            value={draftFilters[filter.key] as string}
-                                            onChange={event => updateFilter(filter.key, event.target.value as AdminReviewFilters[typeof filter.key])}
-                                        />
-                                    </label>
-                                ))}
-                            </FilterGroup>
-                            <FilterGroup title="Ranges">
-                                {rangeFilters.map(filter => (
-                                    <div className={styles.rangeField} key={filter.label}>
-                                        <span>{filter.label}</span>
-                                        <Input
-                                            aria-label={`${filter.label} minimum`}
-                                            placeholder="Min"
-                                            type={filter.type || "number"}
-                                            value={draftFilters[filter.minKey] as string}
-                                            onChange={event => updateFilter(filter.minKey, event.target.value as AdminReviewFilters[typeof filter.minKey])}
-                                        />
-                                        <Input
-                                            aria-label={`${filter.label} maximum`}
-                                            placeholder="Max"
-                                            type={filter.type || "number"}
-                                            value={draftFilters[filter.maxKey] as string}
-                                            onChange={event => updateFilter(filter.maxKey, event.target.value as AdminReviewFilters[typeof filter.maxKey])}
-                                        />
+                {filtersOpen && createPortal((
+                    <div className={styles.filterSheetLayer}>
+                        <button aria-label="Close filters" className={styles.filterSheetBackdrop} type="button" onClick={cancelFilters}/>
+                        <aside aria-label="Advanced review filters" aria-modal="true" className={styles.filterSheet} role="dialog">
+                            <header className={styles.filterSheetHeader}>
+                                <div>
+                                    <span><Filter size={14}/> Advanced filters</span>
+                                    <h2>Review fields</h2>
+                                    <p>{draftDirty ? `${draftFilterCount} selected fields` : "No unapplied changes"}</p>
+                                </div>
+                                <Button size="icon" type="button" variant="ghost" aria-label="Close filters" onClick={cancelFilters}>
+                                    <X size={16}/>
+                                </Button>
+                            </header>
+
+                            <div className={styles.filterSheetBody}>
+                                <nav className={styles.filterSectionNav} aria-label="Filter sections">
+                                    {filterSections.map(section => {
+                                        const count = countActiveForKeys(draftFilters, sectionFilterKeys[section.key]);
+                                        return (
+                                            <button
+                                                className={cn(styles.filterSectionButton, activeFilterSection === section.key && styles.filterSectionActive)}
+                                                key={section.key}
+                                                type="button"
+                                                onClick={() => setActiveFilterSection(section.key)}
+                                            >
+                                                <span>{section.label}</span>
+                                                {count > 0 && <Badge className={styles.filterCountBadge} variant="outline">{count}</Badge>}
+                                            </button>
+                                        );
+                                    })}
+                                </nav>
+
+                                <section className={styles.filterSectionContent}>
+                                    <div className={styles.filterSectionHeader}>
+                                        <strong>{filterSections.find(section => section.key === activeFilterSection)?.label}</strong>
+                                        <span>{countActiveForKeys(draftFilters, sectionFilterKeys[activeFilterSection])} selected</span>
                                     </div>
-                                ))}
-                            </FilterGroup>
-                        </div>
-                        <div className={styles.filterPanelFooter}>
-                            <Button disabled={filtersEqual(draftFilters, defaultReviewFilters)} size="sm" type="button" variant="outline" onClick={resetDraftFilters}>
-                                <RotateCcw size={15}/>
-                                Reset
-                            </Button>
-                            <Button size="sm" type="button" variant="ghost" onClick={cancelFilters}>
-                                Cancel
-                            </Button>
-                            <Button disabled={!draftDirty} size="sm" type="button" onClick={applyFilters}>
-                                <CheckCircle2 size={15}/>
-                                Apply filters
-                            </Button>
-                        </div>
+
+                                    {activeFilterSection === "common" && (
+                                        <div className={styles.quickFilterRow}>
+                                            <label className={cn(styles.filterToggle, draftFilters.needs_attention && styles.filterActive)}>
+                                                <input
+                                                    checked={draftFilters.needs_attention}
+                                                    type="checkbox"
+                                                    onChange={event => updateFilter("needs_attention", event.target.checked)}
+                                                />
+                                                <span>Needs attention</span>
+                                            </label>
+                                        </div>
+                                    )}
+
+                                    {activeSelectFilters.length > 0 && (
+                                        <FilterGroup title="State">
+                                            <div className={styles.fieldGrid}>
+                                                {activeSelectFilters.map(filter => (
+                                                    <label className={styles.filterField} key={filter.key}>
+                                                        <span>{filter.label}</span>
+                                                        <select
+                                                            className={styles.selectInput}
+                                                            value={draftFilters[filter.key]}
+                                                            onChange={event => updateFilter(filter.key, event.target.value as AdminReviewFilters[typeof filter.key])}
+                                                        >
+                                                            {filter.options.map(option => (
+                                                                <option key={option.value} value={option.value}>{option.label}</option>
+                                                            ))}
+                                                        </select>
+                                                    </label>
+                                                ))}
+                                            </div>
+                                        </FilterGroup>
+                                    )}
+
+                                    {activeTextFilters.length > 0 && (
+                                        <FilterGroup title={activeFilterSection === "common" ? "Search" : "Text and IDs"}>
+                                            <div className={styles.fieldGrid}>
+                                                {activeTextFilters.map(filter => (
+                                                    <label className={styles.filterField} key={filter.key}>
+                                                        <span>{filter.label}</span>
+                                                        <Input
+                                                            placeholder={filter.placeholder}
+                                                            value={draftFilters[filter.key] as string}
+                                                            onChange={event => updateFilter(filter.key, event.target.value as AdminReviewFilters[typeof filter.key])}
+                                                        />
+                                                    </label>
+                                                ))}
+                                            </div>
+                                        </FilterGroup>
+                                    )}
+
+                                    {activeRangeFilters.length > 0 && (
+                                        <FilterGroup title="Ranges">
+                                            <div className={styles.rangeGrid}>
+                                                {activeRangeFilters.map(filter => (
+                                                    <div className={styles.rangeField} key={filter.label}>
+                                                        <span>{filter.label}</span>
+                                                        <Input
+                                                            aria-label={`${filter.label} minimum`}
+                                                            placeholder="Min"
+                                                            type={filter.type || "number"}
+                                                            value={draftFilters[filter.minKey] as string}
+                                                            onChange={event => updateFilter(filter.minKey, event.target.value as AdminReviewFilters[typeof filter.minKey])}
+                                                        />
+                                                        <Input
+                                                            aria-label={`${filter.label} maximum`}
+                                                            placeholder="Max"
+                                                            type={filter.type || "number"}
+                                                            value={draftFilters[filter.maxKey] as string}
+                                                            onChange={event => updateFilter(filter.maxKey, event.target.value as AdminReviewFilters[typeof filter.maxKey])}
+                                                        />
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </FilterGroup>
+                                    )}
+                                </section>
+                            </div>
+
+                            <footer className={styles.filterSheetFooter}>
+                                <Button disabled={filtersEqual(draftFilters, defaultReviewFilters)} size="sm" type="button" variant="outline" onClick={resetDraftFilters}>
+                                    <RotateCcw size={15}/>
+                                    Reset
+                                </Button>
+                                <Button size="sm" type="button" variant="ghost" onClick={cancelFilters}>
+                                    Cancel
+                                </Button>
+                                <Button disabled={!draftDirty} size="sm" type="button" onClick={applyFilters}>
+                                    <CheckCircle2 size={15}/>
+                                    Apply filters
+                                </Button>
+                            </footer>
+                        </aside>
                     </div>
-                )}
+                ), document.body)}
             </section>
 
             <section className={cn(styles.reviewFeed, isRefreshing && styles.refreshingFeed)}>
@@ -604,6 +727,15 @@ function filterChips(filters: AdminReviewFilters) {
 
 function countActiveFilters(filters: AdminReviewFilters) {
     return (Object.keys(defaultReviewFilters) as ReviewFilterKey[]).filter(key => filters[key] !== defaultReviewFilters[key]).length + (filters.needs_attention ? 1 : 0);
+}
+
+function countActiveForKeys(filters: AdminReviewFilters, keys: ReviewFilterKey[]) {
+    return keys.filter(key => isFilterActive(filters, key)).length;
+}
+
+function isFilterActive(filters: AdminReviewFilters, key: ReviewFilterKey) {
+    if (key === "needs_attention") return filters.needs_attention;
+    return filters[key] !== defaultReviewFilters[key];
 }
 
 function matchesChoice(value: string, actual: boolean, trueValue: string, falseValue: string) {
