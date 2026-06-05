@@ -17,15 +17,21 @@ import {
     ThumbsUp,
     X,
 } from "lucide-react";
+import {BidiParagraph} from "@/components/admin/bidi_text";
 import {EntityLink, useAdminEntityDrawer} from "@/components/admin/entity_drawer";
 import {Badge} from "@/components/ui/badge";
 import {Button} from "@/components/ui/button";
 import {Input} from "@/components/ui/input";
+import {Textarea} from "@/components/ui/textarea";
 import {
     AdminApiError,
+    type AdminReason,
     type AdminReviewFilters,
     type AdminReview,
+    listAdminReasons,
     listAdminReviews,
+    saveReviewNote,
+    setReviewVisibility,
 } from "@/lib/admin_api";
 import {cn} from "@/lib/utils";
 import styles from "./moderation.module.scss";
@@ -37,6 +43,7 @@ type SelectFilterKey = {
     [K in ReviewFilterKey]: AdminReviewFilters[K] extends string ? K : never
 }[ReviewFilterKey];
 type FilterSectionKey = "common" | "status" | "identity" | "content" | "metrics";
+type BulkReviewAction = "keep" | "hide" | "note";
 
 const defaultReviewFilters: AdminReviewFilters = {
     sort: "newest",
@@ -179,10 +186,18 @@ export function ModerationPage() {
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [selectedId, setSelectedId] = useState<string | null>(null);
     const [selectedReviewIds, setSelectedReviewIds] = useState<Set<string>>(new Set());
+    const [reasons, setReasons] = useState<AdminReason[]>([]);
     const [filters, setFilters] = useState<AdminReviewFilters>(defaultReviewFilters);
     const [draftFilters, setDraftFilters] = useState<AdminReviewFilters>(defaultReviewFilters);
     const [filtersOpen, setFiltersOpen] = useState(false);
     const [activeFilterSection, setActiveFilterSection] = useState<FilterSectionKey>("common");
+    const [bulkActionsOpen, setBulkActionsOpen] = useState(false);
+    const [bulkReason, setBulkReason] = useState("");
+    const [bulkNote, setBulkNote] = useState("");
+    const [bulkPendingAction, setBulkPendingAction] = useState<BulkReviewAction | null>(null);
+    const [bulkMessage, setBulkMessage] = useState("");
+    const [bulkError, setBulkError] = useState("");
+    const [bulkActionMessage, setBulkActionMessage] = useState("");
     const {openEntity} = useAdminEntityDrawer();
 
     const loadReviews = useCallback((mode: "initial" | "refresh" = "initial") => {
@@ -216,7 +231,21 @@ export function ModerationPage() {
     useEffect(() => loadReviews("initial"), [loadReviews]);
 
     useEffect(() => {
-        if (!filtersOpen) return;
+        const controller = new AbortController();
+        listAdminReasons(controller.signal)
+            .then(response => setReasons(response.reasons))
+            .catch(() => {
+                if (!controller.signal.aborted) {
+                    setReasons([]);
+                }
+            });
+        return () => controller.abort();
+    }, []);
+
+    const overlayOpen = filtersOpen || bulkActionsOpen;
+
+    useEffect(() => {
+        if (!overlayOpen) return;
 
         const previousBodyOverflow = document.body.style.overflow;
         const previousBodyOverscroll = document.body.style.overscrollBehavior;
@@ -237,7 +266,7 @@ export function ModerationPage() {
             document.body.style.paddingRight = previousBodyPaddingRight;
             document.documentElement.style.overscrollBehavior = previousDocumentOverscroll;
         };
-    }, [filtersOpen]);
+    }, [overlayOpen]);
 
     useEffect(() => {
         function onReviewUpdated(event: Event) {
@@ -267,6 +296,7 @@ export function ModerationPage() {
     const visibleReviewIds = useMemo(() => orderedReviews.map(review => review.id), [orderedReviews]);
     const selectedVisibleCount = visibleReviewIds.filter(id => selectedReviewIds.has(id)).length;
     const allVisibleReviewsSelected = visibleReviewIds.length > 0 && selectedVisibleCount === visibleReviewIds.length;
+    const bulkReasonOptions = useMemo(() => activeReasonOptions(reasons), [reasons]);
     const defaultFiltersSelected = filtersEqual(filters, defaultReviewFilters);
     const appliedFilterChips = useMemo(() => filterChips(filters), [filters]);
     const draftFilterCount = countActiveFilters(draftFilters);
@@ -274,6 +304,14 @@ export function ModerationPage() {
     const activeSelectFilters = stateFilters.filter(filter => sectionSelectFilterKeys[activeFilterSection].includes(filter.key));
     const activeTextFilters = textFilters.filter(filter => sectionTextFilterKeys[activeFilterSection].includes(filter.key));
     const activeRangeFilters = rangeFilters.filter(filter => sectionRangeFilterKeys[activeFilterSection].includes(filter.minKey));
+
+    useEffect(() => {
+        setBulkReason(current => (
+            current && bulkReasonOptions.some(reason => reason.code === current)
+                ? current
+                : bulkReasonOptions[0]?.code || ""
+        ));
+    }, [bulkReasonOptions]);
 
     function openReview(review: AdminReview) {
         setSelectedId(review.id);
@@ -314,6 +352,7 @@ export function ModerationPage() {
     }
 
     function toggleReviewSelection(reviewId: string, checked: boolean) {
+        setBulkActionMessage("");
         setSelectedReviewIds(current => {
             const next = new Set(current);
             if (checked) {
@@ -326,6 +365,7 @@ export function ModerationPage() {
     }
 
     function toggleVisibleSelection() {
+        setBulkActionMessage("");
         setSelectedReviewIds(current => {
             const next = new Set(current);
             if (allVisibleReviewsSelected) {
@@ -338,7 +378,71 @@ export function ModerationPage() {
     }
 
     function clearReviewSelection() {
+        setBulkActionMessage("");
         setSelectedReviewIds(new Set());
+    }
+
+    function openBulkActions() {
+        setBulkMessage("");
+        setBulkError("");
+        setBulkActionMessage("");
+        setBulkActionsOpen(true);
+    }
+
+    function closeBulkActions() {
+        if (bulkPendingAction) return;
+        setBulkActionsOpen(false);
+        setBulkMessage("");
+        setBulkError("");
+    }
+
+    async function runBulkAction(action: BulkReviewAction) {
+        const targetIds = orderedReviews
+            .map(review => review.id)
+            .filter(id => selectedReviewIds.has(id));
+        if (targetIds.length === 0) return;
+        if (action === "hide" && !bulkReason) {
+            setBulkError("Choose a reason before hiding reviews.");
+            return;
+        }
+
+        setBulkPendingAction(action);
+        setBulkMessage("");
+        setBulkError("");
+
+        const failedIds: string[] = [];
+        let successCount = 0;
+
+        for (const reviewId of targetIds) {
+            try {
+                const response = action === "note"
+                    ? await saveReviewNote(reviewId, {note: bulkNote})
+                    : await setReviewVisibility(reviewId, {
+                        visible: action === "keep",
+                        reason_code: bulkReason || undefined,
+                        note: bulkNote || undefined,
+                        resolve_reports: true,
+                    });
+                emitReviewUpdated(response.review);
+                successCount += 1;
+            } catch {
+                failedIds.push(reviewId);
+            }
+        }
+
+        setBulkPendingAction(null);
+
+        if (failedIds.length > 0) {
+            setSelectedReviewIds(new Set(failedIds));
+            setBulkMessage(successCount > 0 ? `${successCount} reviews updated.` : "");
+            setBulkError(`${failedIds.length} reviews failed. They are still selected.`);
+            return;
+        }
+
+        const label = action === "hide" ? "hidden" : action === "keep" ? "kept public" : "updated";
+        setSelectedReviewIds(new Set());
+        setBulkActionMessage(`${successCount} reviews ${label}.`);
+        setBulkActionsOpen(false);
     }
 
     return (
@@ -524,13 +628,92 @@ export function ModerationPage() {
                             {allVisibleReviewsSelected ? "Unselect visible" : "Select visible"}
                         </Button>
                         {selectedReviewIds.size > 0 && (
+                            <Button size="sm" type="button" onClick={openBulkActions}>
+                                Bulk action
+                            </Button>
+                        )}
+                        {selectedReviewIds.size > 0 && (
                             <Button size="sm" type="button" variant="ghost" onClick={clearReviewSelection}>
                                 Clear
                             </Button>
                         )}
                     </div>
+                    {bulkActionMessage && <span className={styles.bulkStatus}>{bulkActionMessage}</span>}
                 </section>
             )}
+
+            {bulkActionsOpen && createPortal((
+                <div className={styles.filterSheetLayer}>
+                    <button aria-label="Close bulk actions" className={styles.filterSheetBackdrop} type="button" onClick={closeBulkActions}/>
+                    <aside aria-label="Bulk review actions" aria-modal="true" className={styles.filterSheet} role="dialog">
+                        <header className={styles.filterSheetHeader}>
+                            <div>
+                                <span><CheckCircle2 size={14}/> Bulk actions</span>
+                                <h2>Selected reviews</h2>
+                                <p>{selectedReviewIds.size} selected</p>
+                            </div>
+                            <Button disabled={Boolean(bulkPendingAction)} size="icon" type="button" variant="ghost" aria-label="Close bulk actions" onClick={closeBulkActions}>
+                                <X size={16}/>
+                            </Button>
+                        </header>
+
+                        <div className={styles.bulkSheetBody}>
+                            <div className={styles.bulkSummary}>
+                                <strong>{selectedReviewIds.size} reviews selected</strong>
+                                <span>Actions are applied one review at a time using the same moderation endpoint as the review drawer.</span>
+                            </div>
+
+                            <FilterGroup title="Decision details">
+                                <label className={styles.filterField}>
+                                    <span>Reason</span>
+                                    <select
+                                        className={styles.selectInput}
+                                        disabled={bulkReasonOptions.length === 0 || Boolean(bulkPendingAction)}
+                                        value={bulkReason}
+                                        onChange={event => setBulkReason(event.target.value)}
+                                    >
+                                        {bulkReasonOptions.length === 0 && <option value="">No active reasons</option>}
+                                        {bulkReasonOptions.map(reason => (
+                                            <option key={reason.code} value={reason.code}>{reason.label}</option>
+                                        ))}
+                                    </select>
+                                </label>
+                                <label className={styles.filterField}>
+                                    <span>Note</span>
+                                    <Textarea
+                                        className={styles.bulkNote}
+                                        disabled={Boolean(bulkPendingAction)}
+                                        placeholder="Optional moderation note"
+                                        value={bulkNote}
+                                        onChange={event => setBulkNote(event.target.value)}
+                                    />
+                                </label>
+                            </FilterGroup>
+
+                            {bulkMessage && <p className={styles.bulkSuccess}>{bulkMessage}</p>}
+                            {bulkError && <p className={styles.bulkError}>{bulkError}</p>}
+                        </div>
+
+                        <footer className={styles.filterSheetFooter}>
+                            <Button disabled={Boolean(bulkPendingAction)} size="sm" type="button" variant="ghost" onClick={closeBulkActions}>
+                                Cancel
+                            </Button>
+                            <Button disabled={Boolean(bulkPendingAction)} size="sm" type="button" variant="outline" onClick={() => void runBulkAction("note")}>
+                                {bulkPendingAction === "note" ? <LoaderCircle className={styles.spin} size={15}/> : <StickyNote size={15}/>}
+                                Save note
+                            </Button>
+                            <Button disabled={Boolean(bulkPendingAction)} size="sm" type="button" variant="outline" onClick={() => void runBulkAction("keep")}>
+                                {bulkPendingAction === "keep" ? <LoaderCircle className={styles.spin} size={15}/> : <CheckCircle2 size={15}/>}
+                                Keep public
+                            </Button>
+                            <Button disabled={!bulkReason || Boolean(bulkPendingAction)} size="sm" type="button" variant="destructive" onClick={() => void runBulkAction("hide")}>
+                                {bulkPendingAction === "hide" ? <LoaderCircle className={styles.spin} size={15}/> : <EyeOff size={15}/>}
+                                Hide selected
+                            </Button>
+                        </footer>
+                    </aside>
+                </div>
+            ), document.body)}
 
             <section className={cn(styles.reviewFeed, isRefreshing && styles.refreshingFeed)}>
                 {loadState === "loading" && reviews.length === 0 && <SkeletonList/>}
@@ -668,7 +851,7 @@ function ReviewQueueItem({
                         {openReportCount > 0 && <Badge className={styles.compactBadge} variant="warning">{openReportCount} reports</Badge>}
                         {review.signals.length > 0 && <Badge className={styles.compactBadge} variant="danger">{review.signals.length} signals</Badge>}
                     </div>
-                    <p className={styles.queueText}>{review.text}</p>
+                    <BidiParagraph className={styles.queueText}>{review.text}</BidiParagraph>
                     <div className={styles.queueMeta}>
                         <span>{review.student_verified ? "UAEU Student" : "User"}</span>
                         {review.course_taken && <span>{review.course_taken}</span>}
@@ -913,4 +1096,14 @@ function timestamp(value?: string) {
     if (!value) return 0;
     const parsed = new Date(value).getTime();
     return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+function activeReasonOptions(reasons: AdminReason[]) {
+    return reasons
+        .filter(reason => reason.active)
+        .sort((a, b) => a.sort_order - b.sort_order || a.code.localeCompare(b.code));
+}
+
+function emitReviewUpdated(review: AdminReview) {
+    window.dispatchEvent(new CustomEvent<AdminReview>("admin-review-updated", {detail: review}));
 }

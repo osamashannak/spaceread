@@ -27,6 +27,7 @@ import {
     Wifi,
     X,
 } from "lucide-react";
+import {BidiParagraph, BidiSpan} from "@/components/admin/bidi_text";
 import {Badge} from "@/components/ui/badge";
 import {Button} from "@/components/ui/button";
 import {Textarea} from "@/components/ui/textarea";
@@ -611,7 +612,7 @@ function ReplyDrawer({
                     {reply.op && <Badge className={styles.compactBadge} variant="info">OP</Badge>}
                     {reply.reviewed && <Badge className={styles.compactBadge} variant="success"><CheckCircle2 size={12}/></Badge>}
                 </div>
-                <p>{reply.text}</p>
+                <BidiParagraph>{reply.text}</BidiParagraph>
                 {reply.gif && (
                     <div className={styles.replyGif}>
                         <img alt="Reply GIF" src={reply.gif}/>
@@ -627,7 +628,7 @@ function ReplyDrawer({
             <DrawerSection title="Parent review">
                 <SummaryRow
                     icon={<MessageSquareText size={15}/>}
-                    title={detail.parent_review.text}
+                    title={<BidiSpan>{detail.parent_review.text}</BidiSpan>}
                     meta={[
                         detail.parent_review.professor_name,
                         `${detail.parent_review.score}/5`,
@@ -849,7 +850,7 @@ function PublicReviewPreview({review}: { review: AdminReview }) {
                 {review.grade_received && <span>{review.grade_received}</span>}
                 {review.student_verified && <span>Verified student</span>}
             </div>
-            <p>{review.text}</p>
+            <BidiParagraph>{review.text}</BidiParagraph>
             {media && (
                 <div className={styles.previewMedia}>
                     <img alt={media.kind === "attachment" ? `Attachment ${media.id}` : "GIF preview"} src={media.url}/>
@@ -909,7 +910,7 @@ function RepliesSection({replies, showSensitive}: { replies: AdminReviewReply[];
                     <SummaryRow
                         key={reply.id}
                         icon={<MessageSquareText size={15}/>}
-                        title={reply.text}
+                        title={<BidiSpan>{reply.text}</BidiSpan>}
                         meta={[
                             <EntityLink key="reply" target={{type: "reply", id: reply.id}}>Reply {reply.id}</EntityLink>,
                             reply.author || (reply.op ? "Original poster" : "User"),
@@ -1045,7 +1046,7 @@ function ReviewSummaryRow({review, showSensitive}: { review: AdminReviewSummary;
     return (
         <SummaryRow
             icon={<MessageSquareText size={15}/>}
-            title={review.text}
+            title={<BidiSpan>{review.text}</BidiSpan>}
             meta={[
                 <EntityLink key="review" target={{type: "review", id: review.id}}>Review {review.id}</EntityLink>,
                 review.professor_name,
@@ -1066,7 +1067,7 @@ function ReplySummaryRow({reply, showSensitive}: { reply: AdminReviewReplySummar
     return (
         <SummaryRow
             icon={<MessageSquareText size={15}/>}
-            title={reply.text}
+            title={<BidiSpan>{reply.text}</BidiSpan>}
             meta={[
                 <EntityLink key="reply" target={{type: "reply", id: reply.id}}>Reply {reply.id}</EntityLink>,
                 <EntityLink key="review" target={{type: "review", id: reply.review_id}}>Review {reply.review_id}</EntityLink>,
