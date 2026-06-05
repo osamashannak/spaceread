@@ -178,6 +178,7 @@ export function ModerationPage() {
     const [error, setError] = useState<string | null>(null);
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [selectedId, setSelectedId] = useState<string | null>(null);
+    const [selectedReviewIds, setSelectedReviewIds] = useState<Set<string>>(new Set());
     const [filters, setFilters] = useState<AdminReviewFilters>(defaultReviewFilters);
     const [draftFilters, setDraftFilters] = useState<AdminReviewFilters>(defaultReviewFilters);
     const [filtersOpen, setFiltersOpen] = useState(false);
@@ -254,7 +255,18 @@ export function ModerationPage() {
         return () => window.removeEventListener("admin-review-updated", onReviewUpdated);
     }, [filters]);
 
+    useEffect(() => {
+        const visibleIds = new Set(reviews.map(review => review.id));
+        setSelectedReviewIds(current => {
+            const next = new Set([...current].filter(id => visibleIds.has(id)));
+            return next.size === current.size ? current : next;
+        });
+    }, [reviews]);
+
     const orderedReviews = useMemo(() => sortReviews(reviews, filters.sort), [filters.sort, reviews]);
+    const visibleReviewIds = useMemo(() => orderedReviews.map(review => review.id), [orderedReviews]);
+    const selectedVisibleCount = visibleReviewIds.filter(id => selectedReviewIds.has(id)).length;
+    const allVisibleReviewsSelected = visibleReviewIds.length > 0 && selectedVisibleCount === visibleReviewIds.length;
     const defaultFiltersSelected = filtersEqual(filters, defaultReviewFilters);
     const appliedFilterChips = useMemo(() => filterChips(filters), [filters]);
     const draftFilterCount = countActiveFilters(draftFilters);
@@ -276,6 +288,7 @@ export function ModerationPage() {
         setFilters({...draftFilters});
         setFiltersOpen(false);
         setSelectedId(null);
+        setSelectedReviewIds(new Set());
     }
 
     function openFilters() {
@@ -298,6 +311,34 @@ export function ModerationPage() {
 
     function resetDraftFilters() {
         setDraftFilters(defaultReviewFilters);
+    }
+
+    function toggleReviewSelection(reviewId: string, checked: boolean) {
+        setSelectedReviewIds(current => {
+            const next = new Set(current);
+            if (checked) {
+                next.add(reviewId);
+            } else {
+                next.delete(reviewId);
+            }
+            return next;
+        });
+    }
+
+    function toggleVisibleSelection() {
+        setSelectedReviewIds(current => {
+            const next = new Set(current);
+            if (allVisibleReviewsSelected) {
+                visibleReviewIds.forEach(id => next.delete(id));
+            } else {
+                visibleReviewIds.forEach(id => next.add(id));
+            }
+            return next;
+        });
+    }
+
+    function clearReviewSelection() {
+        setSelectedReviewIds(new Set());
     }
 
     return (
@@ -468,6 +509,29 @@ export function ModerationPage() {
                 ), document.body)}
             </section>
 
+            {orderedReviews.length > 0 && (
+                <section className={styles.selectionBar} aria-label="Review selection">
+                    <label className={styles.selectionToggle}>
+                        <input
+                            checked={allVisibleReviewsSelected}
+                            type="checkbox"
+                            onChange={toggleVisibleSelection}
+                        />
+                        <span>{selectedReviewIds.size > 0 ? `${selectedReviewIds.size} selected` : `${orderedReviews.length} visible`}</span>
+                    </label>
+                    <div className={styles.selectionActions}>
+                        <Button size="sm" type="button" variant="outline" onClick={toggleVisibleSelection}>
+                            {allVisibleReviewsSelected ? "Unselect visible" : "Select visible"}
+                        </Button>
+                        {selectedReviewIds.size > 0 && (
+                            <Button size="sm" type="button" variant="ghost" onClick={clearReviewSelection}>
+                                Clear
+                            </Button>
+                        )}
+                    </div>
+                </section>
+            )}
+
             <section className={cn(styles.reviewFeed, isRefreshing && styles.refreshingFeed)}>
                 {loadState === "loading" && reviews.length === 0 && <SkeletonList/>}
                 {loadState === "error" && reviews.length === 0 && (
@@ -498,8 +562,10 @@ export function ModerationPage() {
                             <ReviewQueueItem
                                 key={review.id}
                                 review={review}
+                                selectedForBatch={selectedReviewIds.has(review.id)}
                                 selected={review.id === selectedId}
                                 onOpen={() => openReview(review)}
+                                onSelectionChange={checked => toggleReviewSelection(review.id, checked)}
                             />
                         ))}
                     </div>
@@ -518,7 +584,19 @@ function FilterGroup({title, children}: { title: string; children: ReactNode }) 
     );
 }
 
-function ReviewQueueItem({review, selected, onOpen}: { review: AdminReview; selected: boolean; onOpen: () => void }) {
+function ReviewQueueItem({
+    review,
+    selected,
+    selectedForBatch,
+    onOpen,
+    onSelectionChange,
+}: {
+    review: AdminReview;
+    selected: boolean;
+    selectedForBatch: boolean;
+    onOpen: () => void;
+    onSelectionChange: (checked: boolean) => void;
+}) {
     const status = reviewStatus(review);
     const openReportCount = openReports(review).length;
     const hasMedia = Boolean(review.attachment || review.gif);
@@ -533,13 +611,26 @@ function ReviewQueueItem({review, selected, onOpen}: { review: AdminReview; sele
     return (
         <article
             aria-label={`Open review ${review.id}`}
-            className={cn(styles.reviewRow, selected && styles.selected)}
+            className={cn(styles.reviewRow, selected && styles.selected, selectedForBatch && styles.batchSelected)}
             role="button"
             tabIndex={0}
             onClick={onOpen}
             onKeyDown={onKeyDown}
         >
             <div className={styles.queueReview}>
+                <label
+                    className={styles.reviewSelector}
+                    aria-label={`Select review ${review.id}`}
+                    onClick={event => event.stopPropagation()}
+                    onKeyDown={event => event.stopPropagation()}
+                >
+                    <input
+                        checked={selectedForBatch}
+                        type="checkbox"
+                        onChange={event => onSelectionChange(event.target.checked)}
+                        onClick={event => event.stopPropagation()}
+                    />
+                </label>
                 <div className={styles.queueMain}>
                     <div className={styles.queueHeader}>
                         <strong>{review.professor_name}</strong>

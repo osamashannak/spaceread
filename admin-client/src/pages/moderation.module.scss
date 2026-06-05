@@ -513,6 +513,48 @@
   position: sticky;
 }
 
+.selectionBar {
+  align-items: center;
+  background: #f8fbfc;
+  border: 1px solid #dce5ec;
+  border-radius: var(--radius);
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  min-width: 0;
+  padding: 8px 10px;
+}
+
+.selectionToggle {
+  align-items: center;
+  color: hsl(var(--foreground));
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 800;
+  gap: 8px;
+  min-width: 0;
+
+  input {
+    accent-color: hsl(var(--spaceread-blue));
+    height: 15px;
+    margin: 0;
+    width: 15px;
+  }
+
+  span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.selectionActions {
+  align-items: center;
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 6px;
+}
+
 .workspace {
   display: grid;
   gap: 0;
@@ -652,6 +694,11 @@
   box-shadow: none;
 }
 
+.batchSelected {
+  background: #f3fbff;
+  border-left-color: #38bdf8;
+}
+
 .reviewRow:nth-child(2) {
   animation-delay: 0.02s;
 }
@@ -675,10 +722,28 @@
 .queueReview {
   align-items: start;
   display: grid;
-  gap: 0;
-  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+  grid-template-columns: auto minmax(0, 1fr);
   min-width: 0;
   padding: 11px 14px 12px;
+}
+
+.reviewSelector {
+  align-items: center;
+  cursor: pointer;
+  display: inline-flex;
+  height: 24px;
+  justify-content: center;
+  margin-top: 1px;
+  width: 24px;
+
+  input {
+    accent-color: hsl(var(--spaceread-blue));
+    cursor: pointer;
+    height: 15px;
+    margin: 0;
+    width: 15px;
+  }
 }
 
 .queueMain {
