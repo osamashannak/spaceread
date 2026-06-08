@@ -71,7 +71,9 @@ export default function ReviewReply({reply, reviewId, op}: { reply: ReviewReplyA
                     </div>
                     : <div>
                         <p dir={"auto"} className={styles.replyText}>{reply.mention &&
-                            <span className={styles.mention}>@{reply.mention} </span>}{reply.comment}</p>
+                            <span className={styles.mention}>@{reply.mention} </span>}
+                            <span dir={"auto"}>{reply.comment}</span>
+                        </p>
                     </div>}
                 <div className={styles.replyFooter}>
                     <div className={styles.footerButtons}>
