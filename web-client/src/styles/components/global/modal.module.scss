@@ -105,6 +105,104 @@
   background-color: #F87171 !important;
 }
 
+.policyWarningModal {
+  align-items: flex-start;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.22);
+  gap: 22px;
+  min-height: 0;
+  min-width: 0;
+  padding: 28px;
+  width: min(560px, calc(100vw - 32px));
+}
+
+.policyWarningLayout {
+  align-items: center;
+  display: grid;
+  gap: 22px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  width: 100%;
+}
+
+.policyWarningIcon {
+  align-items: center;
+  background: #FFF7ED;
+  border: 1px solid #FED7AA;
+  border-radius: 9999px;
+  color: #C2410C;
+  display: inline-flex;
+  height: 46px;
+  justify-content: center;
+  width: 46px;
+
+  svg {
+    fill: none;
+    height: 24px;
+    stroke: currentColor;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 2;
+    width: 24px;
+  }
+}
+
+.policyWarningContent {
+  display: grid;
+  gap: 12px;
+
+  h2 {
+    color: #0F172A;
+    font-size: 21px;
+    line-height: 1.2;
+    margin: 0;
+  }
+
+  p {
+    color: #475569;
+    font-size: 14px;
+    line-height: 1.6;
+    margin: 0;
+  }
+}
+
+.policyWarningBadge {
+  align-items: center;
+  align-self: start;
+  background: #F2FAFF;
+  border: 1px solid #C7EAFE;
+  border-radius: 9999px;
+  color: #075985;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 7px 10px;
+}
+
+.policyWarningActions {
+  justify-content: flex-end;
+  width: 100%;
+}
+
+.policyWarningImageWrap {
+  align-items: center;
+  background: #F7FBFF;
+  border: 1px solid #E1EEF8;
+  border-radius: 8px;
+  display: flex;
+  height: 150px;
+  justify-content: center;
+  width: 150px;
+}
+
+.policyWarningImage {
+  height: 126px;
+  object-fit: contain;
+  user-select: none;
+  width: 126px;
+  -webkit-user-select: none;
+}
+
 .modalImage {
   user-select: none;
   -webkit-user-select: none;
@@ -112,6 +210,36 @@
   @media (max-width: 768px) {
     width: 100px;
     height: 100px;
+  }
+}
+
+@media (max-width: 560px) {
+  .policyWarningModal {
+    padding: 24px;
+  }
+
+  .policyWarningLayout {
+    grid-template-columns: 1fr;
+  }
+
+  .policyWarningImageWrap {
+    height: 128px;
+    justify-self: center;
+    order: -1;
+    width: 128px;
+  }
+
+  .policyWarningImage {
+    height: 108px;
+    width: 108px;
+  }
+
+  .policyWarningActions {
+    flex-direction: column-reverse;
+  }
+
+  .policyWarningActions button {
+    width: 100%;
   }
 }
 

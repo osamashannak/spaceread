@@ -5,6 +5,7 @@ import (
 	"fmt"
 	v1 "github.com/osamashannak/uaeu-space/services/internal/api/v1"
 	"github.com/osamashannak/uaeu-space/services/internal/professor/model"
+	"github.com/osamashannak/uaeu-space/services/internal/professor/policywarning"
 	"github.com/osamashannak/uaeu-space/services/internal/professor/ranking"
 	"github.com/osamashannak/uaeu-space/services/pkg/jsonutil"
 	"github.com/osamashannak/uaeu-space/services/pkg/logging"
@@ -208,6 +209,8 @@ func (s *Server) PostReview() http.Handler {
 
 		logger.Debugf("perspective analysis result: %+v", flags)
 
+		moderationWarning := policywarning.ReviewModerationWarning(request.Text, flags.Flagged())
+
 		ipAddress := utils.GetClientIP(r)
 		now := time.Now()
 
@@ -220,7 +223,7 @@ func (s *Server) PostReview() http.Handler {
 			GradeReceived:  request.GradeReceived,
 			ProfessorEmail: *request.ProfessorEmail,
 			UaeuOrigin:     subnetchecker.CheckIP(ipAddress),
-			Visible:        !flags.Flagged(),
+			Visible:        moderationWarning == nil,
 			Language:       flags.Language,
 			IpAddress:      ipAddress,
 			SessionId:      &profile.SessionId,
@@ -283,6 +286,7 @@ func (s *Server) PostReview() http.Handler {
 			Attachment:    attachmentInfo,
 			ID:            review.ID,
 			Flagged:       flagged,
+			Warning:       moderationWarning,
 			Language:      review.Language,
 			CourseTaken:   review.CourseTaken,
 			GradeReceived: review.GradeReceived,

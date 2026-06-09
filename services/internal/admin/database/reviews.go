@@ -64,6 +64,16 @@ type ListReviewOptions struct {
 	ReviewedTo           *time.Time
 }
 
+type ListSuspiciousReviewPairOptions struct {
+	Limit               int
+	Offset              int
+	MinScore            int
+	SimilarityThreshold float64
+	Visible             string
+	ProfessorEmail      string
+	Search              string
+}
+
 type ReviewVisibilityDecision struct {
 	ReviewID       int64
 	Visible        bool
@@ -199,6 +209,218 @@ func (db *AdminDB) GetReview(ctx context.Context, id int64) (*v1.AdminReview, er
 		return nil, nil
 	}
 	return &reviews[0], nil
+}
+
+type suspiciousReviewPairRow struct {
+	Review1ID           int64
+	Review2ID           int64
+	SuspicionScore      int
+	ContentSimilarity   float64
+	CreatedDeltaSeconds int64
+	SameIP              bool
+	SameUser            bool
+	SimilarContent      bool
+	SameLanguage        bool
+	SameScore           bool
+	SameRecommendation  bool
+	CloseTiming         bool
+}
+
+func (db *AdminDB) ListSuspiciousReviewPairs(ctx context.Context, opts ListSuspiciousReviewPairOptions) ([]v1.AdminSuspiciousReviewPair, error) {
+	if opts.Limit <= 0 {
+		opts.Limit = 50
+	}
+	if opts.Offset < 0 {
+		opts.Offset = 0
+	}
+	if opts.SimilarityThreshold <= 0 {
+		opts.SimilarityThreshold = 0.5
+	}
+
+	args := []any{opts.Limit, opts.Offset, opts.SimilarityThreshold, opts.MinScore}
+	nextArg := func(value any) string {
+		args = append(args, value)
+		return fmt.Sprintf("$%d", len(args))
+	}
+
+	conditions := []string{
+		"r1.deleted_at IS NULL",
+		"r2.deleted_at IS NULL",
+		"r1.professor_email = r2.professor_email",
+		"r1.id < r2.id",
+		"r1.session_id IS NOT NULL",
+		"r2.session_id IS NOT NULL",
+		"r1.session_id <> r2.session_id",
+	}
+
+	switch opts.Visible {
+	case "both":
+		conditions = append(conditions, "r1.visible = true AND r2.visible = true")
+	case "include_hidden":
+	default:
+		conditions = append(conditions, "(r1.visible = true OR r2.visible = true)")
+	}
+
+	if opts.ProfessorEmail != "" {
+		conditions = append(conditions, "r1.professor_email ILIKE "+nextArg("%"+opts.ProfessorEmail+"%"))
+	}
+	if opts.Search != "" {
+		param := nextArg("%" + opts.Search + "%")
+		conditions = append(conditions, fmt.Sprintf(`(
+			r1.id::text ILIKE %[1]s
+			OR r2.id::text ILIKE %[1]s
+			OR r1.professor_email ILIKE %[1]s
+			OR COALESCE(p.name, '') ILIKE %[1]s
+			OR COALESCE(p.college, '') ILIKE %[1]s
+			OR COALESCE(p.university, '') ILIKE %[1]s
+			OR r1.content ILIKE %[1]s
+			OR r2.content ILIKE %[1]s
+		)`, param))
+	}
+
+	where := strings.Join(conditions, "\n\t\t\tAND ")
+	query := fmt.Sprintf(`
+		WITH candidates AS (
+			SELECT
+				r1.id AS review_1_id,
+				r2.id AS review_2_id,
+				COALESCE(r1.ip_address = r2.ip_address, false) AS same_ip,
+				(r1.user_id IS NOT NULL AND r2.user_id IS NOT NULL AND r1.user_id = r2.user_id) AS same_user,
+				sim.content_similarity,
+				r1.language = r2.language AS same_language,
+				r1.score = r2.score AS same_score,
+				r1.positive = r2.positive AS same_recommendation,
+				ABS(EXTRACT(EPOCH FROM (r1.created_at - r2.created_at)))::bigint AS created_delta_seconds
+			FROM professor.review r1
+			JOIN professor.review r2
+				ON r1.professor_email = r2.professor_email
+				AND r1.id < r2.id
+			LEFT JOIN professor.professor p ON p.email = r1.professor_email
+			CROSS JOIN LATERAL (
+				SELECT similarity(r1.content, r2.content)::double precision AS content_similarity
+			) sim
+			WHERE %s
+				AND (
+					COALESCE(r1.ip_address = r2.ip_address, false)
+					OR (r1.user_id IS NOT NULL AND r2.user_id IS NOT NULL AND r1.user_id = r2.user_id)
+					OR (r1.content %% r2.content AND sim.content_similarity > $3)
+				)
+		),
+		scored AS (
+			SELECT
+				*,
+				content_similarity > $3 AS similar_content,
+				created_delta_seconds < 3600 AS close_timing,
+				(
+					(CASE WHEN same_ip THEN 3 ELSE 0 END) +
+					(CASE WHEN same_user THEN 5 ELSE 0 END) +
+					(CASE WHEN content_similarity > $3 THEN 2 ELSE 0 END) +
+					(CASE WHEN same_language THEN 1 ELSE 0 END) +
+					(CASE WHEN same_score THEN 1 ELSE 0 END) +
+					(CASE WHEN same_recommendation THEN 1 ELSE 0 END) +
+					(CASE WHEN created_delta_seconds < 3600 THEN 2 ELSE 0 END)
+				) AS suspicion_score
+			FROM candidates
+		)
+		SELECT
+			review_1_id,
+			review_2_id,
+			suspicion_score,
+			content_similarity,
+			created_delta_seconds,
+			same_ip,
+			same_user,
+			similar_content,
+			same_language,
+			same_score,
+			same_recommendation,
+			close_timing
+		FROM scored
+		WHERE suspicion_score >= $4
+		ORDER BY suspicion_score DESC, content_similarity DESC, created_delta_seconds ASC, review_2_id DESC
+		LIMIT $1 OFFSET $2`, where)
+
+	rows, err := db.db.Pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	pairRows := make([]suspiciousReviewPairRow, 0)
+	reviewIDs := make([]int64, 0)
+	seenReviewIDs := make(map[int64]struct{})
+	addReviewID := func(id int64) {
+		if _, ok := seenReviewIDs[id]; ok {
+			return
+		}
+		seenReviewIDs[id] = struct{}{}
+		reviewIDs = append(reviewIDs, id)
+	}
+
+	for rows.Next() {
+		var row suspiciousReviewPairRow
+		if err := rows.Scan(
+			&row.Review1ID,
+			&row.Review2ID,
+			&row.SuspicionScore,
+			&row.ContentSimilarity,
+			&row.CreatedDeltaSeconds,
+			&row.SameIP,
+			&row.SameUser,
+			&row.SimilarContent,
+			&row.SameLanguage,
+			&row.SameScore,
+			&row.SameRecommendation,
+			&row.CloseTiming,
+		); err != nil {
+			return nil, err
+		}
+		pairRows = append(pairRows, row)
+		addReviewID(row.Review1ID)
+		addReviewID(row.Review2ID)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(pairRows) == 0 {
+		return []v1.AdminSuspiciousReviewPair{}, nil
+	}
+
+	reviews, err := db.loadReviews(ctx, reviewIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	reviewsByID := make(map[int64]v1.AdminReview, len(reviews))
+	for _, review := range reviews {
+		reviewsByID[review.ID] = review
+	}
+
+	pairs := make([]v1.AdminSuspiciousReviewPair, 0, len(pairRows))
+	for _, row := range pairRows {
+		review1, ok1 := reviewsByID[row.Review1ID]
+		review2, ok2 := reviewsByID[row.Review2ID]
+		if !ok1 || !ok2 {
+			continue
+		}
+
+		pairs = append(pairs, v1.AdminSuspiciousReviewPair{
+			Review1:             review1,
+			Review2:             review2,
+			SuspicionScore:      row.SuspicionScore,
+			ContentSimilarity:   row.ContentSimilarity,
+			CreatedDeltaSeconds: row.CreatedDeltaSeconds,
+			SameIP:              row.SameIP,
+			SameUser:            row.SameUser,
+			SimilarContent:      row.SimilarContent,
+			SameLanguage:        row.SameLanguage,
+			SameScore:           row.SameScore,
+			SameRecommendation:  row.SameRecommendation,
+			CloseTiming:         row.CloseTiming,
+		})
+	}
+
+	return pairs, nil
 }
 
 func (db *AdminDB) SetReviewVisibility(ctx context.Context, decision ReviewVisibilityDecision) (*DecisionResult, error) {

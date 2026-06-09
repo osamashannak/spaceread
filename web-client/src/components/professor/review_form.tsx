@@ -422,7 +422,7 @@ export default function ReviewForm(props: { courses: string[] | null, professorE
                 positive: review.positive,
                 id: review.id,
                 gif: details.gif ? details.gif.url : undefined,
-                flagged: true,
+                flagged: !!review.flagged,
                 verified: review.verified
             })
         );
@@ -438,7 +438,7 @@ export default function ReviewForm(props: { courses: string[] | null, professorE
         setSubmitting(false);
     }
 
-    async function handleSubmit() {
+    async function submitReview() {
         setActiveError(null);
         let firstErrorField = null;
 
@@ -503,7 +503,7 @@ export default function ReviewForm(props: { courses: string[] | null, professorE
             return;
         }
 
-        const review = await postReview({
+        const result = await postReview({
             text: details.comment!,
             score: details.score!,
             positive: details.positive!,
@@ -515,17 +515,19 @@ export default function ReviewForm(props: { courses: string[] | null, professorE
             grade_received: details.grade_received,
         });
 
-        if (!review) {
+        if (!result) {
             // @ts-expect-error Clarity is not defined
             clarity("set", "ReviewFailed", "true");
             setSubmitting("error");
             return;
         }
 
+        const review = result.review;
         reviewRef.current = review;
 
         if (review.flagged) {
             modal.openModal(FlaggedModal, {
+                warning: review.warning,
                 finalizeSubmission: finalizeSubmission,
                 editReview: editReview,
             });
@@ -533,6 +535,10 @@ export default function ReviewForm(props: { courses: string[] | null, professorE
         }
 
         finalizeSubmission();
+    }
+
+    async function handleSubmit() {
+        await submitReview();
     }
 
     if (submitting === null) {

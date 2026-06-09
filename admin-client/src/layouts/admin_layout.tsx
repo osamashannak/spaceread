@@ -2,6 +2,7 @@ import {useMemo} from "react";
 import {Outlet, useLocation} from "react-router-dom";
 import {
     MessageSquareText,
+    ShieldAlert,
     SlidersHorizontal,
 } from "lucide-react";
 import {AdminAccessGate} from "@/layouts/admin_access_gate";
@@ -14,6 +15,7 @@ const navSections: NavSection[] = [
         label: "Moderation",
         items: [
             {to: "/reviews", label: "Reviews", icon: MessageSquareText},
+            {to: "/reviews/suspicious", label: "Suspicious", icon: ShieldAlert},
             {to: "/reasons", label: "Reasons", icon: SlidersHorizontal},
         ],
     },

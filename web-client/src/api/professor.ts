@@ -3,6 +3,7 @@ import {
     ProfessorRequestFormAPI,
     ReviewAPI,
     ReviewFormAPI,
+    ReviewPostResult,
     ReviewReplyAPI
 } from "../typed/professor.ts";
 import {ProfessorItem} from "../typed/searchbox.ts";
@@ -243,7 +244,7 @@ export const removeLikeReply = async (replyId: string) => {
     return response.success as boolean;
 }
 
-export const postReview = async (options: ReviewFormAPI) => {
+export const postReview = async (options: ReviewFormAPI): Promise<ReviewPostResult | undefined> => {
     let response;
 
     try {
@@ -265,7 +266,7 @@ export const postReview = async (options: ReviewFormAPI) => {
         return  undefined;
     }
 
-    return response as ReviewAPI;
+    return {kind: "review", review: response as ReviewAPI};
 }
 
 export const deleteReview = async (reviewId: string) => {

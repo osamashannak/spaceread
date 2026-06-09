@@ -28,7 +28,7 @@ export function SectionNav({sections, onNavigate}: SectionNavProps) {
                             <NavLink
                                 key={item.to}
                                 to={item.to}
-                                end={item.to === "/"}
+                                end
                                 onClick={onNavigate}
                                 className={({isActive}) => cn(styles.link, isActive && styles.active)}
                             >

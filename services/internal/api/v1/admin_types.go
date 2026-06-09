@@ -48,8 +48,29 @@ type AdminReviewListResponse struct {
 	Offset  int           `json:"offset"`
 }
 
+type AdminSuspiciousReviewPairListResponse struct {
+	Pairs  []AdminSuspiciousReviewPair `json:"pairs"`
+	Limit  int                         `json:"limit"`
+	Offset int                         `json:"offset"`
+}
+
 type AdminReviewResponse struct {
 	Review AdminReview `json:"review"`
+}
+
+type AdminSuspiciousReviewPair struct {
+	Review1             AdminReview `json:"review_1"`
+	Review2             AdminReview `json:"review_2"`
+	SuspicionScore      int         `json:"suspicion_score"`
+	ContentSimilarity   float64     `json:"content_similarity"`
+	CreatedDeltaSeconds int64       `json:"created_delta_seconds"`
+	SameIP              bool        `json:"same_ip"`
+	SameUser            bool        `json:"same_user"`
+	SimilarContent      bool        `json:"similar_content"`
+	SameLanguage        bool        `json:"same_language"`
+	SameScore           bool        `json:"same_score"`
+	SameRecommendation  bool        `json:"same_recommendation"`
+	CloseTiming         bool        `json:"close_timing"`
 }
 
 type AdminReview struct {

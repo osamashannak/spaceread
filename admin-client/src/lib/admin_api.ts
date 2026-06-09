@@ -30,6 +30,12 @@ export type AdminReviewListResponse = {
     offset: number;
 };
 
+export type AdminSuspiciousReviewPairListResponse = {
+    pairs: AdminSuspiciousReviewPair[];
+    limit: number;
+    offset: number;
+};
+
 export type AdminReviewFilters = {
     sort: "newest" | "oldest" | "most_reports" | "most_signals" | "random";
     needs_attention: boolean;
@@ -71,6 +77,14 @@ export type AdminReviewFilters = {
     created_to: string;
     reviewed_from: string;
     reviewed_to: string;
+};
+
+export type AdminSuspiciousReviewFilters = {
+    min_score: string;
+    similarity_threshold: string;
+    visible: "at_least_one" | "both" | "include_hidden";
+    search: string;
+    professor_email: string;
 };
 
 export type AdminReasonsResponse = {
@@ -140,6 +154,21 @@ export type AdminReview = {
     ratings: AdminReviewRating[];
     signals: AdminModerationSignal[];
     action_history: AdminModerationAction[];
+};
+
+export type AdminSuspiciousReviewPair = {
+    review_1: AdminReview;
+    review_2: AdminReview;
+    suspicion_score: number;
+    content_similarity: number;
+    created_delta_seconds: number;
+    same_ip: boolean;
+    same_user: boolean;
+    similar_content: boolean;
+    same_language: boolean;
+    same_score: boolean;
+    same_recommendation: boolean;
+    close_timing: boolean;
 };
 
 export type AdminReviewAttachment = {
@@ -482,6 +511,18 @@ export async function listAdminReviews(signal?: AbortSignal, filters?: AdminRevi
         }
     }
     return adminFetch<AdminReviewListResponse>(`/reviews?${params.toString()}`, {signal});
+}
+
+export async function listAdminSuspiciousReviewPairs(signal?: AbortSignal, filters?: AdminSuspiciousReviewFilters) {
+    const params = new URLSearchParams({limit: "100"});
+    if (filters) {
+        for (const [key, value] of Object.entries(filters)) {
+            if (value !== "") {
+                params.set(key, String(value));
+            }
+        }
+    }
+    return adminFetch<AdminSuspiciousReviewPairListResponse>(`/reviews/suspicious?${params.toString()}`, {signal});
 }
 
 export async function getAdminReview(reviewId: string, signal?: AbortSignal) {

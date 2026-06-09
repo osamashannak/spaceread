@@ -48,6 +48,7 @@ export interface ReviewAPI {
     uaeu_origin: boolean;
     gif?: string;
     pinned?: boolean;
+    warning?: ReviewPolicyWarning;
     attachment?: {
         id: string;
         height: number;
@@ -109,7 +110,18 @@ export interface ReviewFormAPI {
     gif?: string;
     course_taken: string;
     grade_received: string;
+    policy_warning_acknowledged?: string;
 }
+
+export interface ReviewPolicyWarning {
+    code: string;
+    reason_code: string;
+    title: string;
+    message: string;
+}
+
+export type ReviewPostResult =
+    | { kind: "review"; review: ReviewAPI };
 
 export interface ProfessorHistory {
     name: string;

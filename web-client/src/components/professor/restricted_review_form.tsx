@@ -152,7 +152,7 @@ export default function RestrictedReviewForm(props: { professorEmail: string; ca
                 positive: review.positive,
                 id: review.id,
                 gif: details.gif ? details.gif.url : undefined,
-                flagged: true
+                flagged: !!review.flagged
             })
         );
     }
@@ -169,7 +169,7 @@ export default function RestrictedReviewForm(props: { professorEmail: string; ca
         setSubmitting(false);
     }
 
-    async function handleSubmit() {
+    async function submitReview() {
         setSubmitting(true);
 
         // @ts-expect-error Clarity is not defined
@@ -199,7 +199,7 @@ export default function RestrictedReviewForm(props: { professorEmail: string; ca
             return;
         }
 
-        const review = await postReview({
+        const result = await postReview({
             course_taken: "", grade_received: "",
             text: details.comment!,
             score: details.score!,
@@ -207,20 +207,22 @@ export default function RestrictedReviewForm(props: { professorEmail: string; ca
             professor_email: props.professorEmail,
             recaptcha_token: token,
             attachment: details.attachment?.id, // guaranteed uploaded if present
-            gif: details.gif ? details.gif.url : undefined
+            gif: details.gif ? details.gif.url : undefined,
         });
 
-        if (!review) {
+        if (!result) {
             // @ts-expect-error Clarity is not defined
             clarity("set", "ReviewFailed", "true");
             setSubmitting("error");
             return;
         }
 
+        const review = result.review;
         reviewRef.current = review;
 
         if (review.flagged) {
             modal.openModal(FlaggedModal, {
+                warning: review.warning,
                 finalizeSubmission: finalizeSubmission,
                 editReview: editReview,
             });
@@ -229,6 +231,10 @@ export default function RestrictedReviewForm(props: { professorEmail: string; ca
 
         finalizeSubmission();
 
+    }
+
+    async function handleSubmit() {
+        await submitReview();
     }
 
     if (submitting === null) {

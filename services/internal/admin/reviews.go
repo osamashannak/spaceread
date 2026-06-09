@@ -15,8 +15,11 @@ import (
 )
 
 const (
-	defaultReviewLimit = 50
-	maxReviewLimit     = 100
+	defaultReviewLimit               = 50
+	maxReviewLimit                   = 100
+	defaultSuspiciousReviewPairLimit = 50
+	maxSuspiciousReviewPairLimit     = 100
+	defaultSimilarityThreshold       = 0.5
 )
 
 func (s *Server) ListReasons() http.Handler {
@@ -153,6 +156,34 @@ func (s *Server) ListReviews() http.Handler {
 			Reviews: reviews,
 			Limit:   limit,
 			Offset:  offset,
+		})
+	})
+}
+
+func (s *Server) ListSuspiciousReviewPairs() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		limit := parseBoundedInt(r.URL.Query().Get("limit"), defaultSuspiciousReviewPairLimit, 1, maxSuspiciousReviewPairLimit)
+		offset := parseBoundedInt(r.URL.Query().Get("offset"), 0, 0, 1_000_000)
+
+		pairs, err := s.db.ListSuspiciousReviewPairs(r.Context(), admindb.ListSuspiciousReviewPairOptions{
+			Limit:               limit,
+			Offset:              offset,
+			MinScore:            parseBoundedInt(r.URL.Query().Get("min_score"), 5, 0, 15),
+			SimilarityThreshold: parseBoundedFloat(r.URL.Query().Get("similarity_threshold"), defaultSimilarityThreshold, 0.3, 1),
+			Visible:             parseChoiceQuery(r, "visible", "at_least_one", "at_least_one", "both", "include_hidden"),
+			ProfessorEmail:      strings.TrimSpace(r.URL.Query().Get("professor_email")),
+			Search:              strings.TrimSpace(r.URL.Query().Get("search")),
+		})
+		if err != nil {
+			logging.FromContext(r.Context()).Errorf("failed to list suspicious review pairs: %v", err)
+			writeError(w, http.StatusInternalServerError, "failed to list suspicious review pairs")
+			return
+		}
+
+		jsonutil.MarshalResponse(w, http.StatusOK, v1.AdminSuspiciousReviewPairListResponse{
+			Pairs:  pairs,
+			Limit:  limit,
+			Offset: offset,
 		})
 	})
 }
@@ -350,6 +381,24 @@ func parseBoundedInt(value string, fallback, min, max int) int {
 		return fallback
 	}
 	parsed, err := strconv.Atoi(value)
+	if err != nil {
+		return fallback
+	}
+	if parsed < min {
+		return min
+	}
+	if parsed > max {
+		return max
+	}
+	return parsed
+}
+
+func parseBoundedFloat(value string, fallback, min, max float64) float64 {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.ParseFloat(value, 64)
 	if err != nil {
 		return fallback
 	}

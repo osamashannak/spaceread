@@ -70,15 +70,16 @@ type ReviewAttachment struct {
 }
 
 type ReviewPostBody struct {
-	Text           string  `json:"text"`
-	Score          *int    `json:"score" required:"true"`
-	Positive       *bool   `json:"positive" required:"true"`
-	ProfessorEmail *string `json:"professor_email" required:"true"`
-	RecaptchaToken *string `json:"recaptcha_token" required:"true"`
-	Attachment     *int64  `json:"attachment,string"`
-	Gif            *string `json:"gif"`
-	GradeReceived  *string `json:"grade_received"`
-	CourseTaken    *string `json:"course_taken"`
+	Text                      string  `json:"text"`
+	Score                     *int    `json:"score" required:"true"`
+	Positive                  *bool   `json:"positive" required:"true"`
+	ProfessorEmail            *string `json:"professor_email" required:"true"`
+	RecaptchaToken            *string `json:"recaptcha_token" required:"true"`
+	Attachment                *int64  `json:"attachment,string"`
+	Gif                       *string `json:"gif"`
+	GradeReceived             *string `json:"grade_received"`
+	CourseTaken               *string `json:"course_taken"`
+	PolicyWarningAcknowledged *string `json:"policy_warning_acknowledged"`
 }
 
 type ReviewAttachmentResponse struct {
@@ -91,18 +92,30 @@ type ReviewRatingBody struct {
 }
 
 type ReviewPostResponse struct {
-	SortIndex     int64             `json:"sort_index,string"`
-	Text          string            `json:"text"`
-	Score         int               `json:"score"`
-	Positive      bool              `json:"positive"`
-	CourseTaken   *string           `json:"course_taken,omitempty"`
-	GradeReceived *string           `json:"grade_received,omitempty"`
-	Attachment    *ReviewAttachment `json:"attachment,omitempty"`
-	Gif           *string           `json:"gif,omitempty"`
-	ID            int64             `json:"id,string"`
-	Flagged       *bool             `json:"flagged,omitempty"`
-	CreatedAt     time.Time         `json:"created_at"`
-	Language      string            `json:"language"`
+	SortIndex     int64                `json:"sort_index,string"`
+	Text          string               `json:"text"`
+	Score         int                  `json:"score"`
+	Positive      bool                 `json:"positive"`
+	CourseTaken   *string              `json:"course_taken,omitempty"`
+	GradeReceived *string              `json:"grade_received,omitempty"`
+	Attachment    *ReviewAttachment    `json:"attachment,omitempty"`
+	Gif           *string              `json:"gif,omitempty"`
+	ID            int64                `json:"id,string"`
+	Flagged       *bool                `json:"flagged,omitempty"`
+	Warning       *ReviewPolicyWarning `json:"warning,omitempty"`
+	CreatedAt     time.Time            `json:"created_at"`
+	Language      string               `json:"language"`
+}
+
+type ReviewPolicyWarning struct {
+	Code       string `json:"code"`
+	ReasonCode string `json:"reason_code"`
+	Title      string `json:"title"`
+	Message    string `json:"message"`
+}
+
+type ReviewPolicyWarningResponse struct {
+	Warning ReviewPolicyWarning `json:"warning"`
 }
 
 type ReviewReportBody struct {
