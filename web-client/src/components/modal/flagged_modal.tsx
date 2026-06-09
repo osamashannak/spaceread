@@ -14,9 +14,9 @@ export default function FlaggedModal(props: {
     return (
         <div className={styles.background}>
             <div className={`${styles.modalBody} ${styles.policyWarningModal}`}>
+                <span className={styles.policyWarningBadge}>Review check</span>
                 <div className={styles.policyWarningLayout}>
                     <div className={styles.policyWarningContent}>
-                        <span className={styles.policyWarningBadge}>Review check</span>
                         <h2>{title}</h2>
                         <p>{message}</p>
                     </div>

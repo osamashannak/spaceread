@@ -112,7 +112,7 @@
   gap: 22px;
   min-height: 0;
   min-width: 0;
-  padding: 28px;
+  padding: 34px 28px 28px;
   width: min(560px, calc(100vw - 32px));
 }
 
@@ -167,16 +167,20 @@
 
 .policyWarningBadge {
   align-items: center;
-  align-self: start;
-  background: #F2FAFF;
+  background: #FFFFFF;
   border: 1px solid #C7EAFE;
   border-radius: 9999px;
+  box-shadow: 0 0 0 6px #FFFFFF;
   color: #075985;
   display: inline-flex;
   font-size: 12px;
   font-weight: 700;
+  left: 28px;
   line-height: 1;
   padding: 7px 10px;
+  position: absolute;
+  top: 0;
+  transform: translateY(-50%);
 }
 
 .policyWarningActions {
@@ -215,7 +219,11 @@
 
 @media (max-width: 560px) {
   .policyWarningModal {
-    padding: 24px;
+    padding: 34px 24px 24px;
+  }
+
+  .policyWarningBadge {
+    left: 24px;
   }
 
   .policyWarningLayout {

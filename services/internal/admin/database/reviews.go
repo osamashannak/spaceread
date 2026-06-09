@@ -83,6 +83,16 @@ type ReviewVisibilityDecision struct {
 	ResolveReports bool
 }
 
+type ReviewPairVisibilityDecision struct {
+	Review1ID      int64
+	Review2ID      int64
+	Visible        bool
+	ActorUserID    *int64
+	ReasonCode     *string
+	Note           *string
+	ResolveReports bool
+}
+
 type AttachmentVisibilityDecision struct {
 	AttachmentID int64
 	Visible      bool
@@ -109,6 +119,13 @@ type ReviewNoteDecision struct {
 
 type DecisionResult struct {
 	Review              *v1.AdminReview
+	ResolvedReportCount int64
+	Action              string
+}
+
+type PairDecisionResult struct {
+	Review1             *v1.AdminReview
+	Review2             *v1.AdminReview
 	ResolvedReportCount int64
 	Action              string
 }
@@ -430,10 +447,112 @@ func (db *AdminDB) SetReviewVisibility(ctx context.Context, decision ReviewVisib
 	}
 	defer tx.Rollback(ctx)
 
+	updateResult, err := updateReviewVisibilityInTx(ctx, tx, decision)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+
+	review, err := db.GetReview(ctx, decision.ReviewID)
+	if err != nil {
+		return nil, err
+	}
+	if review == nil {
+		return nil, ErrNotFound
+	}
+
+	return &DecisionResult{
+		Review:              review,
+		ResolvedReportCount: updateResult.ResolvedReportCount,
+		Action:              updateResult.Action,
+	}, nil
+}
+
+func (db *AdminDB) SetReviewPairVisibility(ctx context.Context, decision ReviewPairVisibilityDecision) (*PairDecisionResult, error) {
+	tx, err := db.db.Pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+
+	firstID := decision.Review1ID
+	secondID := decision.Review2ID
+	if secondID < firstID {
+		firstID, secondID = secondID, firstID
+	}
+
+	first, err := updateReviewVisibilityInTx(ctx, tx, ReviewVisibilityDecision{
+		ReviewID:       firstID,
+		Visible:        decision.Visible,
+		ActorUserID:    decision.ActorUserID,
+		ReasonCode:     decision.ReasonCode,
+		Note:           decision.Note,
+		ResolveReports: decision.ResolveReports,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	second, err := updateReviewVisibilityInTx(ctx, tx, ReviewVisibilityDecision{
+		ReviewID:       secondID,
+		Visible:        decision.Visible,
+		ActorUserID:    decision.ActorUserID,
+		ReasonCode:     decision.ReasonCode,
+		Note:           decision.Note,
+		ResolveReports: decision.ResolveReports,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+
+	reviews, err := db.loadReviews(ctx, []int64{decision.Review1ID, decision.Review2ID})
+	if err != nil {
+		return nil, err
+	}
+
+	reviewsByID := make(map[int64]v1.AdminReview, len(reviews))
+	for _, review := range reviews {
+		reviewsByID[review.ID] = review
+	}
+
+	review1, ok1 := reviewsByID[decision.Review1ID]
+	review2, ok2 := reviewsByID[decision.Review2ID]
+	if !ok1 || !ok2 {
+		return nil, ErrNotFound
+	}
+
+	return &PairDecisionResult{
+		Review1:             &review1,
+		Review2:             &review2,
+		ResolvedReportCount: first.ResolvedReportCount + second.ResolvedReportCount,
+		Action:              reviewVisibilityAction(first.PreviousVisible || second.PreviousVisible, decision.Visible),
+	}, nil
+}
+
+type visibilityUpdateResult struct {
+	PreviousVisible     bool
+	ResolvedReportCount int64
+	Action              string
+}
+
+type queryExecRunner interface {
+	txRunner
+	QueryRow(ctx context.Context, sql string, arguments ...any) pgx.Row
+}
+
+func updateReviewVisibilityInTx(ctx context.Context, tx queryExecRunner, decision ReviewVisibilityDecision) (*visibilityUpdateResult, error) {
 	var (
 		previousVisible bool
 		previousState   []byte
 		nextState       []byte
+		err             error
 	)
 
 	err = tx.QueryRow(ctx, `
@@ -517,20 +636,8 @@ func (db *AdminDB) SetReviewVisibility(ctx context.Context, decision ReviewVisib
 		}
 	}
 
-	if err := tx.Commit(ctx); err != nil {
-		return nil, err
-	}
-
-	review, err := db.GetReview(ctx, decision.ReviewID)
-	if err != nil {
-		return nil, err
-	}
-	if review == nil {
-		return nil, ErrNotFound
-	}
-
-	return &DecisionResult{
-		Review:              review,
+	return &visibilityUpdateResult{
+		PreviousVisible:     previousVisible,
 		ResolvedReportCount: resolvedCount,
 		Action:              action,
 	}, nil

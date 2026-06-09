@@ -111,6 +111,14 @@ export type AdminDecisionResponse = {
     action: string;
 };
 
+export type AdminPairDecisionResponse = {
+    success: boolean;
+    review_1: AdminReview;
+    review_2: AdminReview;
+    resolved_report_count: number;
+    action: string;
+};
+
 export type AdminReplyDecisionResponse = {
     success: boolean;
     review: AdminReview;
@@ -550,6 +558,15 @@ export async function setReviewVisibility(
     body: { visible: boolean; reason_code?: string; note?: string; resolve_reports?: boolean },
 ) {
     return adminFetch<AdminDecisionResponse>(`/reviews/${encodeURIComponent(reviewId)}/visibility`, {
+        method: "POST",
+        body: JSON.stringify(body),
+    });
+}
+
+export async function hideSuspiciousReviewPair(
+    body: { review_1_id: string; review_2_id: string; reason_code: string; note?: string; resolve_reports?: boolean },
+) {
+    return adminFetch<AdminPairDecisionResponse>("/reviews/suspicious/hide-pair", {
         method: "POST",
         body: JSON.stringify(body),
     });

@@ -25,9 +25,12 @@ import {Button} from "@/components/ui/button";
 import {Input} from "@/components/ui/input";
 import {
     AdminApiError,
+    type AdminReason,
     type AdminReview,
     type AdminSuspiciousReviewFilters,
     type AdminSuspiciousReviewPair,
+    hideSuspiciousReviewPair,
+    listAdminReasons,
     listAdminSuspiciousReviewPairs,
 } from "@/lib/admin_api";
 import {cn} from "@/lib/utils";
@@ -62,6 +65,7 @@ export function SuspiciousReviewsPage() {
     const [loadState, setLoadState] = useState<LoadState>("loading");
     const [error, setError] = useState<string | null>(null);
     const [isRefreshing, setIsRefreshing] = useState(false);
+    const [reasons, setReasons] = useState<AdminReason[]>([]);
     const {openEntity, showSensitive, toggleSensitive} = useAdminEntityDrawer();
 
     const loadPairs = useCallback((mode: "initial" | "refresh" = "initial") => {
@@ -89,6 +93,17 @@ export function SuspiciousReviewsPage() {
     }, [filters]);
 
     useEffect(() => loadPairs("initial"), [loadPairs]);
+    useEffect(() => {
+        const controller = new AbortController();
+        listAdminReasons(controller.signal)
+            .then(response => setReasons(response.reasons))
+            .catch(() => {
+                if (!controller.signal.aborted) {
+                    setReasons([]);
+                }
+            });
+        return () => controller.abort();
+    }, []);
 
     function updateDraft<K extends keyof AdminSuspiciousReviewFilters>(key: K, value: AdminSuspiciousReviewFilters[K]) {
         setDraftFilters(current => ({...current, [key]: value}));
@@ -106,6 +121,15 @@ export function SuspiciousReviewsPage() {
 
     const totalSignals = useMemo(() => pairs.reduce((sum, pair) => sum + pairSignals(pair, showSensitive).length, 0), [pairs, showSensitive]);
     const activeFilterCount = countActiveFilters(filters);
+    const reasonOptions = useMemo(() => activeReasonOptions(reasons), [reasons]);
+
+    function updatePairReviews(review1: AdminReview, review2: AdminReview) {
+        setPairs(current => current.map(pair => ({
+            ...pair,
+            review_1: replaceReview(pair.review_1, review1, review2),
+            review_2: replaceReview(pair.review_2, review1, review2),
+        })));
+    }
 
     return (
         <div className={styles.page}>
@@ -227,7 +251,9 @@ export function SuspiciousReviewsPage() {
                             <SuspiciousPairRow
                                 key={`${pair.review_1.id}-${pair.review_2.id}`}
                                 pair={pair}
+                                reasonOptions={reasonOptions}
                                 showSensitive={showSensitive}
+                                onPairHidden={updatePairReviews}
                                 onOpenReview={review => openEntity({type: "review", id: review.id})}
                             />
                         ))}
@@ -252,14 +278,62 @@ function SummaryStat({icon, label, value}: { icon: ReactNode; label: string; val
 
 function SuspiciousPairRow({
     pair,
+    reasonOptions,
     showSensitive,
+    onPairHidden,
     onOpenReview,
 }: {
     pair: AdminSuspiciousReviewPair;
+    reasonOptions: AdminReason[];
     showSensitive: boolean;
+    onPairHidden: (review1: AdminReview, review2: AdminReview) => void;
     onOpenReview: (review: AdminReview) => void;
 }) {
     const signals = pairSignals(pair, showSensitive);
+    const [reason, setReason] = useState("");
+    const [note, setNote] = useState("");
+    const [pending, setPending] = useState(false);
+    const [message, setMessage] = useState("");
+    const [error, setError] = useState("");
+    const bothHidden = !pair.review_1.visible && !pair.review_2.visible;
+
+    useEffect(() => {
+        setReason(current => (
+            current && reasonOptions.some(option => option.code === current)
+                ? current
+                : reasonOptions[0]?.code || ""
+        ));
+    }, [reasonOptions]);
+
+    async function runHideBoth(event: FormEvent<HTMLFormElement>) {
+        event.preventDefault();
+        if (!reason) {
+            setError("Choose a reason before hiding reviews.");
+            return;
+        }
+
+        setPending(true);
+        setError("");
+        setMessage("");
+
+        try {
+            const response = await hideSuspiciousReviewPair({
+                review_1_id: pair.review_1.id,
+                review_2_id: pair.review_2.id,
+                reason_code: reason,
+                note: note || undefined,
+                resolve_reports: true,
+            });
+            onPairHidden(response.review_1, response.review_2);
+            setMessage(response.resolved_report_count > 0
+                ? `Both reviews hidden. ${response.resolved_report_count} reports resolved.`
+                : "Both reviews hidden.");
+        } catch (err) {
+            setError(err instanceof Error ? err.message : "Could not hide both reviews.");
+        } finally {
+            setPending(false);
+        }
+    }
 
     return (
         <article className={styles.pairRow}>
@@ -294,6 +368,38 @@ function SuspiciousPairRow({
                 <ReviewCard label="First review" review={pair.review_1} showSensitive={showSensitive} onOpen={() => onOpenReview(pair.review_1)}/>
                 <ReviewCard label="Second review" review={pair.review_2} showSensitive={showSensitive} onOpen={() => onOpenReview(pair.review_2)}/>
             </div>
+
+            <form className={styles.pairAction} onSubmit={runHideBoth}>
+                <label className={styles.actionField}>
+                    <span>Reason</span>
+                    <select
+                        className={styles.selectInput}
+                        disabled={pending || bothHidden || reasonOptions.length === 0}
+                        value={reason}
+                        onChange={event => setReason(event.target.value)}
+                    >
+                        {reasonOptions.length === 0 && <option value="">No active reasons</option>}
+                        {reasonOptions.map(option => (
+                            <option key={option.code} value={option.code}>{option.label}</option>
+                        ))}
+                    </select>
+                </label>
+                <label className={cn(styles.actionField, styles.actionNote)}>
+                    <span>Internal note</span>
+                    <Input
+                        disabled={pending || bothHidden}
+                        placeholder="Optional"
+                        value={note}
+                        onChange={event => setNote(event.target.value)}
+                    />
+                </label>
+                <Button disabled={pending || bothHidden || !reason} type="submit" variant="destructive">
+                    {pending ? <LoaderCircle className={styles.spin} size={16}/> : <EyeOff size={16}/>}
+                    Hide both
+                </Button>
+                {message ? <p className={styles.actionStatus}>{message}</p> : bothHidden && <p className={styles.actionStatus}>Both reviews are hidden.</p>}
+                {error && <p className={styles.actionError}>{error}</p>}
+            </form>
         </article>
     );
 }
@@ -454,6 +560,18 @@ function countActiveFilters(filters: AdminSuspiciousReviewFilters) {
     return (Object.keys(defaultFilters) as Array<keyof AdminSuspiciousReviewFilters>)
         .filter(key => filters[key] !== defaultFilters[key])
         .length;
+}
+
+function activeReasonOptions(reasons: AdminReason[]) {
+    return reasons
+        .filter(reason => reason.active)
+        .sort((a, b) => a.sort_order - b.sort_order || a.code.localeCompare(b.code));
+}
+
+function replaceReview(current: AdminReview, review1: AdminReview, review2: AdminReview) {
+    if (current.id === review1.id) return review1;
+    if (current.id === review2.id) return review2;
+    return current;
 }
 
 function formatPercent(value: number) {

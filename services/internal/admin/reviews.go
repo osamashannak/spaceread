@@ -188,6 +188,64 @@ func (s *Server) ListSuspiciousReviewPairs() http.Handler {
 	})
 }
 
+func (s *Server) HideSuspiciousReviewPair() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+
+		var request v1.AdminReviewPairVisibilityRequest
+		code, err := jsonutil.Unmarshal(w, r, &request)
+		if err != nil {
+			jsonutil.MarshalResponse(w, code, v1.ErrorResponse{Error: code, Message: err.Error()})
+			return
+		}
+
+		if *request.Review1ID <= 0 || *request.Review2ID <= 0 {
+			writeError(w, http.StatusBadRequest, "invalid review id")
+			return
+		}
+		if *request.Review1ID == *request.Review2ID {
+			writeError(w, http.StatusBadRequest, "reviews must be different")
+			return
+		}
+
+		reasonCode := cleanOptionalText(request.ReasonCode)
+		if reasonCode == nil {
+			writeError(w, http.StatusBadRequest, "reason_code is required")
+			return
+		}
+		if !s.validReason(w, r, reasonCode) {
+			return
+		}
+
+		resolveReports := true
+		if request.ResolveReports != nil {
+			resolveReports = *request.ResolveReports
+		}
+
+		result, err := s.db.SetReviewPairVisibility(ctx, admindb.ReviewPairVisibilityDecision{
+			Review1ID:      *request.Review1ID,
+			Review2ID:      *request.Review2ID,
+			Visible:        false,
+			ActorUserID:    s.actorUserID(ctx),
+			ReasonCode:     reasonCode,
+			Note:           cleanOptionalText(request.Note),
+			ResolveReports: resolveReports,
+		})
+		if err != nil {
+			s.writeDecisionError(w, r, err, "failed to hide suspicious review pair")
+			return
+		}
+
+		jsonutil.MarshalResponse(w, http.StatusOK, v1.AdminPairDecisionResponse{
+			Success:             true,
+			Review1:             *result.Review1,
+			Review2:             *result.Review2,
+			ResolvedReportCount: result.ResolvedReportCount,
+			Action:              result.Action,
+		})
+	})
+}
+
 func (s *Server) GetReview() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		reviewID, ok := parsePathID(w, r, "reviewID")

@@ -208,6 +208,14 @@ type AdminReviewVisibilityRequest struct {
 	ResolveReports *bool   `json:"resolve_reports"`
 }
 
+type AdminReviewPairVisibilityRequest struct {
+	Review1ID      *int64  `json:"review_1_id,string" required:"true"`
+	Review2ID      *int64  `json:"review_2_id,string" required:"true"`
+	ReasonCode     *string `json:"reason_code" required:"true"`
+	Note           *string `json:"note"`
+	ResolveReports *bool   `json:"resolve_reports"`
+}
+
 type AdminAttachmentVisibilityRequest struct {
 	Visible    *bool   `json:"visible" required:"true"`
 	ReasonCode *string `json:"reason_code"`
@@ -236,6 +244,14 @@ type AdminReviewReplyNoteRequest struct {
 type AdminDecisionResponse struct {
 	Success             bool        `json:"success"`
 	Review              AdminReview `json:"review"`
+	ResolvedReportCount int64       `json:"resolved_report_count"`
+	Action              string      `json:"action"`
+}
+
+type AdminPairDecisionResponse struct {
+	Success             bool        `json:"success"`
+	Review1             AdminReview `json:"review_1"`
+	Review2             AdminReview `json:"review_2"`
 	ResolvedReportCount int64       `json:"resolved_report_count"`
 	Action              string      `json:"action"`
 }
