@@ -30,7 +30,6 @@ import {
     type AdminSuspiciousReviewFilters,
     type AdminSuspiciousReviewPair,
     hideSuspiciousReviewPair,
-    listAdminReasons,
     listAdminSuspiciousReviewPairs,
 } from "@/lib/admin_api";
 import {cn} from "@/lib/utils";
@@ -65,8 +64,13 @@ export function SuspiciousReviewsPage() {
     const [loadState, setLoadState] = useState<LoadState>("loading");
     const [error, setError] = useState<string | null>(null);
     const [isRefreshing, setIsRefreshing] = useState(false);
-    const [reasons, setReasons] = useState<AdminReason[]>([]);
-    const {openEntity, showSensitive, toggleSensitive} = useAdminEntityDrawer();
+    const [selectedPairKeys, setSelectedPairKeys] = useState<Set<string>>(new Set());
+    const [bulkReason, setBulkReason] = useState("");
+    const [bulkNote, setBulkNote] = useState("");
+    const [bulkPending, setBulkPending] = useState(false);
+    const [bulkMessage, setBulkMessage] = useState("");
+    const [bulkError, setBulkError] = useState("");
+    const {openEntity, reasons, showSensitive, toggleSensitive} = useAdminEntityDrawer();
 
     const loadPairs = useCallback((mode: "initial" | "refresh" = "initial") => {
         const controller = new AbortController();
@@ -93,17 +97,6 @@ export function SuspiciousReviewsPage() {
     }, [filters]);
 
     useEffect(() => loadPairs("initial"), [loadPairs]);
-    useEffect(() => {
-        const controller = new AbortController();
-        listAdminReasons(controller.signal)
-            .then(response => setReasons(response.reasons))
-            .catch(() => {
-                if (!controller.signal.aborted) {
-                    setReasons([]);
-                }
-            });
-        return () => controller.abort();
-    }, []);
 
     function updateDraft<K extends keyof AdminSuspiciousReviewFilters>(key: K, value: AdminSuspiciousReviewFilters[K]) {
         setDraftFilters(current => ({...current, [key]: value}));
@@ -122,6 +115,25 @@ export function SuspiciousReviewsPage() {
     const totalSignals = useMemo(() => pairs.reduce((sum, pair) => sum + pairSignals(pair, showSensitive).length, 0), [pairs, showSensitive]);
     const activeFilterCount = countActiveFilters(filters);
     const reasonOptions = useMemo(() => activeReasonOptions(reasons), [reasons]);
+    const visiblePairKeys = useMemo(() => pairs.map(pairKey), [pairs]);
+    const selectedVisibleCount = visiblePairKeys.filter(key => selectedPairKeys.has(key)).length;
+    const allVisiblePairsSelected = visiblePairKeys.length > 0 && selectedVisibleCount === visiblePairKeys.length;
+
+    useEffect(() => {
+        const visibleKeys = new Set(visiblePairKeys);
+        setSelectedPairKeys(current => {
+            const next = new Set([...current].filter(key => visibleKeys.has(key)));
+            return next.size === current.size ? current : next;
+        });
+    }, [visiblePairKeys]);
+
+    useEffect(() => {
+        setBulkReason(current => (
+            current && reasonOptions.some(option => option.code === current)
+                ? current
+                : reasonOptions[0]?.code || ""
+        ));
+    }, [reasonOptions]);
 
     function updatePairReviews(review1: AdminReview, review2: AdminReview) {
         setPairs(current => current.map(pair => ({
@@ -129,6 +141,88 @@ export function SuspiciousReviewsPage() {
             review_1: replaceReview(pair.review_1, review1, review2),
             review_2: replaceReview(pair.review_2, review1, review2),
         })));
+    }
+
+    function togglePairSelection(key: string, checked: boolean) {
+        setBulkMessage("");
+        setBulkError("");
+        setSelectedPairKeys(current => {
+            const next = new Set(current);
+            if (checked) {
+                next.add(key);
+            } else {
+                next.delete(key);
+            }
+            return next;
+        });
+    }
+
+    function toggleVisibleSelection() {
+        setBulkMessage("");
+        setBulkError("");
+        setSelectedPairKeys(current => {
+            const next = new Set(current);
+            if (allVisiblePairsSelected) {
+                visiblePairKeys.forEach(key => next.delete(key));
+            } else {
+                visiblePairKeys.forEach(key => next.add(key));
+            }
+            return next;
+        });
+    }
+
+    function clearPairSelection() {
+        setBulkMessage("");
+        setBulkError("");
+        setSelectedPairKeys(new Set());
+    }
+
+    async function runBulkHideBoth(event: FormEvent<HTMLFormElement>) {
+        event.preventDefault();
+        const targets = pairs.filter(pair => selectedPairKeys.has(pairKey(pair)));
+        if (targets.length === 0) return;
+        if (!bulkReason) {
+            setBulkError("Choose a reason before hiding selected pairs.");
+            return;
+        }
+
+        setBulkPending(true);
+        setBulkMessage("");
+        setBulkError("");
+
+        const failedKeys: string[] = [];
+        let successCount = 0;
+        let resolvedReports = 0;
+
+        for (const pair of targets) {
+            const key = pairKey(pair);
+            try {
+                const response = await hideSuspiciousReviewPair({
+                    review_1_id: pair.review_1.id,
+                    review_2_id: pair.review_2.id,
+                    reason_code: bulkReason,
+                    note: bulkNote || undefined,
+                    resolve_reports: true,
+                });
+                updatePairReviews(response.review_1, response.review_2);
+                successCount += 1;
+                resolvedReports += response.resolved_report_count;
+            } catch {
+                failedKeys.push(key);
+            }
+        }
+
+        setBulkPending(false);
+
+        if (failedKeys.length > 0) {
+            setSelectedPairKeys(new Set(failedKeys));
+            setBulkMessage(successCount > 0 ? bulkSuccessMessage(successCount, resolvedReports) : "");
+            setBulkError(`${failedKeys.length} pairs failed. They are still selected.`);
+            return;
+        }
+
+        setSelectedPairKeys(new Set());
+        setBulkMessage(bulkSuccessMessage(successCount, resolvedReports));
     }
 
     return (
@@ -221,6 +315,53 @@ export function SuspiciousReviewsPage() {
                 </form>
             </section>
 
+            {pairs.length > 0 && (
+                <form className={styles.bulkBar} onSubmit={runBulkHideBoth}>
+                    <label className={styles.selectionToggle}>
+                        <input
+                            checked={allVisiblePairsSelected}
+                            type="checkbox"
+                            onChange={toggleVisibleSelection}
+                        />
+                        <span>{selectedVisibleCount} of {visiblePairKeys.length} pairs selected</span>
+                    </label>
+                    <label className={styles.bulkField}>
+                        <span>Reason</span>
+                        <select
+                            className={styles.selectInput}
+                            disabled={bulkPending || reasonOptions.length === 0}
+                            value={bulkReason}
+                            onChange={event => setBulkReason(event.target.value)}
+                        >
+                            {reasonOptions.length === 0 && <option value="">No active reasons</option>}
+                            {reasonOptions.map(option => (
+                                <option key={option.code} value={option.code}>{option.label}</option>
+                            ))}
+                        </select>
+                    </label>
+                    <label className={cn(styles.bulkField, styles.bulkNote)}>
+                        <span>Internal note</span>
+                        <Input
+                            disabled={bulkPending}
+                            placeholder="Optional"
+                            value={bulkNote}
+                            onChange={event => setBulkNote(event.target.value)}
+                        />
+                    </label>
+                    <div className={styles.bulkActions}>
+                        <Button disabled={selectedVisibleCount === 0 || bulkPending} type="button" variant="outline" onClick={clearPairSelection}>
+                            Clear
+                        </Button>
+                        <Button disabled={selectedVisibleCount === 0 || bulkPending || !bulkReason} type="submit" variant="destructive">
+                            {bulkPending ? <LoaderCircle className={styles.spin} size={16}/> : <EyeOff size={16}/>}
+                            Hide selected
+                        </Button>
+                    </div>
+                    {bulkMessage && <p className={styles.actionStatus}>{bulkMessage}</p>}
+                    {bulkError && <p className={styles.actionError}>{bulkError}</p>}
+                </form>
+            )}
+
             <section className={cn(styles.feed, isRefreshing && styles.refreshingFeed)}>
                 {loadState === "loading" && pairs.length === 0 && <SkeletonList/>}
                 {loadState === "error" && pairs.length === 0 && (
@@ -252,8 +393,10 @@ export function SuspiciousReviewsPage() {
                                 key={`${pair.review_1.id}-${pair.review_2.id}`}
                                 pair={pair}
                                 reasonOptions={reasonOptions}
+                                selectedForBatch={selectedPairKeys.has(pairKey(pair))}
                                 showSensitive={showSensitive}
                                 onPairHidden={updatePairReviews}
+                                onSelectionChange={checked => togglePairSelection(pairKey(pair), checked)}
                                 onOpenReview={review => openEntity({type: "review", id: review.id})}
                             />
                         ))}
@@ -279,14 +422,18 @@ function SummaryStat({icon, label, value}: { icon: ReactNode; label: string; val
 function SuspiciousPairRow({
     pair,
     reasonOptions,
+    selectedForBatch,
     showSensitive,
     onPairHidden,
+    onSelectionChange,
     onOpenReview,
 }: {
     pair: AdminSuspiciousReviewPair;
     reasonOptions: AdminReason[];
+    selectedForBatch: boolean;
     showSensitive: boolean;
     onPairHidden: (review1: AdminReview, review2: AdminReview) => void;
+    onSelectionChange: (checked: boolean) => void;
     onOpenReview: (review: AdminReview) => void;
 }) {
     const signals = pairSignals(pair, showSensitive);
@@ -336,9 +483,16 @@ function SuspiciousPairRow({
     }
 
     return (
-        <article className={styles.pairRow}>
+        <article className={cn(styles.pairRow, selectedForBatch && styles.pairSelected)}>
             <header className={styles.pairHeader}>
                 <div className={styles.pairTitle}>
+                    <label className={styles.pairSelector} aria-label={`Select reviews ${pair.review_1.id} and ${pair.review_2.id}`}>
+                        <input
+                            checked={selectedForBatch}
+                            type="checkbox"
+                            onChange={event => onSelectionChange(event.target.checked)}
+                        />
+                    </label>
                     <Badge className={styles.scoreBadge} variant={scoreTone(pair.suspicion_score)}>
                         Score {pair.suspicion_score}
                     </Badge>
@@ -560,6 +714,18 @@ function countActiveFilters(filters: AdminSuspiciousReviewFilters) {
     return (Object.keys(defaultFilters) as Array<keyof AdminSuspiciousReviewFilters>)
         .filter(key => filters[key] !== defaultFilters[key])
         .length;
+}
+
+function pairKey(pair: AdminSuspiciousReviewPair) {
+    return `${pair.review_1.id}:${pair.review_2.id}`;
+}
+
+function bulkSuccessMessage(pairCount: number, resolvedReports: number) {
+    const pairLabel = pairCount === 1 ? "pair" : "pairs";
+    if (resolvedReports > 0) {
+        return `${pairCount} ${pairLabel} hidden. ${resolvedReports} reports resolved.`;
+    }
+    return `${pairCount} ${pairLabel} hidden.`;
 }
 
 function activeReasonOptions(reasons: AdminReason[]) {

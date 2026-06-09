@@ -27,6 +27,7 @@ var clearBiasFavoritismTerms = []string{
 	"ethnic bias",
 	"discrimination",
 	"discriminatory",
+	"biased",
 	"favoritism",
 	"favouritism",
 	"plays favorites",
@@ -603,12 +604,22 @@ func ContainsBiasFavoritismAllegation(text string) bool {
 	}
 
 	for _, term := range clearBiasFavoritismTerms {
-		if containsPolicyPhrase(normalized, term) && !hasNegatedPolicyPhrase(normalized, term) {
+		if containsPolicyPhrase(normalized, term) &&
+			!hasNegatedPolicyPhrase(normalized, term) &&
+			!(term == "biased" && hasExcludedBiasedContext(normalized)) {
 			return true
 		}
 	}
 
 	return containsGuardedBiasPattern(normalized)
+}
+
+func hasExcludedBiasedContext(normalized string) bool {
+	exclusions := []string{
+		"biased opinion",
+	}
+
+	return containsAnyPolicyPhrase(normalized, exclusions)
 }
 
 func containsGuardedBiasPattern(normalized string) bool {
@@ -984,6 +995,10 @@ func hasNegatedPolicyPhrase(normalized, phrase string) bool {
 		"not",
 		"not a",
 		"not being",
+		"not being being",
+		"wont be",
+		"won t be",
+		"will not be",
 		"no",
 		"without",
 		"مو",

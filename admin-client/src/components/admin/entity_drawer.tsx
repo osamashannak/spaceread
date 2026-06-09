@@ -89,6 +89,7 @@ type LoadedEntity =
 type DrawerContextValue = {
     openEntity: (target: AdminEntityTarget) => void;
     closeDrawer: () => void;
+    reasons: AdminReason[];
     showSensitive: boolean;
     toggleSensitive: () => void;
 };
@@ -239,9 +240,10 @@ export function AdminEntityDrawerProvider({children}: { children: ReactNode }) {
     const value = useMemo<DrawerContextValue>(() => ({
         openEntity,
         closeDrawer,
+        reasons,
         showSensitive,
         toggleSensitive: () => setShowSensitive(value => !value),
-    }), [closeDrawer, openEntity, showSensitive]);
+    }), [closeDrawer, openEntity, reasons, showSensitive]);
 
     return (
         <DrawerContext.Provider value={value}>

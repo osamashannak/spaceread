@@ -28,7 +28,6 @@ import {
     type AdminReason,
     type AdminReviewFilters,
     type AdminReview,
-    listAdminReasons,
     listAdminReviews,
     saveReviewNote,
     setReviewVisibility,
@@ -186,7 +185,6 @@ export function ModerationPage() {
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [selectedId, setSelectedId] = useState<string | null>(null);
     const [selectedReviewIds, setSelectedReviewIds] = useState<Set<string>>(new Set());
-    const [reasons, setReasons] = useState<AdminReason[]>([]);
     const [filters, setFilters] = useState<AdminReviewFilters>(defaultReviewFilters);
     const [draftFilters, setDraftFilters] = useState<AdminReviewFilters>(defaultReviewFilters);
     const [filtersOpen, setFiltersOpen] = useState(false);
@@ -198,7 +196,7 @@ export function ModerationPage() {
     const [bulkMessage, setBulkMessage] = useState("");
     const [bulkError, setBulkError] = useState("");
     const [bulkActionMessage, setBulkActionMessage] = useState("");
-    const {openEntity} = useAdminEntityDrawer();
+    const {openEntity, reasons} = useAdminEntityDrawer();
 
     const loadReviews = useCallback((mode: "initial" | "refresh" = "initial") => {
         const controller = new AbortController();
@@ -229,18 +227,6 @@ export function ModerationPage() {
     }, [filters]);
 
     useEffect(() => loadReviews("initial"), [loadReviews]);
-
-    useEffect(() => {
-        const controller = new AbortController();
-        listAdminReasons(controller.signal)
-            .then(response => setReasons(response.reasons))
-            .catch(() => {
-                if (!controller.signal.aborted) {
-                    setReasons([]);
-                }
-            });
-        return () => controller.abort();
-    }, []);
 
     const overlayOpen = filtersOpen || bulkActionsOpen;
 

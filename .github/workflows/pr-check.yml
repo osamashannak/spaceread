@@ -3,7 +3,6 @@ name: 'Check Frontend PR'
 on:
   pull_request:
     paths:
-      - '.github/workflows/pr-check.yml'
       - 'admin-client/**'
       - 'web-client/**'
 

@@ -75,12 +75,13 @@ type ListSuspiciousReviewPairOptions struct {
 }
 
 type ReviewVisibilityDecision struct {
-	ReviewID       int64
-	Visible        bool
-	ActorUserID    *int64
-	ReasonCode     *string
-	Note           *string
-	ResolveReports bool
+	ReviewID             int64
+	Visible              bool
+	ActorUserID          *int64
+	ReasonCode           *string
+	Note                 *string
+	ResolveReports       bool
+	SkipHiddenSameReason bool
 }
 
 type ReviewPairVisibilityDecision struct {
@@ -485,24 +486,26 @@ func (db *AdminDB) SetReviewPairVisibility(ctx context.Context, decision ReviewP
 	}
 
 	first, err := updateReviewVisibilityInTx(ctx, tx, ReviewVisibilityDecision{
-		ReviewID:       firstID,
-		Visible:        decision.Visible,
-		ActorUserID:    decision.ActorUserID,
-		ReasonCode:     decision.ReasonCode,
-		Note:           decision.Note,
-		ResolveReports: decision.ResolveReports,
+		ReviewID:             firstID,
+		Visible:              decision.Visible,
+		ActorUserID:          decision.ActorUserID,
+		ReasonCode:           decision.ReasonCode,
+		Note:                 decision.Note,
+		ResolveReports:       decision.ResolveReports,
+		SkipHiddenSameReason: true,
 	})
 	if err != nil {
 		return nil, err
 	}
 
 	second, err := updateReviewVisibilityInTx(ctx, tx, ReviewVisibilityDecision{
-		ReviewID:       secondID,
-		Visible:        decision.Visible,
-		ActorUserID:    decision.ActorUserID,
-		ReasonCode:     decision.ReasonCode,
-		Note:           decision.Note,
-		ResolveReports: decision.ResolveReports,
+		ReviewID:             secondID,
+		Visible:              decision.Visible,
+		ActorUserID:          decision.ActorUserID,
+		ReasonCode:           decision.ReasonCode,
+		Note:                 decision.Note,
+		ResolveReports:       decision.ResolveReports,
+		SkipHiddenSameReason: true,
 	})
 	if err != nil {
 		return nil, err
@@ -540,6 +543,7 @@ type visibilityUpdateResult struct {
 	PreviousVisible     bool
 	ResolvedReportCount int64
 	Action              string
+	Skipped             bool
 }
 
 type queryExecRunner interface {
@@ -554,6 +558,39 @@ func updateReviewVisibilityInTx(ctx context.Context, tx queryExecRunner, decisio
 		nextState       []byte
 		err             error
 	)
+
+	if decision.SkipHiddenSameReason && !decision.Visible {
+		var currentReason *string
+		err = tx.QueryRow(ctx, `
+			SELECT visible, moderation_reason_code
+			FROM professor.review
+			WHERE id = $1 AND deleted_at IS NULL
+			FOR UPDATE`,
+			decision.ReviewID,
+		).Scan(&previousVisible, &currentReason)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return nil, ErrNotFound
+			}
+			return nil, err
+		}
+
+		if !previousVisible && optionalStringEqual(currentReason, decision.ReasonCode) {
+			resolvedCount := int64(0)
+			if decision.ResolveReports {
+				resolvedCount, err = resolveOpenReviewReports(ctx, tx, decision, "review_hidden")
+				if err != nil {
+					return nil, err
+				}
+			}
+			return &visibilityUpdateResult{
+				PreviousVisible:     previousVisible,
+				ResolvedReportCount: resolvedCount,
+				Action:              "skipped",
+				Skipped:             true,
+			}, nil
+		}
+	}
 
 	err = tx.QueryRow(ctx, `
 		WITH current AS (
@@ -1691,6 +1728,13 @@ func jsonbParam(data []byte) any {
 		return nil
 	}
 	return string(data)
+}
+
+func optionalStringEqual(a, b *string) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return *a == *b
 }
 
 func attachSignal(reviewsByID map[int64]*v1.AdminReview, signal v1.AdminModerationSignal) {

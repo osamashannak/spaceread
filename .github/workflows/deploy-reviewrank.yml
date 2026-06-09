@@ -5,11 +5,14 @@ on:
     branches:
       - 'main'
     paths:
-      - '.github/workflows/deploy-reviewrank.yml'
       - 'services/cmd/reviewrank/**'
-      - 'services/internal/professor/**'
+      - 'services/internal/api/v1/professor_types.go'
+      - 'services/internal/professor/database/**'
+      - 'services/internal/professor/model/**'
+      - 'services/internal/professor/ranking/**'
       - 'services/pkg/database/**'
       - 'services/pkg/logging/**'
+      - 'services/pkg/utils/**'
       - 'services/Dockerfile'
       - 'services/go.mod'
       - 'services/go.sum'
