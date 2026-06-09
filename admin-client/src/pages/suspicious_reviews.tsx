@@ -4,6 +4,7 @@ import {
     CheckCircle2,
     Eye,
     EyeOff,
+    Fingerprint,
     Filter,
     Gauge,
     Languages,
@@ -30,6 +31,7 @@ import {
     type AdminSuspiciousReviewFilters,
     type AdminSuspiciousReviewPair,
     hideSuspiciousReviewPair,
+    hideSuspiciousReviewPairs,
     listAdminSuspiciousReviewPairs,
 } from "@/lib/admin_api";
 import {cn} from "@/lib/utils";
@@ -191,39 +193,24 @@ export function SuspiciousReviewsPage() {
         setBulkMessage("");
         setBulkError("");
 
-        const failedKeys: string[] = [];
-        let successCount = 0;
-        let resolvedReports = 0;
-
-        for (const pair of targets) {
-            const key = pairKey(pair);
-            try {
-                const response = await hideSuspiciousReviewPair({
+        try {
+            const response = await hideSuspiciousReviewPairs({
+                pairs: targets.map(pair => ({
                     review_1_id: pair.review_1.id,
                     review_2_id: pair.review_2.id,
-                    reason_code: bulkReason,
-                    note: bulkNote || undefined,
-                    resolve_reports: true,
-                });
-                updatePairReviews(response.review_1, response.review_2);
-                successCount += 1;
-                resolvedReports += response.resolved_report_count;
-            } catch {
-                failedKeys.push(key);
-            }
+                })),
+                reason_code: bulkReason,
+                note: bulkNote || undefined,
+                resolve_reports: true,
+            });
+            response.pairs.forEach(pair => updatePairReviews(pair.review_1, pair.review_2));
+            setSelectedPairKeys(new Set());
+            setBulkMessage(bulkSuccessMessage(response.pairs.length, response.resolved_report_count));
+        } catch (err: unknown) {
+            setBulkError(err instanceof AdminApiError ? err.message : "Selected pairs could not be hidden.");
+        } finally {
+            setBulkPending(false);
         }
-
-        setBulkPending(false);
-
-        if (failedKeys.length > 0) {
-            setSelectedPairKeys(new Set(failedKeys));
-            setBulkMessage(successCount > 0 ? bulkSuccessMessage(successCount, resolvedReports) : "");
-            setBulkError(`${failedKeys.length} pairs failed. They are still selected.`);
-            return;
-        }
-
-        setSelectedPairKeys(new Set());
-        setBulkMessage(bulkSuccessMessage(successCount, resolvedReports));
     }
 
     return (
@@ -274,7 +261,7 @@ export function SuspiciousReviewsPage() {
                         <span>Minimum score</span>
                         <Input
                             min="0"
-                            max="15"
+                            max="17"
                             type="number"
                             value={draftFilters.min_score}
                             onChange={event => updateDraft("min_score", event.target.value)}
@@ -662,6 +649,16 @@ function pairSignals(pair: AdminSuspiciousReviewPair, showSensitive: boolean) {
             ) : undefined,
         });
     }
+    if (pair.same_user_agent) {
+        signals.push({
+            key: "same_user_agent",
+            label: "Same agent",
+            weight: 2,
+            tone: "warning",
+            icon: <Fingerprint size={13}/>,
+            detail: pair.review_1.user_agent ? maskUserAgent(pair.review_1.user_agent, showSensitive) : undefined,
+        });
+    }
     if (pair.similar_content) {
         signals.push({
             key: "similar_content",
@@ -780,4 +777,9 @@ function maskIpAddress(value: string, visible: boolean) {
         return `${parts[0]}.${parts[1]}.xxx.xxx`;
     }
     return displayValue.replace(/[A-Fa-f0-9]/g, "x");
+}
+
+function maskUserAgent(value: string, visible: boolean) {
+    if (visible) return value;
+    return "Hidden";
 }

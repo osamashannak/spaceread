@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -75,19 +76,33 @@ type ListSuspiciousReviewPairOptions struct {
 	IncludeContentOnly  bool
 }
 
+type ReviewPairRef struct {
+	Review1ID int64
+	Review2ID int64
+}
+
 type ReviewVisibilityDecision struct {
-	ReviewID             int64
-	Visible              bool
-	ActorUserID          *int64
-	ReasonCode           *string
-	Note                 *string
-	ResolveReports       bool
-	SkipHiddenSameReason bool
+	ReviewID          int64
+	Visible           bool
+	ActorUserID       *int64
+	ReasonCode        *string
+	Note              *string
+	ResolveReports    bool
+	SkipAlreadyHidden bool
 }
 
 type ReviewPairVisibilityDecision struct {
 	Review1ID      int64
 	Review2ID      int64
+	Visible        bool
+	ActorUserID    *int64
+	ReasonCode     *string
+	Note           *string
+	ResolveReports bool
+}
+
+type ReviewPairBulkVisibilityDecision struct {
+	Pairs          []ReviewPairRef
 	Visible        bool
 	ActorUserID    *int64
 	ReasonCode     *string
@@ -128,6 +143,12 @@ type DecisionResult struct {
 type PairDecisionResult struct {
 	Review1             *v1.AdminReview
 	Review2             *v1.AdminReview
+	ResolvedReportCount int64
+	Action              string
+}
+
+type PairBatchDecisionResult struct {
+	Pairs               []PairDecisionResult
 	ResolvedReportCount int64
 	Action              string
 }
@@ -238,6 +259,7 @@ type suspiciousReviewPairRow struct {
 	CreatedDeltaSeconds int64
 	SameIP              bool
 	SameUser            bool
+	SameUserAgent       bool
 	SimilarContent      bool
 	SameLanguage        bool
 	SameScore           bool
@@ -346,6 +368,7 @@ func (db *AdminDB) ListSuspiciousReviewPairs(ctx context.Context, opts ListSuspi
 				r2.id AS review_2_id,
 				COALESCE(r1.ip_address = r2.ip_address, false) AS same_ip,
 				(r1.user_id IS NOT NULL AND r2.user_id IS NOT NULL AND r1.user_id = r2.user_id) AS same_user,
+				COALESCE(NULLIF(s1.user_agent, '') IS NOT NULL AND s1.user_agent = s2.user_agent, false) AS same_user_agent,
 				similarity(r1.content, r2.content)::double precision AS content_similarity,
 				r1.language = r2.language AS same_language,
 				r1.score = r2.score AS same_score,
@@ -354,6 +377,8 @@ func (db *AdminDB) ListSuspiciousReviewPairs(ctx context.Context, opts ListSuspi
 			FROM candidate_pairs cp
 			JOIN professor.review r1 ON r1.id = cp.review_1_id
 			JOIN professor.review r2 ON r2.id = cp.review_2_id
+			LEFT JOIN account.session s1 ON s1.id = r1.session_id
+			LEFT JOIN account.session s2 ON s2.id = r2.session_id
 		),
 		scored AS (
 			SELECT
@@ -363,6 +388,7 @@ func (db *AdminDB) ListSuspiciousReviewPairs(ctx context.Context, opts ListSuspi
 				(
 					(CASE WHEN same_ip THEN 3 ELSE 0 END) +
 					(CASE WHEN same_user THEN 5 ELSE 0 END) +
+					(CASE WHEN same_user_agent THEN 2 ELSE 0 END) +
 					(CASE WHEN content_similarity > $3 THEN 2 ELSE 0 END) +
 					(CASE WHEN same_language THEN 1 ELSE 0 END) +
 					(CASE WHEN same_score THEN 1 ELSE 0 END) +
@@ -379,6 +405,7 @@ func (db *AdminDB) ListSuspiciousReviewPairs(ctx context.Context, opts ListSuspi
 			created_delta_seconds,
 			same_ip,
 			same_user,
+			same_user_agent,
 			similar_content,
 			same_language,
 			same_score,
@@ -416,6 +443,7 @@ func (db *AdminDB) ListSuspiciousReviewPairs(ctx context.Context, opts ListSuspi
 			&row.CreatedDeltaSeconds,
 			&row.SameIP,
 			&row.SameUser,
+			&row.SameUserAgent,
 			&row.SimilarContent,
 			&row.SameLanguage,
 			&row.SameScore,
@@ -461,6 +489,7 @@ func (db *AdminDB) ListSuspiciousReviewPairs(ctx context.Context, opts ListSuspi
 			CreatedDeltaSeconds: row.CreatedDeltaSeconds,
 			SameIP:              row.SameIP,
 			SameUser:            row.SameUser,
+			SameUserAgent:       row.SameUserAgent,
 			SimilarContent:      row.SimilarContent,
 			SameLanguage:        row.SameLanguage,
 			SameScore:           row.SameScore,
@@ -517,26 +546,26 @@ func (db *AdminDB) SetReviewPairVisibility(ctx context.Context, decision ReviewP
 	}
 
 	first, err := updateReviewVisibilityInTx(ctx, tx, ReviewVisibilityDecision{
-		ReviewID:             firstID,
-		Visible:              decision.Visible,
-		ActorUserID:          decision.ActorUserID,
-		ReasonCode:           decision.ReasonCode,
-		Note:                 decision.Note,
-		ResolveReports:       decision.ResolveReports,
-		SkipHiddenSameReason: true,
+		ReviewID:          firstID,
+		Visible:           decision.Visible,
+		ActorUserID:       decision.ActorUserID,
+		ReasonCode:        decision.ReasonCode,
+		Note:              decision.Note,
+		ResolveReports:    decision.ResolveReports,
+		SkipAlreadyHidden: true,
 	})
 	if err != nil {
 		return nil, err
 	}
 
 	second, err := updateReviewVisibilityInTx(ctx, tx, ReviewVisibilityDecision{
-		ReviewID:             secondID,
-		Visible:              decision.Visible,
-		ActorUserID:          decision.ActorUserID,
-		ReasonCode:           decision.ReasonCode,
-		Note:                 decision.Note,
-		ResolveReports:       decision.ResolveReports,
-		SkipHiddenSameReason: true,
+		ReviewID:          secondID,
+		Visible:           decision.Visible,
+		ActorUserID:       decision.ActorUserID,
+		ReasonCode:        decision.ReasonCode,
+		Note:              decision.Note,
+		ResolveReports:    decision.ResolveReports,
+		SkipAlreadyHidden: true,
 	})
 	if err != nil {
 		return nil, err
@@ -566,7 +595,99 @@ func (db *AdminDB) SetReviewPairVisibility(ctx context.Context, decision ReviewP
 		Review1:             &review1,
 		Review2:             &review2,
 		ResolvedReportCount: first.ResolvedReportCount + second.ResolvedReportCount,
-		Action:              reviewVisibilityAction(first.PreviousVisible || second.PreviousVisible, decision.Visible),
+		Action:              pairVisibilityAction(decision.Visible, first, second),
+	}, nil
+}
+
+func (db *AdminDB) SetReviewPairsVisibility(ctx context.Context, decision ReviewPairBulkVisibilityDecision) (*PairBatchDecisionResult, error) {
+	tx, err := db.db.Pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+
+	reviewIDs := make([]int64, 0, len(decision.Pairs)*2)
+	seenReviewIDs := make(map[int64]struct{}, len(decision.Pairs)*2)
+	addReviewID := func(id int64) {
+		if _, ok := seenReviewIDs[id]; ok {
+			return
+		}
+		seenReviewIDs[id] = struct{}{}
+		reviewIDs = append(reviewIDs, id)
+	}
+	for _, pair := range decision.Pairs {
+		addReviewID(pair.Review1ID)
+		addReviewID(pair.Review2ID)
+	}
+
+	sort.Slice(reviewIDs, func(i, j int) bool {
+		return reviewIDs[i] < reviewIDs[j]
+	})
+
+	resultsByID := make(map[int64]*visibilityUpdateResult, len(reviewIDs))
+	totalResolvedReports := int64(0)
+	for _, reviewID := range reviewIDs {
+		result, err := updateReviewVisibilityInTx(ctx, tx, ReviewVisibilityDecision{
+			ReviewID:          reviewID,
+			Visible:           decision.Visible,
+			ActorUserID:       decision.ActorUserID,
+			ReasonCode:        decision.ReasonCode,
+			Note:              decision.Note,
+			ResolveReports:    decision.ResolveReports,
+			SkipAlreadyHidden: true,
+		})
+		if err != nil {
+			return nil, err
+		}
+		resultsByID[reviewID] = result
+		totalResolvedReports += result.ResolvedReportCount
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+
+	reviews, err := db.loadReviews(ctx, reviewIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	reviewsByID := make(map[int64]*v1.AdminReview, len(reviews))
+	for i := range reviews {
+		reviewsByID[reviews[i].ID] = &reviews[i]
+	}
+
+	pairResults := make([]PairDecisionResult, 0, len(decision.Pairs))
+	anyChanged := false
+	for _, pair := range decision.Pairs {
+		review1, ok1 := reviewsByID[pair.Review1ID]
+		review2, ok2 := reviewsByID[pair.Review2ID]
+		if !ok1 || !ok2 {
+			return nil, ErrNotFound
+		}
+
+		first := resultsByID[pair.Review1ID]
+		second := resultsByID[pair.Review2ID]
+		action := pairVisibilityAction(decision.Visible, first, second)
+		if action != "skipped" {
+			anyChanged = true
+		}
+		pairResults = append(pairResults, PairDecisionResult{
+			Review1: review1,
+			Review2: review2,
+			Action:  action,
+		})
+	}
+
+	action := "skipped"
+	if anyChanged {
+		action = reviewVisibilityAction(true, decision.Visible)
+	}
+
+	return &PairBatchDecisionResult{
+		Pairs:               pairResults,
+		ResolvedReportCount: totalResolvedReports,
+		Action:              action,
 	}, nil
 }
 
@@ -590,15 +711,14 @@ func updateReviewVisibilityInTx(ctx context.Context, tx queryExecRunner, decisio
 		err             error
 	)
 
-	if decision.SkipHiddenSameReason && !decision.Visible {
-		var currentReason *string
+	if decision.SkipAlreadyHidden && !decision.Visible {
 		err = tx.QueryRow(ctx, `
-			SELECT visible, moderation_reason_code
+			SELECT visible
 			FROM professor.review
 			WHERE id = $1 AND deleted_at IS NULL
 			FOR UPDATE`,
 			decision.ReviewID,
-		).Scan(&previousVisible, &currentReason)
+		).Scan(&previousVisible)
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				return nil, ErrNotFound
@@ -606,7 +726,7 @@ func updateReviewVisibilityInTx(ctx context.Context, tx queryExecRunner, decisio
 			return nil, err
 		}
 
-		if !previousVisible && optionalStringEqual(currentReason, decision.ReasonCode) {
+		if !previousVisible {
 			resolvedCount := int64(0)
 			if decision.ResolveReports {
 				resolvedCount, err = resolveOpenReviewReports(ctx, tx, decision, "review_hidden")
@@ -1154,6 +1274,7 @@ func (db *AdminDB) loadReviews(ctx context.Context, ids []int64) ([]v1.AdminRevi
 			r.session_id,
 			r.user_id,
 			r.ip_address::text,
+			s.user_agent,
 			r.moderation_reason_code,
 			r.moderation_note,
 			a.id,
@@ -1172,6 +1293,7 @@ func (db *AdminDB) loadReviews(ctx context.Context, ids []int64) ([]v1.AdminRevi
 			a.ip_address::text
 		FROM professor.review r
 		LEFT JOIN professor.professor p ON p.email = r.professor_email
+		LEFT JOIN account.session s ON s.id = r.session_id
 		LEFT JOIN professor.review_attachment a ON a.id = r.attachment
 		WHERE r.id = ANY($1::bigint[])`,
 		ids,
@@ -1230,6 +1352,7 @@ func (db *AdminDB) loadReviews(ctx context.Context, ids []int64) ([]v1.AdminRevi
 			&review.SessionID,
 			&review.UserID,
 			&review.IPAddress,
+			&review.UserAgent,
 			&review.ModerationReasonCode,
 			&review.ModerationNote,
 			&attachmentID,
@@ -1746,6 +1869,27 @@ func reviewVisibilityAction(previousVisible, nextVisible bool) string {
 	return "hide"
 }
 
+func pairVisibilityAction(nextVisible bool, results ...*visibilityUpdateResult) string {
+	allSkipped := len(results) > 0
+	previousVisible := false
+	for _, result := range results {
+		if result == nil {
+			allSkipped = false
+			continue
+		}
+		if result.PreviousVisible {
+			previousVisible = true
+		}
+		if !result.Skipped {
+			allSkipped = false
+		}
+	}
+	if !nextVisible && allSkipped {
+		return "skipped"
+	}
+	return reviewVisibilityAction(previousVisible, nextVisible)
+}
+
 func rawJSONPtr(data []byte) *json.RawMessage {
 	if len(data) == 0 {
 		return nil
@@ -1759,13 +1903,6 @@ func jsonbParam(data []byte) any {
 		return nil
 	}
 	return string(data)
-}
-
-func optionalStringEqual(a, b *string) bool {
-	if a == nil || b == nil {
-		return a == nil && b == nil
-	}
-	return *a == *b
 }
 
 func attachSignal(reviewsByID map[int64]*v1.AdminReview, signal v1.AdminModerationSignal) {

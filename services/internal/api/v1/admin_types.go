@@ -66,6 +66,7 @@ type AdminSuspiciousReviewPair struct {
 	CreatedDeltaSeconds int64       `json:"created_delta_seconds"`
 	SameIP              bool        `json:"same_ip"`
 	SameUser            bool        `json:"same_user"`
+	SameUserAgent       bool        `json:"same_user_agent"`
 	SimilarContent      bool        `json:"similar_content"`
 	SameLanguage        bool        `json:"same_language"`
 	SameScore           bool        `json:"same_score"`
@@ -102,6 +103,7 @@ type AdminReview struct {
 	SessionID            *int64                  `json:"session_id,string,omitempty"`
 	UserID               *int64                  `json:"user_id,string,omitempty"`
 	IPAddress            *string                 `json:"ip_address,omitempty"`
+	UserAgent            *string                 `json:"user_agent,omitempty"`
 	ModerationReasonCode *string                 `json:"moderation_reason_code,omitempty"`
 	ModerationNote       *string                 `json:"moderation_note,omitempty"`
 	Reports              []AdminReviewReport     `json:"reports"`
@@ -216,6 +218,18 @@ type AdminReviewPairVisibilityRequest struct {
 	ResolveReports *bool   `json:"resolve_reports"`
 }
 
+type AdminReviewPairRef struct {
+	Review1ID *int64 `json:"review_1_id,string" required:"true"`
+	Review2ID *int64 `json:"review_2_id,string" required:"true"`
+}
+
+type AdminReviewPairBulkVisibilityRequest struct {
+	Pairs          []AdminReviewPairRef `json:"pairs" required:"true"`
+	ReasonCode     *string              `json:"reason_code" required:"true"`
+	Note           *string              `json:"note"`
+	ResolveReports *bool                `json:"resolve_reports"`
+}
+
 type AdminAttachmentVisibilityRequest struct {
 	Visible    *bool   `json:"visible" required:"true"`
 	ReasonCode *string `json:"reason_code"`
@@ -254,6 +268,19 @@ type AdminPairDecisionResponse struct {
 	Review2             AdminReview `json:"review_2"`
 	ResolvedReportCount int64       `json:"resolved_report_count"`
 	Action              string      `json:"action"`
+}
+
+type AdminReviewPairDecision struct {
+	Review1 AdminReview `json:"review_1"`
+	Review2 AdminReview `json:"review_2"`
+	Action  string      `json:"action"`
+}
+
+type AdminBulkPairDecisionResponse struct {
+	Success             bool                      `json:"success"`
+	Pairs               []AdminReviewPairDecision `json:"pairs"`
+	ResolvedReportCount int64                     `json:"resolved_report_count"`
+	Action              string                    `json:"action"`
 }
 
 type AdminReplyDecisionResponse struct {

@@ -120,6 +120,19 @@ export type AdminPairDecisionResponse = {
     action: string;
 };
 
+export type AdminReviewPairDecision = {
+    review_1: AdminReview;
+    review_2: AdminReview;
+    action: string;
+};
+
+export type AdminBulkPairDecisionResponse = {
+    success: boolean;
+    pairs: AdminReviewPairDecision[];
+    resolved_report_count: number;
+    action: string;
+};
+
 export type AdminReplyDecisionResponse = {
     success: boolean;
     review: AdminReview;
@@ -156,6 +169,7 @@ export type AdminReview = {
     session_id?: string;
     user_id?: string;
     ip_address?: string;
+    user_agent?: string;
     moderation_reason_code?: string;
     moderation_note?: string;
     reports: AdminReviewReport[];
@@ -173,6 +187,7 @@ export type AdminSuspiciousReviewPair = {
     created_delta_seconds: number;
     same_ip: boolean;
     same_user: boolean;
+    same_user_agent: boolean;
     similar_content: boolean;
     same_language: boolean;
     same_score: boolean;
@@ -568,6 +583,20 @@ export async function hideSuspiciousReviewPair(
     body: { review_1_id: string; review_2_id: string; reason_code: string; note?: string; resolve_reports?: boolean },
 ) {
     return adminFetch<AdminPairDecisionResponse>("/reviews/suspicious/hide-pair", {
+        method: "POST",
+        body: JSON.stringify(body),
+    });
+}
+
+export async function hideSuspiciousReviewPairs(
+    body: {
+        pairs: { review_1_id: string; review_2_id: string }[];
+        reason_code: string;
+        note?: string;
+        resolve_reports?: boolean;
+    },
+) {
+    return adminFetch<AdminBulkPairDecisionResponse>("/reviews/suspicious/hide-pairs", {
         method: "POST",
         body: JSON.stringify(body),
     });

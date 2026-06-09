@@ -168,7 +168,7 @@ func (s *Server) ListSuspiciousReviewPairs() http.Handler {
 		pairs, err := s.db.ListSuspiciousReviewPairs(r.Context(), admindb.ListSuspiciousReviewPairOptions{
 			Limit:               limit,
 			Offset:              offset,
-			MinScore:            parseBoundedInt(r.URL.Query().Get("min_score"), 5, 0, 15),
+			MinScore:            parseBoundedInt(r.URL.Query().Get("min_score"), 5, 0, 17),
 			SimilarityThreshold: parseBoundedFloat(r.URL.Query().Get("similarity_threshold"), defaultSimilarityThreshold, 0.3, 1),
 			Visible:             parseChoiceQuery(r, "visible", "at_least_one", "at_least_one", "both", "include_hidden"),
 			ProfessorEmail:      strings.TrimSpace(r.URL.Query().Get("professor_email")),
@@ -241,6 +241,87 @@ func (s *Server) HideSuspiciousReviewPair() http.Handler {
 			Success:             true,
 			Review1:             *result.Review1,
 			Review2:             *result.Review2,
+			ResolvedReportCount: result.ResolvedReportCount,
+			Action:              result.Action,
+		})
+	})
+}
+
+func (s *Server) HideSuspiciousReviewPairs() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+
+		var request v1.AdminReviewPairBulkVisibilityRequest
+		code, err := jsonutil.Unmarshal(w, r, &request)
+		if err != nil {
+			jsonutil.MarshalResponse(w, code, v1.ErrorResponse{Error: code, Message: err.Error()})
+			return
+		}
+
+		if len(request.Pairs) == 0 {
+			writeError(w, http.StatusBadRequest, "at least one review pair is required")
+			return
+		}
+		if len(request.Pairs) > maxSuspiciousReviewPairLimit {
+			writeError(w, http.StatusBadRequest, "too many review pairs")
+			return
+		}
+
+		pairs := make([]admindb.ReviewPairRef, 0, len(request.Pairs))
+		for _, pair := range request.Pairs {
+			if pair.Review1ID == nil || pair.Review2ID == nil || *pair.Review1ID <= 0 || *pair.Review2ID <= 0 {
+				writeError(w, http.StatusBadRequest, "invalid review pair")
+				return
+			}
+			if *pair.Review1ID == *pair.Review2ID {
+				writeError(w, http.StatusBadRequest, "reviews must be different")
+				return
+			}
+			pairs = append(pairs, admindb.ReviewPairRef{
+				Review1ID: *pair.Review1ID,
+				Review2ID: *pair.Review2ID,
+			})
+		}
+
+		reasonCode := cleanOptionalText(request.ReasonCode)
+		if reasonCode == nil {
+			writeError(w, http.StatusBadRequest, "reason_code is required")
+			return
+		}
+		if !s.validReason(w, r, reasonCode) {
+			return
+		}
+
+		resolveReports := true
+		if request.ResolveReports != nil {
+			resolveReports = *request.ResolveReports
+		}
+
+		result, err := s.db.SetReviewPairsVisibility(ctx, admindb.ReviewPairBulkVisibilityDecision{
+			Pairs:          pairs,
+			Visible:        false,
+			ActorUserID:    s.actorUserID(ctx),
+			ReasonCode:     reasonCode,
+			Note:           cleanOptionalText(request.Note),
+			ResolveReports: resolveReports,
+		})
+		if err != nil {
+			s.writeDecisionError(w, r, err, "failed to hide suspicious review pairs")
+			return
+		}
+
+		responsePairs := make([]v1.AdminReviewPairDecision, 0, len(result.Pairs))
+		for _, pair := range result.Pairs {
+			responsePairs = append(responsePairs, v1.AdminReviewPairDecision{
+				Review1: *pair.Review1,
+				Review2: *pair.Review2,
+				Action:  pair.Action,
+			})
+		}
+
+		jsonutil.MarshalResponse(w, http.StatusOK, v1.AdminBulkPairDecisionResponse{
+			Success:             true,
+			Pairs:               responsePairs,
 			ResolvedReportCount: result.ResolvedReportCount,
 			Action:              result.Action,
 		})
