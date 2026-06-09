@@ -132,7 +132,7 @@
   align-items: end;
   display: grid;
   gap: 10px;
-  grid-template-columns: minmax(220px, 1.4fr) minmax(200px, 1fr) minmax(112px, 0.45fr) minmax(112px, 0.45fr) minmax(170px, 0.75fr) auto;
+  grid-template-columns: minmax(220px, 1.4fr) minmax(200px, 1fr) minmax(112px, 0.45fr) minmax(112px, 0.45fr) minmax(170px, 0.75fr) minmax(132px, 0.5fr) auto;
   min-width: 0;
 }
 
@@ -167,6 +167,48 @@
     border-color: hsl(var(--ring));
     box-shadow: 0 0 0 3px hsl(var(--ring) / 0.16);
   }
+}
+
+.filterToggle {
+  align-items: center;
+  background: #fff;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+  color: hsl(var(--foreground));
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 800;
+  gap: 7px;
+  min-height: 38px;
+  min-width: 0;
+  padding: 0 10px;
+  transition: background 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease, color 0.16s ease;
+  width: 100%;
+
+  input {
+    accent-color: hsl(var(--spaceread-blue));
+    flex: 0 0 auto;
+    height: 14px;
+    margin: 0;
+    width: 14px;
+  }
+
+  > span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &:focus-within {
+    box-shadow: 0 0 0 3px hsl(var(--ring) / 0.16);
+  }
+}
+
+.filterActive {
+  background: #eff8ff;
+  border-color: #bae6fd;
+  color: #075985;
 }
 
 .filterActions {

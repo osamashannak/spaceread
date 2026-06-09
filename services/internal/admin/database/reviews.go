@@ -72,6 +72,7 @@ type ListSuspiciousReviewPairOptions struct {
 	Visible             string
 	ProfessorEmail      string
 	Search              string
+	IncludeContentOnly  bool
 }
 
 type ReviewVisibilityDecision struct {
@@ -282,7 +283,9 @@ func (db *AdminDB) ListSuspiciousReviewPairs(ctx context.Context, opts ListSuspi
 	if opts.ProfessorEmail != "" {
 		conditions = append(conditions, "r1.professor_email ILIKE "+nextArg("%"+opts.ProfessorEmail+"%"))
 	}
+	professorJoin := ""
 	if opts.Search != "" {
+		professorJoin = "\n\t\t\tLEFT JOIN professor.professor p ON p.email = r1.professor_email"
 		param := nextArg("%" + opts.Search + "%")
 		conditions = append(conditions, fmt.Sprintf(`(
 			r1.id::text ILIKE %[1]s
@@ -297,32 +300,60 @@ func (db *AdminDB) ListSuspiciousReviewPairs(ctx context.Context, opts ListSuspi
 	}
 
 	where := strings.Join(conditions, "\n\t\t\tAND ")
+	candidateBranches := []string{
+		fmt.Sprintf(`
+			SELECT r1.id AS review_1_id, r2.id AS review_2_id
+			FROM professor.review r1
+			JOIN professor.review r2
+				ON r1.professor_email = r2.professor_email
+				AND r1.id < r2.id
+%s
+			WHERE %s
+				AND r1.ip_address IS NOT NULL
+				AND r1.ip_address = r2.ip_address`, professorJoin, where),
+		fmt.Sprintf(`
+			SELECT r1.id AS review_1_id, r2.id AS review_2_id
+			FROM professor.review r1
+			JOIN professor.review r2
+				ON r1.professor_email = r2.professor_email
+				AND r1.id < r2.id
+%s
+			WHERE %s
+				AND r1.user_id IS NOT NULL
+				AND r2.user_id IS NOT NULL
+				AND r1.user_id = r2.user_id`, professorJoin, where),
+	}
+	if opts.IncludeContentOnly {
+		candidateBranches = append(candidateBranches, fmt.Sprintf(`
+			SELECT r1.id AS review_1_id, r2.id AS review_2_id
+			FROM professor.review r1
+			JOIN professor.review r2
+				ON r1.professor_email = r2.professor_email
+				AND r1.id < r2.id
+				AND r2.content %% r1.content
+%s
+			WHERE %s
+				AND similarity(r1.content, r2.content) > $3`, professorJoin, where))
+	}
+
 	query := fmt.Sprintf(`
-		WITH candidates AS (
+		WITH candidate_pairs AS (
+%s
+		),
+		candidates AS (
 			SELECT
 				r1.id AS review_1_id,
 				r2.id AS review_2_id,
 				COALESCE(r1.ip_address = r2.ip_address, false) AS same_ip,
 				(r1.user_id IS NOT NULL AND r2.user_id IS NOT NULL AND r1.user_id = r2.user_id) AS same_user,
-				sim.content_similarity,
+				similarity(r1.content, r2.content)::double precision AS content_similarity,
 				r1.language = r2.language AS same_language,
 				r1.score = r2.score AS same_score,
 				r1.positive = r2.positive AS same_recommendation,
 				ABS(EXTRACT(EPOCH FROM (r1.created_at - r2.created_at)))::bigint AS created_delta_seconds
-			FROM professor.review r1
-			JOIN professor.review r2
-				ON r1.professor_email = r2.professor_email
-				AND r1.id < r2.id
-			LEFT JOIN professor.professor p ON p.email = r1.professor_email
-			CROSS JOIN LATERAL (
-				SELECT similarity(r1.content, r2.content)::double precision AS content_similarity
-			) sim
-			WHERE %s
-				AND (
-					COALESCE(r1.ip_address = r2.ip_address, false)
-					OR (r1.user_id IS NOT NULL AND r2.user_id IS NOT NULL AND r1.user_id = r2.user_id)
-					OR (r1.content %% r2.content AND sim.content_similarity > $3)
-				)
+			FROM candidate_pairs cp
+			JOIN professor.review r1 ON r1.id = cp.review_1_id
+			JOIN professor.review r2 ON r2.id = cp.review_2_id
 		),
 		scored AS (
 			SELECT
@@ -356,7 +387,7 @@ func (db *AdminDB) ListSuspiciousReviewPairs(ctx context.Context, opts ListSuspi
 		FROM scored
 		WHERE suspicion_score >= $4
 		ORDER BY suspicion_score DESC, content_similarity DESC, created_delta_seconds ASC, review_2_id DESC
-		LIMIT $1 OFFSET $2`, where)
+		LIMIT $1 OFFSET $2`, strings.Join(candidateBranches, "\n\n\t\t\tUNION\n\n"))
 
 	rows, err := db.db.Pool.Query(ctx, query, args...)
 	if err != nil {

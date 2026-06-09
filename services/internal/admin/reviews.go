@@ -173,6 +173,7 @@ func (s *Server) ListSuspiciousReviewPairs() http.Handler {
 			Visible:             parseChoiceQuery(r, "visible", "at_least_one", "at_least_one", "both", "include_hidden"),
 			ProfessorEmail:      strings.TrimSpace(r.URL.Query().Get("professor_email")),
 			Search:              strings.TrimSpace(r.URL.Query().Get("search")),
+			IncludeContentOnly:  parseBoolQuery(r, "include_content_only", false),
 		})
 		if err != nil {
 			logging.FromContext(r.Context()).Errorf("failed to list suspicious review pairs: %v", err)

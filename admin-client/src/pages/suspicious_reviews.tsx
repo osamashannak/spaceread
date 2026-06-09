@@ -44,6 +44,7 @@ const defaultFilters: AdminSuspiciousReviewFilters = {
     visible: "at_least_one",
     search: "",
     professor_email: "",
+    include_content_only: "false",
 };
 
 const visibleOptions: { label: string; value: AdminSuspiciousReviewFilters["visible"] }[] = [
@@ -302,6 +303,17 @@ export function SuspiciousReviewsPage() {
                             ))}
                         </select>
                     </label>
+                    <div className={styles.filterField}>
+                        <span>Text scan</span>
+                        <label className={cn(styles.filterToggle, draftFilters.include_content_only === "true" && styles.filterActive)}>
+                            <input
+                                checked={draftFilters.include_content_only === "true"}
+                                type="checkbox"
+                                onChange={event => updateDraft("include_content_only", event.target.checked ? "true" : "false")}
+                            />
+                            <span>Content-only</span>
+                        </label>
+                    </div>
                     <div className={styles.filterActions}>
                         <Button type="submit">
                             <Search size={16}/>

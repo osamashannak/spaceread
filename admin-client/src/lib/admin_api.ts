@@ -85,6 +85,7 @@ export type AdminSuspiciousReviewFilters = {
     visible: "at_least_one" | "both" | "include_hidden";
     search: string;
     professor_email: string;
+    include_content_only: "true" | "false";
 };
 
 export type AdminReasonsResponse = {
