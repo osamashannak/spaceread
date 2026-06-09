@@ -636,11 +636,12 @@ function pairSignals(pair: AdminSuspiciousReviewPair, showSensitive: boolean) {
         });
     }
     if (pair.same_ip) {
+        const sharedUaeuIP = pair.same_uaeu_ip;
         signals.push({
             key: "same_ip",
-            label: "Same IP",
-            weight: 3,
-            tone: "danger",
+            label: sharedUaeuIP ? "Same UAEU IP" : "Same IP",
+            weight: sharedUaeuIP ? 1 : 3,
+            tone: sharedUaeuIP ? "warning" : "danger",
             icon: <Wifi size={13}/>,
             detail: pair.review_1.ip_address ? (
                 <EntityLink target={{type: "ip", id: pair.review_1.ip_address}}>

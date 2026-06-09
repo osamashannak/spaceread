@@ -65,6 +65,7 @@ type AdminSuspiciousReviewPair struct {
 	ContentSimilarity   float64     `json:"content_similarity"`
 	CreatedDeltaSeconds int64       `json:"created_delta_seconds"`
 	SameIP              bool        `json:"same_ip"`
+	SameUaeuIP          bool        `json:"same_uaeu_ip"`
 	SameUser            bool        `json:"same_user"`
 	SameUserAgent       bool        `json:"same_user_agent"`
 	SimilarContent      bool        `json:"similar_content"`

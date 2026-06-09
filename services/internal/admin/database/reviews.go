@@ -258,6 +258,7 @@ type suspiciousReviewPairRow struct {
 	ContentSimilarity   float64
 	CreatedDeltaSeconds int64
 	SameIP              bool
+	SameUaeuIP          bool
 	SameUser            bool
 	SameUserAgent       bool
 	SimilarContent      bool
@@ -367,6 +368,7 @@ func (db *AdminDB) ListSuspiciousReviewPairs(ctx context.Context, opts ListSuspi
 				r1.id AS review_1_id,
 				r2.id AS review_2_id,
 				COALESCE(r1.ip_address = r2.ip_address, false) AS same_ip,
+				(COALESCE(r1.ip_address = r2.ip_address, false) AND r1.uaeu_origin AND r2.uaeu_origin) AS same_uaeu_ip,
 				(r1.user_id IS NOT NULL AND r2.user_id IS NOT NULL AND r1.user_id = r2.user_id) AS same_user,
 				COALESCE(NULLIF(s1.user_agent, '') IS NOT NULL AND s1.user_agent = s2.user_agent, false) AS same_user_agent,
 				similarity(r1.content, r2.content)::double precision AS content_similarity,
@@ -386,7 +388,7 @@ func (db *AdminDB) ListSuspiciousReviewPairs(ctx context.Context, opts ListSuspi
 				content_similarity > $3 AS similar_content,
 				created_delta_seconds < 3600 AS close_timing,
 				(
-					(CASE WHEN same_ip THEN 3 ELSE 0 END) +
+					(CASE WHEN same_ip AND same_uaeu_ip THEN 1 WHEN same_ip THEN 3 ELSE 0 END) +
 					(CASE WHEN same_user THEN 5 ELSE 0 END) +
 					(CASE WHEN same_user_agent THEN 2 ELSE 0 END) +
 					(CASE WHEN content_similarity > $3 THEN 2 ELSE 0 END) +
@@ -404,6 +406,7 @@ func (db *AdminDB) ListSuspiciousReviewPairs(ctx context.Context, opts ListSuspi
 			content_similarity,
 			created_delta_seconds,
 			same_ip,
+			same_uaeu_ip,
 			same_user,
 			same_user_agent,
 			similar_content,
@@ -442,6 +445,7 @@ func (db *AdminDB) ListSuspiciousReviewPairs(ctx context.Context, opts ListSuspi
 			&row.ContentSimilarity,
 			&row.CreatedDeltaSeconds,
 			&row.SameIP,
+			&row.SameUaeuIP,
 			&row.SameUser,
 			&row.SameUserAgent,
 			&row.SimilarContent,
@@ -488,6 +492,7 @@ func (db *AdminDB) ListSuspiciousReviewPairs(ctx context.Context, opts ListSuspi
 			ContentSimilarity:   row.ContentSimilarity,
 			CreatedDeltaSeconds: row.CreatedDeltaSeconds,
 			SameIP:              row.SameIP,
+			SameUaeuIP:          row.SameUaeuIP,
 			SameUser:            row.SameUser,
 			SameUserAgent:       row.SameUserAgent,
 			SimilarContent:      row.SimilarContent,

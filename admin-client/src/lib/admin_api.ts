@@ -186,6 +186,7 @@ export type AdminSuspiciousReviewPair = {
     content_similarity: number;
     created_delta_seconds: number;
     same_ip: boolean;
+    same_uaeu_ip: boolean;
     same_user: boolean;
     same_user_agent: boolean;
     similar_content: boolean;
