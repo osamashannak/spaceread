@@ -183,15 +183,43 @@
 
 
 @media (max-width: 1010px) {
+  .header {
+    width: 88px;
+  }
+
+  .header2 {
+    align-items: center;
+    padding-left: 0;
+    padding-right: 0;
+    width: 88px;
+  }
+
+  .title {
+    justify-content: center;
+    padding-left: 0;
+
+    .titleText {
+      display: none;
+    }
+  }
+
   .navigation {
-    align-self: end;
+    align-items: center;
+    align-self: center;
   }
 
   .navLink {
-    width: fit-content;
-    align-self: flex-end;
+    align-self: center;
+    height: 52px;
+    justify-content: center;
+    padding: 0;
+    width: 52px;
 
     span {
+      display: none;
+    }
+
+    p {
       display: none;
     }
 
