@@ -94,6 +94,12 @@ export default function KlipyGifPicker(props: {
         return bodyRef.current?.clientWidth || window.innerWidth;
     }
 
+    function getGifButtonStyle(gif: GifPreview): CSSProperties {
+        return {
+            aspectRatio: `${gif.width} / ${gif.height}`,
+        };
+    }
+
     return (
         <aside className={styles.picker} style={pickerStyle}>
             <form className={styles.searchForm} onSubmit={event => event.preventDefault()}>
@@ -149,9 +155,17 @@ export default function KlipyGifPicker(props: {
                                         trackGifEvent(item, "onclick");
                                         props.onGifClick(item);
                                     }}
+                                    style={getGifButtonStyle(item)}
                                     type="button"
                                 >
-                                    <img alt="" draggable={false} loading="lazy" src={item.previewUrl ?? item.url}/>
+                                    <img
+                                        alt=""
+                                        draggable={false}
+                                        height={item.height}
+                                        loading="lazy"
+                                        src={item.previewUrl ?? item.url}
+                                        width={item.width}
+                                    />
                                 </button>
                             ))}
                         </div>

@@ -46,20 +46,22 @@
 }
 
 .grid {
-  display: grid;
-  gap: 8px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-count: 2;
+  column-gap: 8px;
 }
 
 .gifButton {
-  aspect-ratio: 1;
   background: #f3f4f6;
   border: 0;
   border-radius: 8px;
+  break-inside: avoid;
   cursor: pointer;
+  display: block;
+  margin: 0 0 8px;
   overflow: hidden;
   padding: 0;
   position: relative;
+  width: 100%;
 }
 
 .gifButton:focus-visible {
@@ -78,7 +80,9 @@
   background: #f7f9fb;
   border: 1px solid #e5e5e5;
   border-radius: 8px;
-  grid-column: 1 / -1;
+  break-inside: avoid;
+  column-span: all;
+  margin: 0 0 8px;
   overflow: hidden;
   width: 100%;
 }
