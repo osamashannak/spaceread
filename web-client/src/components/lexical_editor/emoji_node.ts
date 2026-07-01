@@ -6,18 +6,22 @@
  *
  */
 
-import type {EditorConfig, LexicalNode, NodeKey, SerializedLexicalNode, Spread,} from 'lexical';
-import {DecoratorNode} from 'lexical';
+import type {EditorConfig, LexicalNode, NodeKey, SerializedTextNode, Spread,} from 'lexical';
+import {TextNode} from 'lexical';
+
+const FIXED_WIDTH_EMOJIS = new Set<string>([
+    '\u{1FAE9}',
+]);
 
 export type SerializedEmojiNode = Spread<
     {
         emojiUrl: string,
         emojiText: string,
     },
-    SerializedLexicalNode
+    SerializedTextNode
 >;
 
-export class EmojiNode extends DecoratorNode<null> {
+export class EmojiNode extends TextNode {
     __emojiURL: string;
     __emojiText: string;
 
@@ -30,24 +34,34 @@ export class EmojiNode extends DecoratorNode<null> {
     }
 
     constructor(url: string, text: string, key?: NodeKey) {
-        super(key);
+        super(text, key);
         this.__emojiText = text;
         this.__emojiURL = url;
     }
 
     createDOM(config: EditorConfig): HTMLElement {
         const dom = document.createElement('span');
+        const inner = super.createDOM(config);
 
-        applyEmojiDOMStyle(dom, this.__emojiURL, this.__emojiText, config);
+        applyEmojiWrapperStyle(dom, this.__emojiURL, this.__emojiText);
+        applyEmojiTextStyle(inner);
+        dom.appendChild(inner);
         return dom;
     }
 
     updateDOM(
-        _prevNode: EmojiNode,
+        prevNode: TextNode,
         dom: HTMLElement,
         config: EditorConfig,
     ): boolean {
-        applyEmojiDOMStyle(dom, this.__emojiURL, this.__emojiText, config);
+        const inner = dom.firstChild;
+        if (inner === null) {
+            return true;
+        }
+
+        super.updateDOM(prevNode, inner as HTMLElement, config);
+        applyEmojiWrapperStyle(dom, this.__emojiURL, this.__emojiText);
+        applyEmojiTextStyle(inner as HTMLElement);
         return false;
     }
 
@@ -56,6 +70,10 @@ export class EmojiNode extends DecoratorNode<null> {
             imageUrl: serializedNode.emojiUrl,
             emoji: serializedNode.emojiText,
         });
+        node.setFormat(serializedNode.format);
+        node.setDetail(serializedNode.detail);
+        node.setMode(serializedNode.mode);
+        node.setStyle(serializedNode.style);
         return node;
     }
 
@@ -64,25 +82,12 @@ export class EmojiNode extends DecoratorNode<null> {
             ...super.exportJSON(),
             emojiText: this.__emojiText,
             emojiUrl: this.__emojiURL,
-            type: 'emoji',
-            version: 1
+            type: 'emoji'
         };
-    }
-
-    getTextContent(): string {
-        return this.__emojiText;
-    }
-
-    isKeyboardSelectable(): boolean {
-        return false;
-    }
-
-    decorate(): null {
-        return null;
     }
 }
 
-function applyEmojiDOMStyle(dom: HTMLElement, imageUrl: string, emojiText: string, _config: EditorConfig): void {
+function applyEmojiWrapperStyle(dom: HTMLElement, imageUrl: string, emojiText: string): void {
     dom.setAttribute('aria-label', emojiText);
     dom.setAttribute('data-emoji', 'true');
     dom.setAttribute('role', 'img');
@@ -92,13 +97,36 @@ function applyEmojiDOMStyle(dom: HTMLElement, imageUrl: string, emojiText: strin
     dom.style.backgroundRepeat = 'no-repeat';
     dom.style.backgroundSize = '1em';
     dom.style.caretColor = '#111827';
-    dom.style.display = 'inline-block';
-    dom.style.height = '1.2em';
-    dom.style.lineHeight = '1';
-    dom.style.margin = '0 .075em';
-    dom.style.overflow = 'hidden';
-    dom.style.verticalAlign = '-0.2em';
-    dom.style.width = '1.2em';
+    dom.style.color = 'transparent';
+    dom.style.removeProperty('-webkit-text-fill-color');
+
+    resetFixedWidthEmojiStyle(dom);
+
+    if (FIXED_WIDTH_EMOJIS.has(emojiText)) {
+        dom.style.display = 'inline-block';
+        dom.style.height = '1.2em';
+        dom.style.lineHeight = '1';
+        dom.style.margin = '0 .075em';
+        dom.style.overflow = 'hidden';
+        dom.style.verticalAlign = '-0.2em';
+        dom.style.width = '1.2em';
+    }
+}
+
+function applyEmojiTextStyle(dom: HTMLElement): void {
+    dom.style.caretColor = '#111827';
+    dom.style.color = 'transparent';
+    dom.style.setProperty('-webkit-text-fill-color', 'transparent');
+}
+
+function resetFixedWidthEmojiStyle(dom: HTMLElement): void {
+    dom.style.removeProperty('display');
+    dom.style.removeProperty('height');
+    dom.style.removeProperty('line-height');
+    dom.style.removeProperty('margin');
+    dom.style.removeProperty('overflow');
+    dom.style.removeProperty('vertical-align');
+    dom.style.removeProperty('width');
 }
 
 export function $isEmojiNode(
@@ -110,5 +138,5 @@ export function $isEmojiNode(
 export function $createEmojiNode(
     emojiData: { imageUrl: string, emoji: string },
 ): EmojiNode {
-    return new EmojiNode(emojiData.imageUrl, emojiData.emoji);
+    return new EmojiNode(emojiData.imageUrl, emojiData.emoji).setMode('token');
 }
