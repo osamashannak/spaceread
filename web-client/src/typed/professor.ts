@@ -152,7 +152,6 @@ export interface GifPreview {
     previewUrl?: string;
     width: number;
     height: number;
-    provider?: "klipy" | "tenor";
     id?: string;
     title?: string;
     analytics?: {

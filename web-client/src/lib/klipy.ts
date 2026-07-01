@@ -131,7 +131,6 @@ function toGifPreview(gif: KlipyGif): GifPreview | null {
     const [width, height] = selected.dims ?? preview?.dims ?? [1, 1];
 
     return {
-        provider: "klipy",
         id: gif.id,
         title: gif.title || gif.content_description || "KLIPY GIF",
         url: selected.url,

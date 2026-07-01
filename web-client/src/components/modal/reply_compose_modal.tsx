@@ -19,7 +19,6 @@ import {GifPreview, ReplyContent, ReviewComposeProps} from "../../typed/professo
 import {useReply} from "../provider/reply.tsx";
 import {useToast} from "../provider/toast.tsx";
 import KlipyGifPicker from "../klipy_gif_picker.tsx";
-import GifAttribution from "../gif_attribution.tsx";
 import {trackGifEvent} from "../../lib/klipy.ts";
 
 
@@ -294,9 +293,6 @@ export default function ReplyComposeModal(props: ReviewComposeProps) {
                                  width={100}
                                  height={100}
                                  alt={""}/>
-                        </div>
-                        <div>
-                            <GifAttribution provider={content.gif.provider} url={content.gif.url}/>
                         </div>
                     </>}
 

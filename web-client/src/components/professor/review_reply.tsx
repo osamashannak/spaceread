@@ -9,7 +9,6 @@ import {useDispatch} from "react-redux";
 import {removeReply} from "../../redux/slice/professor_slice.ts";
 import {useReply} from "../provider/reply.tsx";
 import ReplyComposeModal from "../modal/reply_compose_modal.tsx";
-import GifAttribution from "../gif_attribution.tsx";
 
 
 export default function ReviewReply({reply, reviewId, op}: { reply: ReviewReplyAPI, reviewId: string, op: boolean }) {
@@ -75,7 +74,6 @@ export default function ReviewReply({reply, reviewId, op}: { reply: ReviewReplyA
                                  height={100}
                                  alt={""}/>
                         </div>
-                        <GifAttribution url={reply.gif}/>
                     </div>
                     : <div>
                         <p dir={"auto"} className={styles.replyText}>{reply.mention &&
