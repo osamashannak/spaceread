@@ -9,7 +9,7 @@ import {HistoryPlugin} from "@lexical/react/LexicalHistoryPlugin";
 import {EmojiNode} from "../lexical_editor/emoji_node.ts";
 import CustomPlainTextPlugin from "../lexical_editor/custom_plaintext_plugin.tsx";
 import {OnChangePlugin} from "@lexical/react/LexicalOnChangePlugin";
-import {LexicalEditor} from "lexical";
+import {$getRoot, LexicalEditor} from "lexical";
 import {EditorRefPlugin} from "@lexical/react/LexicalEditorRefPlugin";
 import {useDispatch} from "react-redux";
 import {addReview} from "../../redux/slice/professor_slice.ts";
@@ -306,16 +306,11 @@ export default function RestrictedReviewForm(props: { professorEmail: string; ca
                             <HistoryPlugin/>
                             <EditorRefPlugin editorRef={commentRef}/>
                             <OnChangePlugin
-                                onChange={editor => {
-                                    const json = editor.toJSON();
+                                onChange={editorState => {
                                     let f = "";
-                                    // @ts-expect-error LexicalEditor types are not up to date
-                                    json.root.children[0].children.forEach(child => {
-                                        if (child.type === "linebreak") {
-                                            f += "\n";
-                                        } else {
-                                            f += child.text;
-                                        }
+
+                                    editorState.read(() => {
+                                        f = $getRoot().getTextContent();
                                     });
 
                                     setDetails(prevDetails => ({

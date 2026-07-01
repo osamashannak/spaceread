@@ -9,7 +9,7 @@ import {HistoryPlugin} from "@lexical/react/LexicalHistoryPlugin";
 import {EmojiNode} from "../lexical_editor/emoji_node.ts";
 import CustomPlainTextPlugin from "../lexical_editor/custom_plaintext_plugin.tsx";
 import {OnChangePlugin} from "@lexical/react/LexicalOnChangePlugin";
-import {LexicalEditor} from "lexical";
+import {$getRoot, LexicalEditor} from "lexical";
 import {EditorRefPlugin} from "@lexical/react/LexicalEditorRefPlugin";
 import ReviewFormFooter from "./review_form_footer.tsx";
 import {useDispatch} from "react-redux";
@@ -186,6 +186,7 @@ export default function ReviewForm(props: { courses: string[] | null, professorE
     const [courseCatalogLoaded, setCourseCatalogLoaded] = useState(false);
     const [courseCatalogLoading, setCourseCatalogLoading] = useState(false);
     const [mode, setMode] = useState<"GUEST" | "VERIFIED">(localStorage.getItem("is_verified_student") === "true" ? "VERIFIED" : "GUEST");
+    const [emojiOpen, setEmojiOpen] = useState(false);
     const {executeRecaptcha} = useGoogleReCaptcha();
 
     const [activeError, setActiveError] = useState<string | null>(null);
@@ -652,16 +653,11 @@ export default function ReviewForm(props: { courses: string[] | null, professorE
                             <HistoryPlugin/>
                             <EditorRefPlugin editorRef={commentRef}/>
                             <OnChangePlugin
-                                onChange={editor => {
-                                    const json = editor.toJSON();
+                                onChange={editorState => {
                                     let f = "";
-                                    // @ts-expect-error LexicalEditor types are not up to date
-                                    json.root.children[0].children.forEach(child => {
-                                        if (child.type === "linebreak") {
-                                            f += "\n";
-                                        } else {
-                                            f += child.text;
-                                        }
+
+                                    editorState.read(() => {
+                                        f = $getRoot().getTextContent();
                                     });
 
                                     setDetails(prevDetails => ({
@@ -687,10 +683,17 @@ export default function ReviewForm(props: { courses: string[] | null, professorE
                     </div>
 
                     <ReviewAttachment details={details} setDetails={setDetails}/>
-                    <EmojiSelector/>
+                    <EmojiSelector open={emojiOpen}/>
                 </LexicalComposer>
 
-                {!submitting && <ReviewFormFooter details={details} setDetails={setDetails}/>}
+                {!submitting && (
+                    <ReviewFormFooter
+                        details={details}
+                        emojiOpen={emojiOpen}
+                        setDetails={setDetails}
+                        setEmojiOpen={setEmojiOpen}
+                    />
+                )}
 
                 {!submitting &&
                     <AccessibleRating

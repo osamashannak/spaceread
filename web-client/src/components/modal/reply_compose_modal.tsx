@@ -8,7 +8,7 @@ import {EditorRefPlugin} from "@lexical/react/LexicalEditorRefPlugin";
 import {OnChangePlugin} from "@lexical/react/LexicalOnChangePlugin";
 import {LexicalComposer} from "@lexical/react/LexicalComposer";
 import {useEffect, useRef, useState} from "react";
-import {LexicalEditor} from "lexical";
+import {$getRoot, LexicalEditor} from "lexical";
 import dayjs from "dayjs";
 import {formatRelativeTime} from "../../utils.tsx";
 import {getReplyName, postReply} from "../../api/professor.ts";
@@ -238,18 +238,11 @@ export default function ReplyComposeModal(props: ReviewComposeProps) {
                             />
                             <HistoryPlugin/>
                             <EditorRefPlugin editorRef={commentRef}/>
-                            <OnChangePlugin onChange={(editor) => {
-                                const json = editor.toJSON();
-
+                            <OnChangePlugin onChange={(editorState) => {
                                 let f = "";
 
-                                // @ts-expect-error LexicalEditor types are not up to date
-                                json.root.children[0].children.forEach((child) => {
-                                    if (child.type === "linebreak") {
-                                        f += "\n";
-                                    } else {
-                                        f += child.text;
-                                    }
+                                editorState.read(() => {
+                                    f = $getRoot().getTextContent();
                                 });
 
                                 setContent({...content, comment: f});

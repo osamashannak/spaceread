@@ -6,18 +6,18 @@
  *
  */
 
-import type {EditorConfig, LexicalNode, NodeKey, SerializedTextNode, Spread,} from 'lexical';
-import {TextNode} from 'lexical';
+import type {EditorConfig, LexicalNode, NodeKey, SerializedLexicalNode, Spread,} from 'lexical';
+import {DecoratorNode} from 'lexical';
 
 export type SerializedEmojiNode = Spread<
     {
         emojiUrl: string,
         emojiText: string,
     },
-    SerializedTextNode
+    SerializedLexicalNode
 >;
 
-export class EmojiNode extends TextNode {
+export class EmojiNode extends DecoratorNode<null> {
     __emojiURL: string;
     __emojiText: string;
 
@@ -30,7 +30,7 @@ export class EmojiNode extends TextNode {
     }
 
     constructor(url: string, text: string, key?: NodeKey) {
-        super(text, key);
+        super(key);
         this.__emojiText = text;
         this.__emojiURL = url;
     }
@@ -38,27 +38,16 @@ export class EmojiNode extends TextNode {
     createDOM(config: EditorConfig): HTMLElement {
         const dom = document.createElement('span');
 
-        dom.style.backgroundImage = `url(${this.__emojiURL})`;
-        dom.style.backgroundSize = '20px';
-        dom.style.backgroundRepeat = 'no-repeat';
-        dom.style.backgroundPosition = 'center center';
-        dom.style.setProperty('-webkit-text-fill-color', 'transparent');
-
-        const inner = super.createDOM(config);
-        dom.appendChild(inner);
+        applyEmojiDOMStyle(dom, this.__emojiURL, this.__emojiText, config);
         return dom;
     }
 
     updateDOM(
-        prevNode: TextNode,
+        _prevNode: EmojiNode,
         dom: HTMLElement,
         config: EditorConfig,
     ): boolean {
-        const inner = dom.firstChild;
-        if (inner === null) {
-            return true;
-        }
-        super.updateDOM(prevNode, inner as HTMLElement, config);
+        applyEmojiDOMStyle(dom, this.__emojiURL, this.__emojiText, config);
         return false;
     }
 
@@ -67,10 +56,6 @@ export class EmojiNode extends TextNode {
             imageUrl: serializedNode.emojiUrl,
             emoji: serializedNode.emojiText,
         });
-        node.setFormat(serializedNode.format);
-        node.setDetail(serializedNode.detail);
-        node.setMode(serializedNode.mode);
-        node.setStyle(serializedNode.style);
         return node;
     }
 
@@ -79,9 +64,41 @@ export class EmojiNode extends TextNode {
             ...super.exportJSON(),
             emojiText: this.__emojiText,
             emojiUrl: this.__emojiURL,
-            type: 'emoji'
+            type: 'emoji',
+            version: 1
         };
     }
+
+    getTextContent(): string {
+        return this.__emojiText;
+    }
+
+    isKeyboardSelectable(): boolean {
+        return false;
+    }
+
+    decorate(): null {
+        return null;
+    }
+}
+
+function applyEmojiDOMStyle(dom: HTMLElement, imageUrl: string, emojiText: string, _config: EditorConfig): void {
+    dom.setAttribute('aria-label', emojiText);
+    dom.setAttribute('data-emoji', 'true');
+    dom.setAttribute('role', 'img');
+
+    dom.style.backgroundImage = `url(${imageUrl})`;
+    dom.style.backgroundPosition = 'center center';
+    dom.style.backgroundRepeat = 'no-repeat';
+    dom.style.backgroundSize = '1em';
+    dom.style.caretColor = '#111827';
+    dom.style.display = 'inline-block';
+    dom.style.height = '1.2em';
+    dom.style.lineHeight = '1';
+    dom.style.margin = '0 .075em';
+    dom.style.overflow = 'hidden';
+    dom.style.verticalAlign = '-0.2em';
+    dom.style.width = '1.2em';
 }
 
 export function $isEmojiNode(
@@ -93,5 +110,5 @@ export function $isEmojiNode(
 export function $createEmojiNode(
     emojiData: { imageUrl: string, emoji: string },
 ): EmojiNode {
-    return new EmojiNode(emojiData.imageUrl, emojiData.emoji).setMode('token');
+    return new EmojiNode(emojiData.imageUrl, emojiData.emoji);
 }

@@ -12,14 +12,15 @@ import KlipyGifPicker from "../klipy_gif_picker.tsx";
 
 export default function ReviewFormFooter(props: {
     details: ReviewFormDraft,
-    setDetails: Dispatch<SetStateAction<ReviewFormDraft>>
+    emojiOpen: boolean,
+    setDetails: Dispatch<SetStateAction<ReviewFormDraft>>,
+    setEmojiOpen: Dispatch<SetStateAction<boolean>>,
 }) {
 
     const {details, setDetails} = props;
     const toast = useToast();
     const uploadInputId = useId();
     const gifPickerId = useId();
-    const [emojiOpen, setEmojiOpen] = useState(false);
     const [gifOpen, setGifOpen] = useState(false);
 
     const uploadImage = (event: ChangeEvent<HTMLInputElement>) => {
@@ -147,12 +148,7 @@ export default function ReviewFormFooter(props: {
     }
 
     function setEmojiSelectorVisibility(visible: boolean) {
-        const emojiSelector = document.querySelector(`.${styles.emojiSelector}`) as HTMLDivElement;
-        if (emojiSelector) {
-            emojiSelector.style.opacity = visible ? "1" : "0";
-            emojiSelector.style.pointerEvents = visible ? "all" : "none";
-        }
-        setEmojiOpen(visible);
+        props.setEmojiOpen(visible);
     }
 
     function setGifSelectorVisibility(visible: boolean) {
@@ -173,7 +169,7 @@ export default function ReviewFormFooter(props: {
     }
 
     function toggleEmojiSelector() {
-        setEmojiSelectorVisibility(!emojiOpen);
+        setEmojiSelectorVisibility(!props.emojiOpen);
     }
 
     function toggleGifSelector() {
@@ -281,7 +277,7 @@ export default function ReviewFormFooter(props: {
                         type="button"
                         className={styles.buttonLabel}
                         aria-label="Add an emoji"
-                        aria-expanded={emojiOpen}
+                        aria-expanded={props.emojiOpen}
                         title="Add emoji"
                         onClick={() => {
                             hideGifSelector();

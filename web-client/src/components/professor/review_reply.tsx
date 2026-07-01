@@ -1,8 +1,8 @@
 import styles from "../../styles/components/professor/review.module.scss";
 import dayjs from "dayjs";
-import {formatRelativeTime} from "../../utils.tsx";
+import {formatRelativeTime, parseText} from "../../utils.tsx";
 import {ReviewReplyAPI} from "../../typed/professor.ts";
-import {useEffect, useState} from "react";
+import {useEffect, useRef, useState} from "react";
 import ReplyLike from "./reply_like.tsx";
 import {deleteReply} from "../../api/professor.ts";
 import {useDispatch} from "react-redux";
@@ -15,6 +15,7 @@ export default function ReviewReply({reply, reviewId, op}: { reply: ReviewReplyA
 
     const [replyCompose, showReplyCompose] = useState(false);
     const [aspectRatio, setAspectRatio] = useState(1);
+    const replyTextRef = useRef<HTMLParagraphElement>(null);
     const context = useReply();
 
     const dispatch = useDispatch();
@@ -31,6 +32,12 @@ export default function ReviewReply({reply, reviewId, op}: { reply: ReviewReplyA
         }
         img.src = reply.gif;
     }, [reply.gif]);
+
+    useEffect(() => {
+        if (!replyTextRef.current) return;
+
+        parseText(replyTextRef.current);
+    }, [reply.comment, reply.mention]);
 
     async function deleteReplyPressed() {
 
@@ -76,7 +83,7 @@ export default function ReviewReply({reply, reviewId, op}: { reply: ReviewReplyA
                         </div>
                     </div>
                     : <div>
-                        <p dir={"auto"} className={styles.replyText}>{reply.mention &&
+                        <p dir={"auto"} className={styles.replyText} ref={replyTextRef}>{reply.mention &&
                             <span className={styles.mention}>@{reply.mention} </span>}
                             <span dir={"auto"}>{reply.comment}</span>
                         </p>

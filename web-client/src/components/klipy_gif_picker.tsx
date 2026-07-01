@@ -3,6 +3,7 @@ import type {GifPreview} from "../typed/professor.ts";
 import {
     fetchTrendingKlipyGifs,
     klipyApiConfigured,
+    type KlipyPickerItem,
     searchKlipyGifs,
     trackGifEvent
 } from "../lib/klipy.ts";
@@ -15,10 +16,11 @@ export default function KlipyGifPicker(props: {
     onGifClick: (gif: GifPreview) => void;
 }) {
     const [query, setQuery] = useState("");
-    const [items, setItems] = useState<GifPreview[]>([]);
+    const [items, setItems] = useState<KlipyPickerItem[]>([]);
     const [nextCursor, setNextCursor] = useState<string | undefined>();
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const bodyRef = useRef<HTMLDivElement>(null);
     const trackedLoads = useRef<Set<string>>(new Set());
 
     const pickerStyle = {
@@ -26,6 +28,8 @@ export default function KlipyGifPicker(props: {
     } as CSSProperties;
 
     useEffect(() => {
+        scrollResultsToTop();
+
         if (!klipyApiConfigured()) {
             setItems([]);
             setError("GIF search is unavailable.");
@@ -45,11 +49,17 @@ export default function KlipyGifPicker(props: {
 
     useEffect(() => {
         items.forEach(gif => {
-            if (!gif.id || trackedLoads.current.has(gif.id)) return;
+            if (gif.kind !== "gif" || !gif.id || trackedLoads.current.has(gif.id)) return;
             trackedLoads.current.add(gif.id);
             trackGifEvent(gif, "onload");
         });
     }, [items]);
+
+    function scrollResultsToTop() {
+        if (!bodyRef.current) return;
+
+        bodyRef.current.scrollTop = 0;
+    }
 
     async function loadPage(cursor: string | undefined, append: boolean, signal?: AbortSignal) {
         setLoading(true);
@@ -57,11 +67,15 @@ export default function KlipyGifPicker(props: {
 
         try {
             const trimmedQuery = query.trim();
+            const adSlotWidth = getAdSlotWidth();
             const result = trimmedQuery
-                ? await searchKlipyGifs(trimmedQuery, {limit: PAGE_SIZE, cursor, signal})
-                : await fetchTrendingKlipyGifs({limit: PAGE_SIZE, cursor, signal});
+                ? await searchKlipyGifs(trimmedQuery, {adSlotWidth, limit: PAGE_SIZE, cursor, signal})
+                : await fetchTrendingKlipyGifs({adSlotWidth, limit: PAGE_SIZE, cursor, signal});
 
-            setItems(current => append ? [...current, ...result.gifs] : result.gifs);
+            setItems(current => append ? [...current, ...result.items] : result.items);
+            if (!append) {
+                window.requestAnimationFrame(scrollResultsToTop);
+            }
             setNextCursor(result.next);
         } catch {
             if (signal?.aborted) return;
@@ -74,6 +88,10 @@ export default function KlipyGifPicker(props: {
                 setLoading(false);
             }
         }
+    }
+
+    function getAdSlotWidth() {
+        return bodyRef.current?.clientWidth || window.innerWidth;
     }
 
     return (
@@ -90,6 +108,7 @@ export default function KlipyGifPicker(props: {
             </form>
 
             <div
+                ref={bodyRef}
                 className={styles.body}
                 onScroll={event => {
                     const body = event.currentTarget;
@@ -104,18 +123,35 @@ export default function KlipyGifPicker(props: {
                 ) : items.length > 0 ? (
                     <div className={styles.results}>
                         <div className={styles.grid}>
-                            {items.map(gif => (
+                            {items.map(item => item.kind === "ad" ? (
+                                <div className={styles.adSlot} key={item.id}>
+                                    <iframe
+                                        className={styles.adFrame}
+                                        loading="lazy"
+                                        referrerPolicy="no-referrer-when-downgrade"
+                                        sandbox={
+                                            item.isIframeUrl
+                                                ? "allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-scripts"
+                                                : "allow-popups allow-popups-to-escape-sandbox allow-scripts"
+                                        }
+                                        src={item.isIframeUrl ? item.content : undefined}
+                                        srcDoc={item.isIframeUrl ? undefined : item.content}
+                                        style={{height: `${item.height}px`}}
+                                        title="Advertisement"
+                                    />
+                                </div>
+                            ) : (
                                 <button
-                                    aria-label={gif.title || "Select GIF"}
+                                    aria-label={item.title || "Select GIF"}
                                     className={styles.gifButton}
-                                    key={gif.id ?? gif.url}
+                                    key={item.id ?? item.url}
                                     onClick={() => {
-                                        trackGifEvent(gif, "onclick");
-                                        props.onGifClick(gif);
+                                        trackGifEvent(item, "onclick");
+                                        props.onGifClick(item);
                                     }}
                                     type="button"
                                 >
-                                    <img alt="" draggable={false} loading="lazy" src={gif.previewUrl ?? gif.url}/>
+                                    <img alt="" draggable={false} loading="lazy" src={item.previewUrl ?? item.url}/>
                                 </button>
                             ))}
                         </div>

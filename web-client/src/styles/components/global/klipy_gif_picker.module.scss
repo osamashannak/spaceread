@@ -74,6 +74,21 @@
   width: 100%;
 }
 
+.adSlot {
+  background: #f7f9fb;
+  border: 1px solid #e5e5e5;
+  border-radius: 8px;
+  grid-column: 1 / -1;
+  overflow: hidden;
+  width: 100%;
+}
+
+.adFrame {
+  border: 0;
+  display: block;
+  width: 100%;
+}
+
 .state {
   align-items: center;
   color: #536471;
