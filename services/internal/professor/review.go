@@ -182,10 +182,10 @@ func (s *Server) PostReview() http.Handler {
 				return
 			}
 
-			if !utils.IsValidTenorURL(*request.Gif) {
+			if !utils.IsValidGIFURL(*request.Gif) {
 				logger.Debugf("invalid gif URL: %s", *request.Gif)
 				errorResponse := v1.ErrorResponse{
-					Message: "gif must be a valid Tenor GIF URL",
+					Message: "gif must be a valid GIF provider URL",
 					Error:   http.StatusBadRequest,
 				}
 				jsonutil.MarshalResponse(w, http.StatusBadRequest, errorResponse)

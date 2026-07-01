@@ -68,6 +68,16 @@ func (s *Server) PostReply() http.Handler {
 		}
 
 		if request.Gif != nil {
+			if !utils.IsValidGIFURL(*request.Gif) {
+				logger.Debugf("invalid gif URL: %s", *request.Gif)
+				errorResponse := v1.ErrorResponse{
+					Message: "gif must be a valid GIF provider URL",
+					Error:   http.StatusBadRequest,
+				}
+				jsonutil.MarshalResponse(w, http.StatusBadRequest, errorResponse)
+				return
+			}
+
 			request.Comment = ""
 		}
 

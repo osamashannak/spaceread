@@ -6,8 +6,8 @@ import {
     ImageAttachment,
     ReviewFormDraft
 } from "../../typed/professor.ts";
-import GifPicker, {ContentFilter} from "gif-picker-react";
 import {useToast} from "../provider/toast.tsx";
+import KlipyGifPicker from "../klipy_gif_picker.tsx";
 
 
 export default function ReviewFormFooter(props: {
@@ -105,19 +105,8 @@ export default function ReviewFormFooter(props: {
 
     }*/
 
-    function addTenorGif(gif: string) {
-        const img = new Image();
-        img.src = gif;
-
-        img.onload = async () => {
-            const gifPreview: GifPreview = {
-                url: gif,
-                height: img.height,
-                width: img.width
-            };
-
-            setDetails(prevState => ({...prevState, gif: gifPreview}));
-        }
+    function addKlipyGif(gif: GifPreview) {
+        setDetails(prevState => ({...prevState, gif}));
     }
 
     function addImage(file: File | Blob) {
@@ -226,13 +215,13 @@ export default function ReviewFormFooter(props: {
                     onClick={e => e.stopPropagation()}
                 >
                     <div className={styles.container2}>
-                        <GifPicker tenorApiKey={import.meta.env.VITE_GOOGLE_TENOR_API_KEY}
-                                   contentFilter={ContentFilter.HIGH}
-                                   width={width}
-                                   onGifClick={(gif) => {
-                                       addTenorGif(gif.url);
-                                       hideGifSelector();
-                                   }}/>
+                        <KlipyGifPicker
+                            width={width}
+                            onGifClick={(gif) => {
+                                addKlipyGif(gif);
+                                hideGifSelector();
+                            }}
+                        />
                     </div>
                 </div>
                 <div className={canAddMoreAttachments() ? styles.buttonIconWrapper : styles.disabledButton}>

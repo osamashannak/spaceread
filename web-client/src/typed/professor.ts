@@ -149,6 +149,15 @@ export interface ReplyContent {
 
 export interface GifPreview {
     url: string;
+    previewUrl?: string;
     width: number;
     height: number;
+    provider?: "klipy" | "tenor";
+    id?: string;
+    title?: string;
+    analytics?: {
+        onload?: { url: string };
+        onclick?: { url: string };
+        onsent?: { url: string };
+    };
 }

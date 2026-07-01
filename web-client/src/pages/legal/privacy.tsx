@@ -40,7 +40,7 @@ We use third-party services to provide, protect, and improve SpaceRead. Dependin
 - Google reCAPTCHA Enterprise for spam and abuse prevention.
 - Google Perspective API for review safety and moderation signals.
 - Google Cloud Translation for translating reviews.
-- Tenor or GIF providers when you search for or embed GIFs.
+- KLIPY or other GIF providers when you search for or embed GIFs.
 - Microsoft Azure services for file storage and image safety checks.
 - Amazon Web Services, including email delivery services for verification emails.
 - Security or malware scanning providers when files need safety review.
@@ -92,7 +92,7 @@ export default function Privacy() {
             <LegalPage
                 title="Privacy Policy"
                 label="SpaceRead"
-                lastUpdated="May 21, 2026"
+                lastUpdated="July 1, 2026"
                 notice="This policy explains how SpaceRead handles information submitted through the website and information collected to keep the platform useful, secure, and respectful."
             >
                 <LegalMarkdownDocument source={privacyPolicy}/>

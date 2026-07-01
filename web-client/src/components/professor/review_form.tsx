@@ -25,6 +25,7 @@ import {useToast} from "../provider/toast.tsx";
 import {getCoursesList} from "../../api/course.ts";
 import type {CourseItem} from "../../typed/searchbox.ts";
 import {createSearchIndex, searchPreparedIndex} from "../../lib/search.ts";
+import {trackGifEvent} from "../../lib/klipy.ts";
 
 // Helper to calculate star label
 const getStarLabel = (r: number) => {
@@ -400,6 +401,7 @@ export default function ReviewForm(props: { courses: string[] | null, professorE
             setSubmitting("error");
             return;
         }
+        trackGifEvent(details.gif, "onsent");
         setSubmitting(null);
         dispatch(
             addReview({

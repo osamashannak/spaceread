@@ -21,6 +21,7 @@ import {useModal} from "../provider/modal.tsx";
 import FlaggedModal from "../modal/flagged_modal.tsx";
 import {getRecaptchaToken} from "../../lib/recaptcha.ts";
 import {useToast} from "../provider/toast.tsx";
+import {trackGifEvent} from "../../lib/klipy.ts";
 
 export default function RestrictedReviewForm(props: { professorEmail: string; canReview: boolean }) {
     const [details, setDetails] = useState<ReviewFormDraft>({
@@ -130,6 +131,7 @@ export default function RestrictedReviewForm(props: { professorEmail: string; ca
             return;
         }
 
+        trackGifEvent(details.gif, "onsent");
         setSubmitting(null);
 
         dispatch(

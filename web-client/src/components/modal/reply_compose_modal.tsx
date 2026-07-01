@@ -15,11 +15,12 @@ import {getReplyName, postReply} from "../../api/professor.ts";
 import EmojiSelector from "../lexical_editor/emoji_selector.tsx";
 import {useDispatch} from "react-redux";
 import {addReply} from "../../redux/slice/professor_slice.ts";
-import GifPicker, {ContentFilter} from "gif-picker-react";
 import {GifPreview, ReplyContent, ReviewComposeProps} from "../../typed/professor.ts";
 import {useReply} from "../provider/reply.tsx";
-import TenorAttribution from "../tenor_attribution.tsx";
 import {useToast} from "../provider/toast.tsx";
+import KlipyGifPicker from "../klipy_gif_picker.tsx";
+import GifAttribution from "../gif_attribution.tsx";
+import {trackGifEvent} from "../../lib/klipy.ts";
 
 
 export default function ReplyComposeModal(props: ReviewComposeProps) {
@@ -108,6 +109,7 @@ export default function ReplyComposeModal(props: ReviewComposeProps) {
         }
 
         dispatch(addReply({reviewId: props.reviewId}));
+        trackGifEvent(content.gif, "onsent");
 
         context.setReplies(old => {
             return [...old, {
@@ -130,18 +132,8 @@ export default function ReplyComposeModal(props: ReviewComposeProps) {
 
     }
 
-    function addTenorGif(gif: string) {
-        const img = new Image();
-        img.src = gif;
-
-        img.onload = async () => {
-            const gifPreview = {
-                url: gif,
-                width: img.width,
-                height: img.height
-            } as GifPreview;
-            setContent({...content, gif: gifPreview});
-        }
+    function addKlipyGif(gif: GifPreview) {
+        setContent(prev => ({...prev, gif}));
     }
 
     function toggleGifSelector() {
@@ -304,19 +296,19 @@ export default function ReplyComposeModal(props: ReviewComposeProps) {
                                  alt={""}/>
                         </div>
                         <div>
-                            <TenorAttribution/>
+                            <GifAttribution provider={content.gif.provider} url={content.gif.url}/>
                         </div>
                     </>}
 
                 <div className={styles.gifSelector} onClick={e => e.stopPropagation()}>
                     <div className={styles.container2}>
-                        <GifPicker tenorApiKey={"AIzaSyDmHmE9bzvu54NGyozlJFwHCwtpOFQiVng"}
-                                   contentFilter={ContentFilter.HIGH}
-                                   width={300}
-                                   onGifClick={(gif) => {
-                                       addTenorGif(gif.url);
-                                       hideGifSelector();
-                                   }}/>
+                        <KlipyGifPicker
+                            width={300}
+                            onGifClick={(gif) => {
+                                addKlipyGif(gif);
+                                hideGifSelector();
+                            }}
+                        />
                     </div>
                 </div>
                 <div className={styles.postButtonList}>
