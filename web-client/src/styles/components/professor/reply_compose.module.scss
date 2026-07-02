@@ -167,6 +167,7 @@
   opacity: 0;
   z-index: 999;
   pointer-events: none;
+  visibility: hidden;
   top: -30%;
 
   aside {
@@ -181,6 +182,12 @@
     }
 
   }
+}
+
+.selectorOpen {
+  opacity: 1;
+  pointer-events: auto;
+  visibility: visible;
 }
 
 .container2 {

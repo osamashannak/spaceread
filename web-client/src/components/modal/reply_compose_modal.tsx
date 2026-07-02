@@ -26,6 +26,8 @@ export default function ReplyComposeModal(props: ReviewComposeProps) {
 
     const [content, setContent] = useState<ReplyContent>({comment: "", gif: undefined});
     const commentRef = useRef<LexicalEditor | null | undefined>(null);
+    const gifSelectorRef = useRef<HTMLDivElement>(null);
+    const [gifOpen, setGifOpen] = useState(false);
     const [submitting, setSubmitting] = useState(false);
     const [name, setName] = useState<string | null>(null);
 
@@ -136,19 +138,11 @@ export default function ReplyComposeModal(props: ReviewComposeProps) {
     }
 
     function toggleGifSelector() {
-        const gifSelector = document.querySelector(`.${styles.gifSelector}`) as HTMLDivElement;
-        if (gifSelector) {
-            gifSelector.style.opacity = gifSelector.style.opacity === "0" ? "1" : "0";
-            gifSelector.style.pointerEvents = gifSelector.style.pointerEvents === "none" ? "all" : "none";
-        }
+        setGifOpen(open => !open);
     }
 
     function hideGifSelector() {
-        const gifSelector = document.querySelector(`.${styles.gifSelector}`) as HTMLDivElement;
-        if (gifSelector) {
-            gifSelector.style.opacity = "0";
-            gifSelector.style.pointerEvents = "none";
-        }
+        setGifOpen(false);
     }
 
     if (!name) {
@@ -289,17 +283,23 @@ export default function ReplyComposeModal(props: ReviewComposeProps) {
                         </div>
                     </>}
 
-                <div className={styles.gifSelector} onClick={e => e.stopPropagation()}>
-                    <div className={styles.container2}>
-                        <KlipyGifPicker
-                            width={300}
-                            onGifClick={(gif) => {
-                                addKlipyGif(gif);
-                                hideGifSelector();
-                            }}
-                        />
+                {gifOpen && (
+                    <div
+                        ref={gifSelectorRef}
+                        className={`${styles.gifSelector} ${styles.selectorOpen}`}
+                        onClick={e => e.stopPropagation()}
+                    >
+                        <div className={styles.container2}>
+                            <KlipyGifPicker
+                                width={300}
+                                onGifClick={(gif) => {
+                                    addKlipyGif(gif);
+                                    hideGifSelector();
+                                }}
+                            />
+                        </div>
                     </div>
-                </div>
+                )}
                 <div className={styles.postButtonList}>
                     <div className={styles.buttonIconWrapper}>
                         <div className={styles.buttonLabel} onClick={(e) => {

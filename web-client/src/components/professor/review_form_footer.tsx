@@ -1,5 +1,5 @@
 import styles from "../../styles/components/professor/review_form.module.scss";
-import {ChangeEvent, Dispatch, SetStateAction, useEffect, useId, useState} from "react";
+import {ChangeEvent, Dispatch, SetStateAction, useEffect, useId, useRef, useState} from "react";
 import Compressor from "compressorjs";
 import {
     GifPreview,
@@ -21,6 +21,7 @@ export default function ReviewFormFooter(props: {
     const toast = useToast();
     const uploadInputId = useId();
     const gifPickerId = useId();
+    const gifSelectorRef = useRef<HTMLDivElement>(null);
     const [gifOpen, setGifOpen] = useState(false);
 
     const uploadImage = (event: ChangeEvent<HTMLInputElement>) => {
@@ -152,11 +153,6 @@ export default function ReviewFormFooter(props: {
     }
 
     function setGifSelectorVisibility(visible: boolean) {
-        const gifSelector = document.querySelector(`.${styles.gifSelector}`) as HTMLDivElement;
-        if (gifSelector) {
-            gifSelector.style.opacity = visible ? "1" : "0";
-            gifSelector.style.pointerEvents = visible ? "all" : "none";
-        }
         setGifOpen(visible);
     }
 
@@ -179,10 +175,10 @@ export default function ReviewFormFooter(props: {
     useEffect(() => {
         function handleClickOutside(event: MouseEvent) {
             const emojiSelector = document.querySelector(`.${styles.emojiSelector}`) as HTMLDivElement;
-            const gifSelector = document.querySelector(`.${styles.gifSelector}`) as HTMLDivElement
-            if (!emojiSelector || !gifSelector) return;
-            if (emojiSelector.contains(event.target as Node)) return;
-            if (gifSelector.contains(event.target as Node)) return;
+            const gifSelector = gifSelectorRef.current;
+
+            if (emojiSelector?.contains(event.target as Node)) return;
+            if (gifSelector?.contains(event.target as Node)) return;
 
             hideEmojiSelector();
             hideGifSelector();
@@ -205,21 +201,24 @@ export default function ReviewFormFooter(props: {
                     event.stopPropagation();
                 }}>
 
-                <div
-                    id={gifPickerId}
-                    className={styles.gifSelector}
-                    onClick={e => e.stopPropagation()}
-                >
-                    <div className={styles.container2}>
-                        <KlipyGifPicker
-                            width={width}
-                            onGifClick={(gif) => {
-                                addKlipyGif(gif);
-                                hideGifSelector();
-                            }}
-                        />
+                {gifOpen && (
+                    <div
+                        ref={gifSelectorRef}
+                        id={gifPickerId}
+                        className={`${styles.gifSelector} ${styles.selectorOpen}`}
+                        onClick={e => e.stopPropagation()}
+                    >
+                        <div className={styles.container2}>
+                            <KlipyGifPicker
+                                width={width}
+                                onGifClick={(gif) => {
+                                    addKlipyGif(gif);
+                                    hideGifSelector();
+                                }}
+                            />
+                        </div>
                     </div>
-                </div>
+                )}
                 <div className={canAddMoreAttachments() ? styles.buttonIconWrapper : styles.disabledButton}>
                     <label
                         className={styles.buttonLabel}
