@@ -4,7 +4,7 @@ const FINGERPRINT_SCHEMA_VERSION = "review-browser-fingerprint-v1";
 const CREEP_RUNTIME_VERSION = "creepjs-full-docs-runtime";
 const THUMBMARK_TIMEOUT_MS = 2500;
 const CREEP_RUNTIME_TIMEOUT_MS = 9000;
-const CREEP_FRAME_URL = "/vendor/fingerprint-runtime/frame.html";
+const CREEP_RUNTIME_SCRIPT_PATH = "vendor/fingerprint-runtime/creep-runtime.js";
 
 type JsonPrimitive = string | number | boolean | null;
 type JsonValue = JsonPrimitive | JsonValue[] | {[key: string]: JsonValue};
@@ -130,7 +130,7 @@ async function collectCreepFingerprint(): Promise<ClientFingerprintComponentAPI 
 function runCreepRuntimeFrame(): Promise<CreepRuntimeResult> {
     return new Promise((resolve, reject) => {
         const iframe = document.createElement("iframe");
-        iframe.src = CREEP_FRAME_URL;
+        iframe.srcdoc = createCreepRuntimeSrcdoc();
         iframe.title = "Fingerprint runtime";
         iframe.tabIndex = -1;
         iframe.setAttribute("aria-hidden", "true");
@@ -172,14 +172,18 @@ function runCreepRuntimeFrame(): Promise<CreepRuntimeResult> {
 
             if (!frameWindow) return;
 
-            if (frameWindow.__fingerprintRuntimeError) {
-                lastRuntimeError = frameWindow.__fingerprintRuntimeError;
-            }
+            try {
+                if (frameWindow.__fingerprintRuntimeError) {
+                    lastRuntimeError = frameWindow.__fingerprintRuntimeError;
+                }
 
-            const fingerprint = cloneSerializable(frameWindow.Fingerprint);
-            const creep = cloneSerializable(frameWindow.Creep);
-            if (fingerprint || creep) {
-                finish(() => resolve({fingerprint, creep}));
+                const fingerprint = cloneSerializable(frameWindow.Fingerprint);
+                const creep = cloneSerializable(frameWindow.Creep);
+                if (fingerprint || creep) {
+                    finish(() => resolve({fingerprint, creep}));
+                }
+            } catch (error) {
+                finish(() => reject(new Error(`fingerprint frame read failed: ${errorMessage(error)}`)));
             }
         };
 
@@ -191,6 +195,67 @@ function runCreepRuntimeFrame(): Promise<CreepRuntimeResult> {
 
         (document.body || document.documentElement).appendChild(iframe);
     });
+}
+
+function createCreepRuntimeSrcdoc(): string {
+    const runtimeSrc = escapeHtmlAttribute(buildAssetUrl(CREEP_RUNTIME_SCRIPT_PATH));
+
+    return `<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="robots" content="noindex,nofollow">
+    <title>Fingerprint Frame</title>
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            width: 0;
+            height: 0;
+            overflow: hidden;
+        }
+    </style>
+</head>
+<body>
+<main id="fingerprint-data">
+    <div id="creep-fingerprint"></div>
+    <div id="fuzzy-fingerprint"></div>
+    <div id="webrtc-connection"></div>
+    <div id="status-info"></div>
+    <div id="creep-resize"></div>
+</main>
+<script>
+    window.__fingerprintRuntimeError = null;
+    window.addEventListener("error", function (event) {
+        window.__fingerprintRuntimeError = event && event.message ? String(event.message) : "fingerprint runtime error";
+    });
+    window.addEventListener("unhandledrejection", function (event) {
+        var reason = event && event.reason;
+        window.__fingerprintRuntimeError = reason && reason.message ? String(reason.message) : "fingerprint runtime rejected";
+    });
+<\/script>
+<script src="${runtimeSrc}"><\/script>
+</body>
+</html>`;
+}
+
+function buildAssetUrl(path: string): string {
+    const base = import.meta.env.BASE_URL || "/";
+    const normalizedBase = base.endsWith("/") ? base : `${base}/`;
+    const absoluteBase = normalizedBase.startsWith("http://") || normalizedBase.startsWith("https://")
+        ? normalizedBase
+        : `${window.location.origin}${normalizedBase.startsWith("/") ? normalizedBase : `/${normalizedBase}`}`;
+
+    return new URL(path, absoluteBase).toString();
+}
+
+function escapeHtmlAttribute(value: string): string {
+    return value
+        .replace(/&/g, "&amp;")
+        .replace(/"/g, "&quot;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
 }
 
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
