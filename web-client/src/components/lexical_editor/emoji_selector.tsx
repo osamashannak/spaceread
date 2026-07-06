@@ -102,21 +102,13 @@ function stopWheelPropagation(event: WheelEvent<HTMLDivElement>) {
 
 export default function EmojiSelector(props: {open?: boolean}) {
     const [editor] = useLexicalComposerContext();
-    const [hasOpened, setHasOpened] = useState(false);
     const [emojiData, setEmojiData] = useState<EmojiPickerData | null>(null);
     const [query, setQuery] = useState("");
     const [activeCategory, setActiveCategory] = useState("");
     const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
     const open = props.open ?? false;
-    const shouldMountPicker = open || hasOpened;
 
     useEmojis(editor);
-
-    useEffect(() => {
-        if (open) {
-            setHasOpened(true);
-        }
-    }, [open]);
 
     useEffect(() => {
         setVisibleCount(PAGE_SIZE);
@@ -169,96 +161,94 @@ export default function EmojiSelector(props: {open?: boolean}) {
         });
     }
 
+    if (!open) {
+        return null;
+    }
+
     return (
         <div
-            className={wrapperStyles.emojiSelector}
+            className={`${wrapperStyles.emojiSelector} ${wrapperStyles.selectorOpen}`}
             onClick={(e) => {
                 e.stopPropagation();
             }}
-            style={{
-                opacity: open ? 1 : 0,
-                pointerEvents: open ? "auto" : "none",
-            }}
         >
-            {shouldMountPicker && (
-                <aside aria-label="Emoji picker" className={styles.picker}>
-                    <form className={styles.searchForm} onSubmit={event => event.preventDefault()}>
-                        <input
-                            className={styles.searchInput}
-                            maxLength={50}
-                            onChange={event => setQuery(event.target.value)}
-                            placeholder="Search emoji"
-                            type="search"
-                            value={query}
-                        />
-                    </form>
+            <aside aria-label="Emoji picker" className={styles.picker}>
+                <form className={styles.searchForm} onSubmit={event => event.preventDefault()}>
+                    <input
+                        className={styles.searchInput}
+                        maxLength={50}
+                        onChange={event => setQuery(event.target.value)}
+                        placeholder="Search emoji"
+                        type="search"
+                        value={query}
+                    />
+                </form>
 
-                    {emojiData ? (
-                        <>
-                            <div className={styles.categoryTabs} role="tablist" aria-label="Emoji categories">
-                                {emojiData.EMOJI_CATEGORIES.map(category => {
-                                    const icon = getCategoryIcon(category.key, emojiData.EMOJIS);
+                {emojiData ? (
+                    <>
+                        <div className={styles.categoryTabs} role="tablist" aria-label="Emoji categories">
+                            {emojiData.EMOJI_CATEGORIES.map(category => {
+                                const icon = getCategoryIcon(category.key, emojiData.EMOJIS);
 
-                                    if (!icon) return null;
+                                if (!icon) return null;
 
-                                    return (
+                                return (
+                                    <button
+                                        aria-label={category.label}
+                                        aria-selected={activeCategory === category.key}
+                                        className={`${styles.categoryButton} ${activeCategory === category.key ? styles.categoryButtonActive : ""}`}
+                                        key={category.key}
+                                        onClick={() => {
+                                            setQuery("");
+                                            setActiveCategory(category.key);
+                                        }}
+                                        role="tab"
+                                        title={category.label}
+                                        type="button"
+                                    >
+                                        <img alt="" draggable={false} loading="lazy" src={getTwemojiSvgUrl(icon.assetUnified)}/>
+                                    </button>
+                                );
+                            })}
+                        </div>
+
+                        <div
+                            className={styles.body}
+                            onScroll={event => {
+                                const body = event.currentTarget;
+                                const distanceFromBottom = body.scrollHeight - body.scrollTop - body.clientHeight;
+
+                                if (distanceFromBottom < 120 && visibleCount < filteredEmojis.length) {
+                                    setVisibleCount(count => Math.min(count + PAGE_SIZE, filteredEmojis.length));
+                                }
+                            }}
+                            onWheel={stopWheelPropagation}
+                        >
+                            {visibleEmojis.length > 0 ? (
+                                <div className={styles.grid}>
+                                    {visibleEmojis.map(emoji => (
                                         <button
-                                            aria-label={category.label}
-                                            aria-selected={activeCategory === category.key}
-                                            className={`${styles.categoryButton} ${activeCategory === category.key ? styles.categoryButtonActive : ""}`}
-                                            key={category.key}
-                                            onClick={() => {
-                                                setQuery("");
-                                                setActiveCategory(category.key);
-                                            }}
-                                            role="tab"
-                                            title={category.label}
+                                            aria-label={emoji.name}
+                                            className={styles.emojiButton}
+                                            key={emoji.unified}
+                                            onClick={() => insertEmoji(emoji)}
+                                            onMouseDown={event => event.preventDefault()}
+                                            title={emoji.name}
                                             type="button"
                                         >
-                                            <img alt="" draggable={false} loading="lazy" src={getTwemojiSvgUrl(icon.assetUnified)}/>
+                                            <img alt="" draggable={false} loading="lazy" src={getTwemojiSvgUrl(emoji.assetUnified)}/>
                                         </button>
-                                    );
-                                })}
-                            </div>
-
-                            <div
-                                className={styles.body}
-                                onScroll={event => {
-                                    const body = event.currentTarget;
-                                    const distanceFromBottom = body.scrollHeight - body.scrollTop - body.clientHeight;
-
-                                    if (distanceFromBottom < 120 && visibleCount < filteredEmojis.length) {
-                                        setVisibleCount(count => Math.min(count + PAGE_SIZE, filteredEmojis.length));
-                                    }
-                                }}
-                                onWheel={stopWheelPropagation}
-                            >
-                                {visibleEmojis.length > 0 ? (
-                                    <div className={styles.grid}>
-                                        {visibleEmojis.map(emoji => (
-                                            <button
-                                                aria-label={emoji.name}
-                                                className={styles.emojiButton}
-                                                key={emoji.unified}
-                                                onClick={() => insertEmoji(emoji)}
-                                                onMouseDown={event => event.preventDefault()}
-                                                title={emoji.name}
-                                                type="button"
-                                            >
-                                                <img alt="" draggable={false} loading="lazy" src={getTwemojiSvgUrl(emoji.assetUnified)}/>
-                                            </button>
-                                        ))}
-                                    </div>
-                                ) : (
-                                    <div className={styles.state}>No emojis found</div>
-                                )}
-                            </div>
-                        </>
-                    ) : (
-                        <div className={styles.state}>Loading emojis</div>
-                    )}
-                </aside>
-            )}
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className={styles.state}>No emojis found</div>
+                            )}
+                        </div>
+                    </>
+                ) : (
+                    <div className={styles.state}>Loading emojis</div>
+                )}
+            </aside>
         </div>
     )
 
