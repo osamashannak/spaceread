@@ -9,6 +9,19 @@ export default defineConfig(({ mode}) => {
   const professorProxyTarget = env.VITE_PROFESSOR_PROXY_TARGET || 'https://professor.api.spaceread.net';
   const courseProxyTarget = env.VITE_COURSE_PROXY_TARGET || 'https://course.api.spaceread.net';
   const authProxyTarget = env.VITE_AUTH_PROXY_TARGET || 'https://auth.api.spaceread.net';
+  const assetBase = (() => {
+    if (mode !== 'production') {
+      return '/';
+    }
+
+    const assetsUrl = env.VITE_ASSETS_URL?.replace(/\/+$/, '');
+    const appVersion = env.VITE_APP_VERSION?.replace(/^\/+|\/+$/g, '');
+    if (!assetsUrl) {
+      return '/';
+    }
+
+    return appVersion ? `${assetsUrl}/${appVersion}/` : `${assetsUrl}/`;
+  })();
 
   return {
     plugins: [react(),
@@ -87,6 +100,6 @@ export default defineConfig(({ mode}) => {
       },
       modulePreload: true,
     },
-    base: mode === 'production' ? `${env.VITE_ASSETS_URL}/${env.VITE_APP_VERSION}/` : '/',
+    base: assetBase,
   }
 })

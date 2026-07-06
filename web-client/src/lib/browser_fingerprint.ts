@@ -4,21 +4,24 @@ const FINGERPRINT_SCHEMA_VERSION = "review-browser-fingerprint-v1";
 const CREEP_RUNTIME_VERSION = "creepjs-full-docs-runtime";
 const THUMBMARK_TIMEOUT_MS = 2500;
 const CREEP_RUNTIME_TIMEOUT_MS = 9000;
-const CREEP_RUNTIME_SCRIPT_PATH = "vendor/fingerprint-runtime/creep-runtime.js";
+const CREEP_FRAME_PATH = "vendor/fingerprint-runtime/frame.html";
+const CREEP_FRAME_MESSAGE_TYPE = "review-fingerprint-runtime-result";
+const CREEP_FRAME_ERROR_TYPE = "review-fingerprint-runtime-error";
 
 type JsonPrimitive = string | number | boolean | null;
 type JsonValue = JsonPrimitive | JsonValue[] | {[key: string]: JsonValue};
 type FingerprintSignals = Record<string, string | number | boolean | null>;
 
-type CreepRuntimeWindow = Window & {
-    Fingerprint?: unknown;
-    Creep?: unknown;
-    __fingerprintRuntimeError?: string | null;
-};
-
 type CreepRuntimeResult = {
     fingerprint: unknown;
     creep: unknown;
+};
+
+type CreepFrameMessage = {
+    type?: string;
+    fingerprint?: unknown;
+    creep?: unknown;
+    error?: unknown;
 };
 
 export async function collectReviewClientFingerprint(): Promise<ClientFingerprintAPI | undefined> {
@@ -129,8 +132,10 @@ async function collectCreepFingerprint(): Promise<ClientFingerprintComponentAPI 
 
 function runCreepRuntimeFrame(): Promise<CreepRuntimeResult> {
     return new Promise((resolve, reject) => {
+        const frameUrl = buildAssetUrl(CREEP_FRAME_PATH);
+        const frameOrigin = new URL(frameUrl).origin;
         const iframe = document.createElement("iframe");
-        iframe.srcdoc = createCreepRuntimeSrcdoc();
+        iframe.src = frameUrl;
         iframe.title = "Fingerprint runtime";
         iframe.tabIndex = -1;
         iframe.setAttribute("aria-hidden", "true");
@@ -144,13 +149,12 @@ function runCreepRuntimeFrame(): Promise<CreepRuntimeResult> {
         iframe.style.pointerEvents = "none";
 
         let settled = false;
-        let lastRuntimeError: string | null = null;
-        let intervalId: number | undefined;
         let timeoutId: number | undefined;
+        let frameWindow: Window | null = null;
 
         const cleanup = () => {
-            if (intervalId !== undefined) window.clearInterval(intervalId);
             if (timeoutId !== undefined) window.clearTimeout(timeoutId);
+            window.removeEventListener("message", handleMessage);
             iframe.remove();
         };
 
@@ -161,83 +165,48 @@ function runCreepRuntimeFrame(): Promise<CreepRuntimeResult> {
             callback();
         };
 
-        const readFrame = () => {
-            let frameWindow: CreepRuntimeWindow | null = null;
-            try {
-                frameWindow = iframe.contentWindow as CreepRuntimeWindow | null;
-            } catch {
-                finish(() => reject(new Error("fingerprint frame is not same-origin")));
+        const handleMessage = (event: MessageEvent<CreepFrameMessage>) => {
+            if (event.origin !== frameOrigin) {
                 return;
             }
 
-            if (!frameWindow) return;
+            if (frameWindow && event.source !== frameWindow) {
+                return;
+            }
 
-            try {
-                if (frameWindow.__fingerprintRuntimeError) {
-                    lastRuntimeError = frameWindow.__fingerprintRuntimeError;
-                }
+            const data = event.data;
+            if (!data || typeof data !== "object") {
+                return;
+            }
 
-                const fingerprint = cloneSerializable(frameWindow.Fingerprint);
-                const creep = cloneSerializable(frameWindow.Creep);
-                if (fingerprint || creep) {
-                    finish(() => resolve({fingerprint, creep}));
-                }
-            } catch (error) {
-                finish(() => reject(new Error(`fingerprint frame read failed: ${errorMessage(error)}`)));
+            if (data.type === CREEP_FRAME_ERROR_TYPE) {
+                finish(() => reject(new Error(errorMessage(data.error))));
+                return;
+            }
+
+            if (data.type !== CREEP_FRAME_MESSAGE_TYPE) {
+                return;
+            }
+
+            const fingerprint = cloneSerializable(data.fingerprint);
+            const creep = cloneSerializable(data.creep);
+            if (fingerprint || creep) {
+                finish(() => resolve({fingerprint, creep}));
             }
         };
 
-        iframe.addEventListener("load", readFrame);
-        intervalId = window.setInterval(readFrame, 100);
+        window.addEventListener("message", handleMessage);
         timeoutId = window.setTimeout(() => {
-            finish(() => reject(new Error(lastRuntimeError || "creep runtime timed out")));
+            finish(() => reject(new Error("creep runtime timed out")));
         }, CREEP_RUNTIME_TIMEOUT_MS);
 
         (document.body || document.documentElement).appendChild(iframe);
-    });
-}
-
-function createCreepRuntimeSrcdoc(): string {
-    const runtimeSrc = escapeHtmlAttribute(buildAssetUrl(CREEP_RUNTIME_SCRIPT_PATH));
-
-    return `<!doctype html>
-<html lang="en">
-<head>
-    <meta charset="utf-8">
-    <meta name="robots" content="noindex,nofollow">
-    <title>Fingerprint Frame</title>
-    <style>
-        html,
-        body {
-            margin: 0;
-            padding: 0;
-            width: 0;
-            height: 0;
-            overflow: hidden;
+        try {
+            frameWindow = iframe.contentWindow;
+        } catch {
+            frameWindow = null;
         }
-    </style>
-</head>
-<body>
-<main id="fingerprint-data">
-    <div id="creep-fingerprint"></div>
-    <div id="fuzzy-fingerprint"></div>
-    <div id="webrtc-connection"></div>
-    <div id="status-info"></div>
-    <div id="creep-resize"></div>
-</main>
-<script>
-    window.__fingerprintRuntimeError = null;
-    window.addEventListener("error", function (event) {
-        window.__fingerprintRuntimeError = event && event.message ? String(event.message) : "fingerprint runtime error";
     });
-    window.addEventListener("unhandledrejection", function (event) {
-        var reason = event && event.reason;
-        window.__fingerprintRuntimeError = reason && reason.message ? String(reason.message) : "fingerprint runtime rejected";
-    });
-<\/script>
-<script src="${runtimeSrc}"><\/script>
-</body>
-</html>`;
 }
 
 function buildAssetUrl(path: string): string {
@@ -248,14 +217,6 @@ function buildAssetUrl(path: string): string {
         : `${window.location.origin}${normalizedBase.startsWith("/") ? normalizedBase : `/${normalizedBase}`}`;
 
     return new URL(path, absoluteBase).toString();
-}
-
-function escapeHtmlAttribute(value: string): string {
-    return value
-        .replace(/&/g, "&amp;")
-        .replace(/"/g, "&quot;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;");
 }
 
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
@@ -340,6 +301,9 @@ function elapsedMs(startedAt: number): number {
 function errorMessage(error: unknown): string {
     if (error instanceof Error && error.message) {
         return error.message.slice(0, 160);
+    }
+    if (typeof error === "string" && error) {
+        return error.slice(0, 160);
     }
     return "unknown fingerprint error";
 }

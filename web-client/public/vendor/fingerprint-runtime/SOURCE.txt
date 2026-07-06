@@ -9,3 +9,6 @@ https://raw.githubusercontent.com/abrahamjuliot/creepjs/master/LICENSE
 
 The upstream code is MIT licensed. The CreepJS name is not used as a product
 name or public mirror name in this app.
+
+The companion creep.js file is a local worker bootstrap because the vendored
+runtime expects workers to load from ./creep.js.

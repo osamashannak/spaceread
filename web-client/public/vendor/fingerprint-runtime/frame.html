@@ -34,5 +34,65 @@
     });
 </script>
 <script src="./creep-runtime.js"></script>
+<script>
+    (function () {
+        var MESSAGE_TYPE = "review-fingerprint-runtime-result";
+        var ERROR_TYPE = "review-fingerprint-runtime-error";
+        var startedAt = performance.now();
+        var intervalId = 0;
+        var timeoutId = 0;
+        var settled = false;
+
+        function getTargetOrigin() {
+            try {
+                return document.referrer ? new URL(document.referrer).origin : "*";
+            } catch (_) {
+                return "*";
+            }
+        }
+
+        function cloneSerializable(value) {
+            if (value === undefined || value === null) {
+                return null;
+            }
+
+            try {
+                return JSON.parse(JSON.stringify(value));
+            } catch (_) {
+                return null;
+            }
+        }
+
+        function finish(payload) {
+            if (settled) return;
+            settled = true;
+            clearInterval(intervalId);
+            clearTimeout(timeoutId);
+            parent.postMessage(payload, getTargetOrigin());
+        }
+
+        function readFingerprint() {
+            var fingerprint = cloneSerializable(window.Fingerprint);
+            var creep = cloneSerializable(window.Creep);
+
+            if (fingerprint || creep) {
+                finish({
+                    type: MESSAGE_TYPE,
+                    duration_ms: Math.max(0, Math.round(performance.now() - startedAt)),
+                    fingerprint: fingerprint,
+                    creep: creep
+                });
+            }
+        }
+
+        intervalId = setInterval(readFingerprint, 100);
+        timeoutId = setTimeout(function () {
+            finish({
+                type: ERROR_TYPE,
+                error: window.__fingerprintRuntimeError || "creep runtime timed out"
+            });
+        }, 9000);
+    })();
+</script>
 </body>
 </html>
