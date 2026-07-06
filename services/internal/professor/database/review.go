@@ -55,9 +55,10 @@ func (db *ProfessorDB) InsertReview(ctx context.Context, review *model.Review) e
 	_, err := db.Db.Pool.Exec(ctx,
 		`INSERT INTO professor.review (
 			sort_index, id, score, positive, content, attachment, professor_email, ip_address, session_id, user_id,
-			visible, uaeu_origin, language, created_at, gif, grade_received, course_taken
+			visible, uaeu_origin, language, created_at, gif, grade_received, course_taken,
+			browser_fingerprint, thumbmark_fingerprint, creep_fingerprint
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18::jsonb, $19, $20)`,
 		review.SortIndex,
 		review.ID,
 		review.Score,
@@ -74,7 +75,10 @@ func (db *ProfessorDB) InsertReview(ctx context.Context, review *model.Review) e
 		review.CreatedAt,
 		review.Gif,
 		review.GradeReceived,
-		review.CourseTaken)
+		review.CourseTaken,
+		review.BrowserFingerprint,
+		review.ThumbmarkFingerprint,
+		review.CreepFingerprint)
 	return err
 }
 

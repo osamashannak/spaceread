@@ -1,0 +1,11 @@
+This folder vendors the browser build from abrahamjuliot/creepjs for internal
+fingerprint collection.
+
+Source runtime:
+https://raw.githubusercontent.com/abrahamjuliot/creepjs/master/docs/creep.js
+
+Source license:
+https://raw.githubusercontent.com/abrahamjuliot/creepjs/master/LICENSE
+
+The upstream code is MIT licensed. The CreepJS name is not used as a product
+name or public mirror name in this app.

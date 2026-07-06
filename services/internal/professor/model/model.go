@@ -22,27 +22,30 @@ type ProfessorRequest struct {
 }
 
 type Review struct {
-	SortIndex      int64
-	ID             int64
-	Score          int
-	Positive       bool
-	Content        string
-	Attachment     *int64
-	Gif            *string
-	ProfessorEmail string
-	CourseTaken    *string
-	GradeReceived  *string
-	IpAddress      string
-	DeletedAt      *time.Time
-	Visible        bool
-	Reviewed       bool
-	LikeCount      int
-	DislikeCount   int
-	Language       string
-	UaeuOrigin     bool
-	SessionId      *int64
-	UserId         *int64
-	CreatedAt      time.Time
+	SortIndex            int64
+	ID                   int64
+	Score                int
+	Positive             bool
+	Content              string
+	Attachment           *int64
+	Gif                  *string
+	ProfessorEmail       string
+	CourseTaken          *string
+	GradeReceived        *string
+	IpAddress            string
+	DeletedAt            *time.Time
+	Visible              bool
+	Reviewed             bool
+	LikeCount            int
+	DislikeCount         int
+	Language             string
+	UaeuOrigin           bool
+	SessionId            *int64
+	UserId               *int64
+	CreatedAt            time.Time
+	BrowserFingerprint   *string
+	ThumbmarkFingerprint *string
+	CreepFingerprint     *string
 }
 
 type ReviewAttachment struct {

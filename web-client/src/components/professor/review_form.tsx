@@ -26,6 +26,7 @@ import {getCoursesList} from "../../api/course.ts";
 import type {CourseItem} from "../../typed/searchbox.ts";
 import {createSearchIndex, searchPreparedIndex} from "../../lib/search.ts";
 import {trackGifEvent} from "../../lib/klipy.ts";
+import {collectReviewClientFingerprint} from "../../lib/browser_fingerprint.ts";
 
 // Helper to calculate star label
 const getStarLabel = (r: number) => {
@@ -480,6 +481,7 @@ export default function ReviewForm(props: { courses: string[] | null, professorE
         // @ts-expect-error Clarity is not defined
         clarity("set", "ReviewSubmitted", "true");
         window.scrollTo(0, 0);
+        const fingerprintPromise = collectReviewClientFingerprint();
 
         let finalAttachmentId = details.attachment?.id;
 
@@ -506,12 +508,15 @@ export default function ReviewForm(props: { courses: string[] | null, professorE
             return;
         }
 
+        const clientFingerprint = await fingerprintPromise.catch(() => undefined);
+
         const result = await postReview({
             text: details.comment!,
             score: details.score!,
             positive: details.positive!,
             professor_email: props.professorEmail,
             recaptcha_token: token,
+            client_fingerprint: clientFingerprint,
             attachment: finalAttachmentId,
             gif: details.gif ? details.gif.url : undefined,
             course_taken: details.course_taken,

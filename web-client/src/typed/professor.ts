@@ -111,6 +111,22 @@ export interface ReviewFormAPI {
     course_taken: string;
     grade_received: string;
     policy_warning_acknowledged?: string;
+    client_fingerprint?: ClientFingerprintAPI;
+}
+
+export interface ClientFingerprintComponentAPI {
+    source: "thumbmark" | "creep";
+    fingerprint: string;
+    version?: string;
+    duration_ms?: number;
+    signals?: Record<string, string | number | boolean | null>;
+    error?: string;
+}
+
+export interface ClientFingerprintAPI {
+    version: string;
+    generated_at: string;
+    components: ClientFingerprintComponentAPI[];
 }
 
 export interface ReviewPolicyWarning {

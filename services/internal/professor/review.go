@@ -1,6 +1,7 @@
 package professor
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	v1 "github.com/osamashannak/uaeu-space/services/internal/api/v1"
@@ -14,6 +15,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -213,23 +215,27 @@ func (s *Server) PostReview() http.Handler {
 
 		ipAddress := utils.GetClientIP(r)
 		now := time.Now()
+		browserFingerprint, thumbmarkFingerprint, creepFingerprint := sanitizeClientFingerprint(request.ClientFingerprint)
 
 		review := model.Review{
-			ID:             int64(s.generator.Next()),
-			Score:          *request.Score,
-			Positive:       *request.Positive,
-			Content:        request.Text,
-			CourseTaken:    request.CourseTaken,
-			GradeReceived:  request.GradeReceived,
-			ProfessorEmail: *request.ProfessorEmail,
-			UaeuOrigin:     subnetchecker.CheckIP(ipAddress),
-			Visible:        moderationWarning == nil,
-			Language:       flags.Language,
-			IpAddress:      ipAddress,
-			SessionId:      &profile.SessionId,
-			UserId:         profile.UserId,
-			CreatedAt:      now,
-			Gif:            gif,
+			ID:                   int64(s.generator.Next()),
+			Score:                *request.Score,
+			Positive:             *request.Positive,
+			Content:              request.Text,
+			CourseTaken:          request.CourseTaken,
+			GradeReceived:        request.GradeReceived,
+			ProfessorEmail:       *request.ProfessorEmail,
+			UaeuOrigin:           subnetchecker.CheckIP(ipAddress),
+			Visible:              moderationWarning == nil,
+			Language:             flags.Language,
+			IpAddress:            ipAddress,
+			SessionId:            &profile.SessionId,
+			UserId:               profile.UserId,
+			CreatedAt:            now,
+			Gif:                  gif,
+			BrowserFingerprint:   browserFingerprint,
+			ThumbmarkFingerprint: thumbmarkFingerprint,
+			CreepFingerprint:     creepFingerprint,
 		}
 
 		if attachmentInfo != nil {
@@ -298,6 +304,152 @@ func (s *Server) PostReview() http.Handler {
 		jsonutil.MarshalResponse(w, http.StatusCreated, response)
 
 	})
+}
+
+func sanitizeClientFingerprint(input *v1.ClientFingerprintBody) (*string, *string, *string) {
+	const (
+		maxComponents       = 4
+		maxFingerprintLen   = 256
+		maxVersionLen       = 80
+		maxGeneratedAtLen   = 80
+		maxErrorLen         = 200
+		maxSignals          = 24
+		maxSignalKeyLen     = 64
+		maxSignalStringLen  = 180
+		maxFingerprintBytes = 12_000
+	)
+
+	if input == nil || len(input.Components) == 0 {
+		return nil, nil, nil
+	}
+
+	sanitized := v1.ClientFingerprintBody{
+		Version:     trimClientFingerprintString(input.Version, maxVersionLen),
+		GeneratedAt: trimClientFingerprintString(input.GeneratedAt, maxGeneratedAtLen),
+		Components:  make([]v1.ClientFingerprintComponentBody, 0, len(input.Components)),
+	}
+
+	var thumbmarkFingerprint *string
+	var creepFingerprint *string
+
+	for _, component := range input.Components {
+		if len(sanitized.Components) >= maxComponents {
+			break
+		}
+
+		source := strings.ToLower(strings.TrimSpace(component.Source))
+		if source != "thumbmark" && source != "creep" {
+			continue
+		}
+
+		fingerprint := trimClientFingerprintString(component.Fingerprint, maxFingerprintLen)
+		if fingerprint == "" {
+			continue
+		}
+
+		sanitizedComponent := v1.ClientFingerprintComponentBody{
+			Source:      source,
+			Fingerprint: fingerprint,
+			Signals:     sanitizeClientFingerprintSignals(component.Signals, maxSignals, maxSignalKeyLen, maxSignalStringLen),
+		}
+
+		if component.Version != nil {
+			version := trimClientFingerprintString(*component.Version, maxVersionLen)
+			if version != "" {
+				sanitizedComponent.Version = &version
+			}
+		}
+
+		if component.DurationMS != nil && *component.DurationMS >= 0 && *component.DurationMS <= 10_000 {
+			duration := *component.DurationMS
+			sanitizedComponent.DurationMS = &duration
+		}
+
+		if component.Error != nil {
+			errMessage := trimClientFingerprintString(*component.Error, maxErrorLen)
+			if errMessage != "" {
+				sanitizedComponent.Error = &errMessage
+			}
+		}
+
+		if source == "thumbmark" && thumbmarkFingerprint == nil {
+			thumbmarkFingerprint = clientFingerprintStringPtr(fingerprint)
+		}
+		if source == "creep" && creepFingerprint == nil {
+			creepFingerprint = clientFingerprintStringPtr(fingerprint)
+		}
+
+		sanitized.Components = append(sanitized.Components, sanitizedComponent)
+	}
+
+	if len(sanitized.Components) == 0 {
+		return nil, nil, nil
+	}
+
+	payload, err := json.Marshal(sanitized)
+	if err != nil {
+		return nil, thumbmarkFingerprint, creepFingerprint
+	}
+
+	if len(payload) > maxFingerprintBytes {
+		for i := range sanitized.Components {
+			sanitized.Components[i].Signals = nil
+			sanitized.Components[i].Error = nil
+		}
+		payload, err = json.Marshal(sanitized)
+		if err != nil || len(payload) > maxFingerprintBytes {
+			return nil, thumbmarkFingerprint, creepFingerprint
+		}
+	}
+
+	payloadString := string(payload)
+	return &payloadString, thumbmarkFingerprint, creepFingerprint
+}
+
+func sanitizeClientFingerprintSignals(signals map[string]any, maxSignals, maxKeyLen, maxStringLen int) map[string]any {
+	if len(signals) == 0 {
+		return nil
+	}
+
+	sanitized := make(map[string]any, min(len(signals), maxSignals))
+	for key, value := range signals {
+		if len(sanitized) >= maxSignals {
+			break
+		}
+
+		cleanKey := trimClientFingerprintString(key, maxKeyLen)
+		if cleanKey == "" {
+			continue
+		}
+
+		switch val := value.(type) {
+		case nil:
+			sanitized[cleanKey] = nil
+		case bool:
+			sanitized[cleanKey] = val
+		case float64:
+			sanitized[cleanKey] = val
+		case string:
+			sanitized[cleanKey] = trimClientFingerprintString(val, maxStringLen)
+		}
+	}
+
+	if len(sanitized) == 0 {
+		return nil
+	}
+	return sanitized
+}
+
+func trimClientFingerprintString(value string, maxLen int) string {
+	value = strings.TrimSpace(value)
+	if len(value) <= maxLen {
+		return value
+	}
+	return value[:maxLen]
+}
+
+func clientFingerprintStringPtr(value string) *string {
+	return &value
 }
 
 func (s *Server) DeleteReview() http.Handler {

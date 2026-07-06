@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="robots" content="noindex,nofollow">
+    <title>Fingerprint Frame</title>
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            width: 0;
+            height: 0;
+            overflow: hidden;
+        }
+    </style>
+</head>
+<body>
+<main id="fingerprint-data">
+    <div id="creep-fingerprint"></div>
+    <div id="fuzzy-fingerprint"></div>
+    <div id="webrtc-connection"></div>
+    <div id="status-info"></div>
+    <div id="creep-resize"></div>
+</main>
+<script>
+    window.__fingerprintRuntimeError = null;
+    window.addEventListener("error", function (event) {
+        window.__fingerprintRuntimeError = event.message || "fingerprint runtime error";
+    });
+    window.addEventListener("unhandledrejection", function (event) {
+        var reason = event.reason;
+        window.__fingerprintRuntimeError = reason && reason.message ? reason.message : "fingerprint runtime rejected";
+    });
+</script>
+<script src="./creep-runtime.js"></script>
+</body>
+</html>

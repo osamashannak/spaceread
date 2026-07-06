@@ -70,16 +70,32 @@ type ReviewAttachment struct {
 }
 
 type ReviewPostBody struct {
-	Text                      string  `json:"text"`
-	Score                     *int    `json:"score" required:"true"`
-	Positive                  *bool   `json:"positive" required:"true"`
-	ProfessorEmail            *string `json:"professor_email" required:"true"`
-	RecaptchaToken            *string `json:"recaptcha_token" required:"true"`
-	Attachment                *int64  `json:"attachment,string"`
-	Gif                       *string `json:"gif"`
-	GradeReceived             *string `json:"grade_received"`
-	CourseTaken               *string `json:"course_taken"`
-	PolicyWarningAcknowledged *string `json:"policy_warning_acknowledged"`
+	Text                      string                 `json:"text"`
+	Score                     *int                   `json:"score" required:"true"`
+	Positive                  *bool                  `json:"positive" required:"true"`
+	ProfessorEmail            *string                `json:"professor_email" required:"true"`
+	RecaptchaToken            *string                `json:"recaptcha_token" required:"true"`
+	Attachment                *int64                 `json:"attachment,string"`
+	Gif                       *string                `json:"gif"`
+	GradeReceived             *string                `json:"grade_received"`
+	CourseTaken               *string                `json:"course_taken"`
+	PolicyWarningAcknowledged *string                `json:"policy_warning_acknowledged"`
+	ClientFingerprint         *ClientFingerprintBody `json:"client_fingerprint"`
+}
+
+type ClientFingerprintBody struct {
+	Version     string                           `json:"version"`
+	GeneratedAt string                           `json:"generated_at"`
+	Components  []ClientFingerprintComponentBody `json:"components"`
+}
+
+type ClientFingerprintComponentBody struct {
+	Source      string         `json:"source"`
+	Fingerprint string         `json:"fingerprint"`
+	Version     *string        `json:"version"`
+	DurationMS  *int           `json:"duration_ms"`
+	Signals     map[string]any `json:"signals"`
+	Error       *string        `json:"error"`
 }
 
 type ReviewAttachmentResponse struct {
