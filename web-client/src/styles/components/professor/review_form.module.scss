@@ -10,6 +10,134 @@
   }
 }
 
+.submitProgress {
+  width: 100%;
+  max-width: 600px;
+  margin: 0 auto 8px;
+  padding: 8px 16px 0;
+  box-sizing: border-box;
+
+  @media (max-width: 815px) {
+    max-width: 100%;
+  }
+}
+
+.submitProgressTrack {
+  position: relative;
+  width: 100%;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 9999px;
+  background-color: #E6F4FD;
+}
+
+.submitProgressBar {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 42%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #87CEFA 0%, #049AE5 55%, #87CEFA 100%);
+  animation: submit-progress-slide 1.2s ease-in-out infinite;
+}
+
+.submitProgressText {
+  margin: 8px 0 0;
+  color: #536471;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+  text-align: center;
+}
+
+@keyframes submit-progress-slide {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(260%);
+  }
+}
+
+@keyframes submit-progress-pulse {
+  0%, 100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .submitProgressBar {
+    width: 100%;
+    transform: none;
+    animation: submit-progress-pulse 1.4s ease-in-out infinite;
+  }
+}
+
+.reviewSubmittedNotice {
+  width: 100%;
+  max-width: 600px;
+  margin: 0 auto auto;
+  padding: 16px;
+  box-sizing: border-box;
+  background-color: #F7FBF9;
+  border: 1px solid #D7EEE4;
+  border-radius: 8px;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+
+  h2 {
+    margin: 0;
+    color: #172A3A;
+    font-size: 16px;
+    line-height: 1.3;
+  }
+
+  p {
+    margin: 4px 0 0;
+    color: #536471;
+    font-size: 14px;
+    line-height: 1.45;
+  }
+
+  @media (max-width: 815px) {
+    max-width: 100%;
+    border-left: 0;
+    border-right: 0;
+    border-radius: 0;
+    margin-top: 1rem;
+  }
+}
+
+.reviewSubmittedIcon {
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  border-radius: 50%;
+  background-color: #18A66A;
+  color: white;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  path {
+    fill: none;
+    stroke: currentColor;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 2.5;
+  }
+}
+
 .formHeader {
   display: flex;
   align-items: center;

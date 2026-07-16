@@ -13,10 +13,10 @@ import {$getRoot, LexicalEditor} from "lexical";
 import {EditorRefPlugin} from "@lexical/react/LexicalEditorRefPlugin";
 import {useDispatch} from "react-redux";
 import {addReview} from "../../redux/slice/professor_slice.ts";
-import ProgressBar from "progressbar.js";
-import Line from "progressbar.js/line";
 import EmojiSelector from "../lexical_editor/emoji_selector.tsx";
 import ReviewAttachment from "./review_attachment.tsx";
+import ReviewSubmittedNotice from "./review_submitted_notice.tsx";
+import ReviewSubmitProgress from "./review_submit_progress.tsx";
 import {useModal} from "../provider/modal.tsx";
 import FlaggedModal, {preloadFlaggedModalImage} from "../modal/flagged_modal.tsx";
 import {getRecaptchaToken} from "../../lib/recaptcha.ts";
@@ -34,12 +34,12 @@ export default function RestrictedReviewForm(props: { professorEmail: string; ca
     const [submitting, setSubmitting] = useState<boolean | null | "error">(
         !props.canReview ? null : false
     );
+    const [submitProgressLabel, setSubmitProgressLabel] = useState("Posting review...");
 
     const {executeRecaptcha} = useGoogleReCaptcha();
     const commentRef = useRef<LexicalEditor | null | undefined>(null);
     const dispatch = useDispatch();
 
-    const lineRef = useRef<Line | null>(null);
     const reviewRef = useRef<ReviewAPI | null>(null);
 
     const attachmentUploadRef = useRef<Promise<string | undefined> | null>(null);
@@ -61,21 +61,6 @@ export default function RestrictedReviewForm(props: { professorEmail: string; ca
         lastAttachmentUploadErrorToastAt.current = now;
         showToastError("Attachment failed to upload. Try again.");
     }, [showToastError]);
-
-    useEffect(() => {
-        if (submitting === true) {
-            if (!lineRef.current) {
-                lineRef.current = new ProgressBar.Line("#line-container", {
-                    color: "#87CEFA",
-                    strokeWidth: 0.7,
-                });
-            }
-            lineRef.current.animate(1, {duration: 3000});
-        } else {
-            lineRef.current?.destroy();
-            lineRef.current = null;
-        }
-    }, [submitting]);
 
     useEffect(() => {
         const att = details.attachment;
@@ -174,10 +159,12 @@ export default function RestrictedReviewForm(props: { professorEmail: string; ca
         })()
 
         reviewRef.current = null;
+        setSubmitProgressLabel("Posting review...");
         setSubmitting(false);
     }
 
     async function submitReview() {
+        setSubmitProgressLabel("Posting review...");
         setSubmitting(true);
 
         // @ts-expect-error Clarity is not defined
@@ -186,16 +173,16 @@ export default function RestrictedReviewForm(props: { professorEmail: string; ca
         window.scrollTo(0, 0);
 
         if (details.attachment) {
-            lineRef.current?.pause();
             const uploadedId = await ensureAttachmentUploaded();
             if (!uploadedId) {
                 // @ts-expect-error Clarity is not defined
                 clarity("set", "ReviewFailed", "true");
                 showAttachmentUploadError();
+                setSubmitProgressLabel("Posting review...");
                 setSubmitting(false);
                 return;
             }
-            lineRef.current?.resume();
+            setSubmitProgressLabel("Posting review...");
         }
 
         const token = await getRecaptchaToken(executeRecaptcha, "new_review");
@@ -229,6 +216,7 @@ export default function RestrictedReviewForm(props: { professorEmail: string; ca
         reviewRef.current = review;
 
         if (review.flagged) {
+            setSubmitProgressLabel("Posting review...");
             modal.openModal(FlaggedModal, {
                 warning: review.warning,
                 finalizeSubmission: finalizeSubmission,
@@ -246,10 +234,7 @@ export default function RestrictedReviewForm(props: { professorEmail: string; ca
     }
 
     if (submitting === null) {
-        return (
-            <section className={styles.form}>
-            </section>
-        );
+        return <ReviewSubmittedNotice justSubmitted={Boolean(reviewRef.current)}/>;
     }
 
     if (submitting === "error") {
@@ -270,9 +255,7 @@ export default function RestrictedReviewForm(props: { professorEmail: string; ca
 
     return (
         <>
-            <div className={styles.lineContainer}>
-                <div id={"line-container"}></div>
-            </div>
+            <ReviewSubmitProgress active={submitting === true} label={submitProgressLabel}/>
 
             <section
                 className={styles.reviewForm}

@@ -14,10 +14,10 @@ import {EditorRefPlugin} from "@lexical/react/LexicalEditorRefPlugin";
 import ReviewFormFooter from "./review_form_footer.tsx";
 import {useDispatch} from "react-redux";
 import {addReview} from "../../redux/slice/professor_slice.ts";
-import ProgressBar from "progressbar.js";
-import Line from "progressbar.js/line";
 import EmojiSelector from "../lexical_editor/emoji_selector.tsx";
 import ReviewAttachment from "./review_attachment.tsx";
+import ReviewSubmittedNotice from "./review_submitted_notice.tsx";
+import ReviewSubmitProgress from "./review_submit_progress.tsx";
 import {useModal} from "../provider/modal.tsx";
 import FlaggedModal, {preloadFlaggedModalImage} from "../modal/flagged_modal.tsx";
 import {getRecaptchaToken} from "../../lib/recaptcha.ts";
@@ -188,6 +188,7 @@ export default function ReviewForm(props: { courses: string[] | null, professorE
     const [courseCatalogLoading, setCourseCatalogLoading] = useState(false);
     const [mode, setMode] = useState<"GUEST" | "VERIFIED">(localStorage.getItem("is_verified_student") === "true" ? "VERIFIED" : "GUEST");
     const [emojiOpen, setEmojiOpen] = useState(false);
+    const [submitProgressLabel, setSubmitProgressLabel] = useState("Posting review...");
     const {executeRecaptcha} = useGoogleReCaptcha();
 
     const [activeError, setActiveError] = useState<string | null>(null);
@@ -195,7 +196,6 @@ export default function ReviewForm(props: { courses: string[] | null, professorE
     const commentRef = useRef<LexicalEditor | null | undefined>(null);
     const dispatch = useDispatch();
     const comboboxRef = useRef<HTMLDivElement>(null);
-    const lineRef = useRef<Line | null>(null);
     const reviewRef = useRef<ReviewAPI | null>(null);
     const courseCatalogRequestRef = useRef<Promise<void> | null>(null);
 
@@ -333,21 +333,6 @@ export default function ReviewForm(props: { courses: string[] | null, professorE
     }, [details.attachment, activeError]);
 
     useEffect(() => {
-        if (submitting === true) {
-            if (!lineRef.current) {
-                lineRef.current = new ProgressBar.Line("#line-container", {
-                    color: "#87CEFA",
-                    strokeWidth: 0.7,
-                });
-            }
-            lineRef.current.animate(1, {duration: 3000});
-        } else {
-            lineRef.current?.destroy();
-            lineRef.current = null;
-        }
-    }, [submitting]);
-
-    useEffect(() => {
         const att = details.attachment;
         if (!att) {
             attachmentUploadRef.current = null;
@@ -445,6 +430,7 @@ export default function ReviewForm(props: { courses: string[] | null, professorE
             await deleteReview(review.id);
         })()
         reviewRef.current = null;
+        setSubmitProgressLabel("Posting review...");
         setSubmitting(false);
     }
 
@@ -482,6 +468,7 @@ export default function ReviewForm(props: { courses: string[] | null, professorE
             return;
         }
 
+        setSubmitProgressLabel("Posting review...");
         setSubmitting(true);
 
         // @ts-expect-error Clarity is not defined
@@ -492,17 +479,17 @@ export default function ReviewForm(props: { courses: string[] | null, professorE
         let finalAttachmentId = details.attachment?.id;
 
         if (details.attachment) {
-            lineRef.current?.pause();
             const uploadedId = await ensureAttachmentUploaded();
 
             if (!uploadedId) {
                 showAttachmentUploadError();
+                setSubmitProgressLabel("Posting review...");
                 setSubmitting(false);
                 return;
             }
 
             finalAttachmentId = uploadedId;
-            lineRef.current?.resume();
+            setSubmitProgressLabel("Posting review...");
         }
 
         const token = await getRecaptchaToken(executeRecaptcha, "new_review");
@@ -540,6 +527,7 @@ export default function ReviewForm(props: { courses: string[] | null, professorE
         reviewRef.current = review;
 
         if (review.flagged) {
+            setSubmitProgressLabel("Posting review...");
             modal.openModal(FlaggedModal, {
                 warning: review.warning,
                 finalizeSubmission: finalizeSubmission,
@@ -556,11 +544,7 @@ export default function ReviewForm(props: { courses: string[] | null, professorE
     }
 
     if (submitting === null) {
-        return (
-            <section className={styles.form}>
-                <span>You have submitted a review.</span>
-            </section>
-        );
+        return <ReviewSubmittedNotice justSubmitted={Boolean(reviewRef.current)}/>;
     }
 
     if (submitting === "error") {
@@ -586,9 +570,7 @@ export default function ReviewForm(props: { courses: string[] | null, professorE
 
     return (
         <>
-            <div className={styles.lineContainer}>
-                <div id={"line-container"}></div>
-            </div>
+            <ReviewSubmitProgress active={submitting === true} label={submitProgressLabel}/>
 
             <section
                 className={styles.reviewForm}
