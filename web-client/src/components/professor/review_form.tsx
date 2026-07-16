@@ -19,7 +19,7 @@ import Line from "progressbar.js/line";
 import EmojiSelector from "../lexical_editor/emoji_selector.tsx";
 import ReviewAttachment from "./review_attachment.tsx";
 import {useModal} from "../provider/modal.tsx";
-import FlaggedModal from "../modal/flagged_modal.tsx";
+import FlaggedModal, {preloadFlaggedModalImage} from "../modal/flagged_modal.tsx";
 import {getRecaptchaToken} from "../../lib/recaptcha.ts";
 import {useToast} from "../provider/toast.tsx";
 import {getCoursesList} from "../../api/course.ts";
@@ -204,6 +204,12 @@ export default function ReviewForm(props: { courses: string[] | null, professorE
 
     const modal = useModal();
     const {error: showToastError} = useToast();
+
+    useEffect(() => {
+        if (props.canReview) {
+            preloadFlaggedModalImage();
+        }
+    }, [props.canReview]);
 
     const professorCourseTags = useMemo(
         () => Array.from(new Set((props.courses || []).map(normalizeCourseTag).filter(Boolean))),

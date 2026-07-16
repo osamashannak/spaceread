@@ -2,6 +2,30 @@ import flaggedImage from "../../assets/images/flagged_modal_image.png";
 import type {ReviewPolicyWarning} from "../../typed/professor.ts";
 import styles from "../../styles/components/global/modal.module.scss";
 
+const reviewCheckImagePreloadId = "review-check-image-preload";
+let reviewCheckImagePreloadStarted = false;
+
+export function preloadFlaggedModalImage() {
+    if (reviewCheckImagePreloadStarted) return;
+    reviewCheckImagePreloadStarted = true;
+
+    const link = document.getElementById(reviewCheckImagePreloadId) as HTMLLinkElement | null;
+    if (!link) {
+        const preload = document.createElement("link");
+        preload.id = reviewCheckImagePreloadId;
+        preload.rel = "preload";
+        preload.as = "image";
+        preload.href = flaggedImage;
+        document.head.appendChild(preload);
+    }
+
+    const image = new Image();
+    image.src = flaggedImage;
+    if (image.decode) {
+        void image.decode().catch(() => undefined);
+    }
+}
+
 export default function FlaggedModal(props: {
     warning?: ReviewPolicyWarning;
     finalizeSubmission: () => void;
@@ -28,6 +52,9 @@ export default function FlaggedModal(props: {
                             className={styles.policyWarningImage}
                             width={160}
                             height={160}
+                            loading="eager"
+                            decoding="sync"
+                            fetchPriority="high"
                         />
                     </div>
                 </div>

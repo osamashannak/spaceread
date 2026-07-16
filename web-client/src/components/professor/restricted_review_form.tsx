@@ -18,7 +18,7 @@ import Line from "progressbar.js/line";
 import EmojiSelector from "../lexical_editor/emoji_selector.tsx";
 import ReviewAttachment from "./review_attachment.tsx";
 import {useModal} from "../provider/modal.tsx";
-import FlaggedModal from "../modal/flagged_modal.tsx";
+import FlaggedModal, {preloadFlaggedModalImage} from "../modal/flagged_modal.tsx";
 import {getRecaptchaToken} from "../../lib/recaptcha.ts";
 import {useToast} from "../provider/toast.tsx";
 import {trackGifEvent} from "../../lib/klipy.ts";
@@ -47,6 +47,12 @@ export default function RestrictedReviewForm(props: { professorEmail: string; ca
 
     const modal = useModal();
     const {error: showToastError} = useToast();
+
+    useEffect(() => {
+        if (props.canReview) {
+            preloadFlaggedModalImage();
+        }
+    }, [props.canReview]);
 
     const showAttachmentUploadError = useCallback(() => {
         const now = Date.now();
