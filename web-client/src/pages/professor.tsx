@@ -12,7 +12,6 @@ import LoadingSuspense from "../components/loading_suspense.tsx";
 import ReviewSkeleton from "../components/skeletons/review.tsx";
 import DisabledReviewForm from "../components/professor/disabled_review_form.tsx";
 import BackArrow from "../components/backarrow.tsx";
-import RelatedReviews from "../components/professor/related_reviews.tsx";
 import {Helmet} from "@dr.pogodin/react-helmet";
 
 const ReviewForm = lazy(async () => {
@@ -228,10 +227,12 @@ export default function Professor() {
                     <ReviewForm courses={professor.courses} professorEmail={professor.email} canReview={!professor.reviewed}/>
                 </Suspense>
 
-                {professor.similar_professors.length > 0 && <RelatedReviews reviews={professor.similar_professors}/>}
-
                 <Suspense fallback={<LoadingSuspense height={"400px"}/>}>
-                    <ReviewSection professorReviews={professor.reviews} focusedReviewId={focusedReviewId}/>
+                    <ReviewSection
+                        professorReviews={professor.reviews}
+                        focusedReviewId={focusedReviewId}
+                        relatedReviews={professor.similar_professors}
+                    />
                 </Suspense>
 
             </div>
