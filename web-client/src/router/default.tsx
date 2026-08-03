@@ -27,10 +27,10 @@ const Router = createBrowserRouter([
                 path: "notifications",
                 element: <Notifications/>
             },
-            {
+            /*{
                 path: "my-space",
                 element: <MySpace/>
-            },
+            },*/
             {
                 path: "terms-of-service",
                 element: <TermsOfService/>
@@ -66,10 +66,10 @@ const Router = createBrowserRouter([
                 path: "schedule",
                 element: <ScheduleMaker/>
             },
-            {
+            /*{
                 path: "login",
                 element: <Login/>
-            },
+            },*/
             {
                 path: "feedback",
                 element: <Feedback/>
