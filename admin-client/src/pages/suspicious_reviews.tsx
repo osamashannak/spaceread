@@ -1,4 +1,5 @@
 import {type FormEvent, type ReactNode, useCallback, useEffect, useMemo, useState} from "react";
+import {createPortal} from "react-dom";
 import {
     AlertCircle,
     CheckCircle2,
@@ -13,11 +14,13 @@ import {
     RefreshCw,
     RotateCcw,
     Search,
+    SlidersHorizontal,
     Star,
     ThumbsUp,
     Timer,
     UserRound,
     Wifi,
+    X,
 } from "lucide-react";
 import {BidiParagraph} from "@/components/admin/bidi_text";
 import {EntityLink, useAdminEntityDrawer} from "@/components/admin/entity_drawer";
@@ -64,6 +67,7 @@ export function SuspiciousReviewsPage() {
     const [pairs, setPairs] = useState<AdminSuspiciousReviewPair[]>([]);
     const [filters, setFilters] = useState<AdminSuspiciousReviewFilters>(defaultFilters);
     const [draftFilters, setDraftFilters] = useState<AdminSuspiciousReviewFilters>(defaultFilters);
+    const [filtersOpen, setFiltersOpen] = useState(false);
     const [loadState, setLoadState] = useState<LoadState>("loading");
     const [error, setError] = useState<string | null>(null);
     const [isRefreshing, setIsRefreshing] = useState(false);
@@ -105,18 +109,41 @@ export function SuspiciousReviewsPage() {
         setDraftFilters(current => ({...current, [key]: value}));
     }
 
-    function applyFilters(event: FormEvent<HTMLFormElement>) {
-        event.preventDefault();
+    function applyFilters(event?: FormEvent<HTMLFormElement>) {
+        event?.preventDefault();
         setFilters({...draftFilters});
+        setFiltersOpen(false);
+        setSelectedPairKeys(new Set());
+    }
+
+    function openFilters() {
+        setDraftFilters(filters);
+        setFiltersOpen(true);
+    }
+
+    function cancelFilters() {
+        setDraftFilters(filters);
+        setFiltersOpen(false);
+    }
+
+    function resetDraftFilters() {
+        setDraftFilters(defaultFilters);
     }
 
     function resetFilters() {
         setDraftFilters(defaultFilters);
         setFilters(defaultFilters);
+        setFiltersOpen(false);
+        setSelectedPairKeys(new Set());
     }
 
     const totalSignals = useMemo(() => pairs.reduce((sum, pair) => sum + pairSignals(pair, showSensitive).length, 0), [pairs, showSensitive]);
     const activeFilterCount = countActiveFilters(filters);
+    const draftFilterCount = countActiveFilters(draftFilters);
+    const appliedFilterChips = useMemo(() => filterChips(filters), [filters]);
+    const draftDirty = !filtersEqual(draftFilters, filters);
+    const defaultFiltersSelected = filtersEqual(filters, defaultFilters);
+    const defaultDraftSelected = filtersEqual(draftFilters, defaultFilters);
     const reasonOptions = useMemo(() => activeReasonOptions(reasons), [reasons]);
     const visiblePairKeys = useMemo(() => pairs.map(pairKey), [pairs]);
     const selectedVisibleCount = visiblePairKeys.filter(key => selectedPairKeys.has(key)).length;
@@ -137,6 +164,30 @@ export function SuspiciousReviewsPage() {
                 : reasonOptions[0]?.code || ""
         ));
     }, [reasonOptions]);
+
+    useEffect(() => {
+        if (!filtersOpen) return;
+
+        const previousBodyOverflow = document.body.style.overflow;
+        const previousBodyOverscroll = document.body.style.overscrollBehavior;
+        const previousBodyPaddingRight = document.body.style.paddingRight;
+        const previousDocumentOverscroll = document.documentElement.style.overscrollBehavior;
+        const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+
+        document.body.style.overflow = "hidden";
+        document.body.style.overscrollBehavior = "none";
+        if (scrollbarWidth > 0) {
+            document.body.style.paddingRight = `${scrollbarWidth}px`;
+        }
+        document.documentElement.style.overscrollBehavior = "none";
+
+        return () => {
+            document.body.style.overflow = previousBodyOverflow;
+            document.body.style.overscrollBehavior = previousBodyOverscroll;
+            document.body.style.paddingRight = previousBodyPaddingRight;
+            document.documentElement.style.overscrollBehavior = previousDocumentOverscroll;
+        };
+    }, [filtersOpen]);
 
     function updatePairReviews(review1: AdminReview, review2: AdminReview) {
         setPairs(current => current.map(pair => ({
@@ -240,78 +291,163 @@ export function SuspiciousReviewsPage() {
             </section>
 
             <section className={styles.filters} aria-label="Suspicious review filters">
-                <form className={styles.filterGrid} onSubmit={applyFilters}>
-                    <label className={styles.filterField}>
-                        <span>Search</span>
+                <form className={styles.filterToolbar} onSubmit={applyFilters}>
+                    <label className={styles.filterSearch}>
+                        <Search size={16}/>
                         <Input
-                            placeholder="Professor, review ID, or text"
+                            aria-label="Search suspicious reviews"
+                            placeholder="Search professor, review ID, or text"
                             value={draftFilters.search}
                             onChange={event => updateDraft("search", event.target.value)}
                         />
                     </label>
-                    <label className={styles.filterField}>
-                        <span>Professor email</span>
-                        <Input
-                            placeholder="name@uaeu.ac.ae"
-                            value={draftFilters.professor_email}
-                            onChange={event => updateDraft("professor_email", event.target.value)}
-                        />
-                    </label>
-                    <label className={styles.filterField}>
-                        <span>Minimum score</span>
-                        <Input
-                            min="0"
-                            max="17"
-                            type="number"
-                            value={draftFilters.min_score}
-                            onChange={event => updateDraft("min_score", event.target.value)}
-                        />
-                    </label>
-                    <label className={styles.filterField}>
-                        <span>Similarity</span>
-                        <Input
-                            max="1"
-                            min="0.3"
-                            step="0.05"
-                            type="number"
-                            value={draftFilters.similarity_threshold}
-                            onChange={event => updateDraft("similarity_threshold", event.target.value)}
-                        />
-                    </label>
-                    <label className={styles.filterField}>
-                        <span>Visibility</span>
-                        <select
-                            className={styles.selectInput}
-                            value={draftFilters.visible}
-                            onChange={event => updateDraft("visible", event.target.value as AdminSuspiciousReviewFilters["visible"])}
-                        >
-                            {visibleOptions.map(option => (
-                                <option key={option.value} value={option.value}>{option.label}</option>
-                            ))}
-                        </select>
-                    </label>
-                    <div className={styles.filterField}>
-                        <span>Text scan</span>
-                        <label className={cn(styles.filterToggle, draftFilters.include_content_only === "true" && styles.filterActive)}>
-                            <input
-                                checked={draftFilters.include_content_only === "true"}
-                                type="checkbox"
-                                onChange={event => updateDraft("include_content_only", event.target.checked ? "true" : "false")}
+                    <div className={styles.quickFilters}>
+                        <label className={styles.compactFilterField}>
+                            <span>Score</span>
+                            <Input
+                                aria-label="Minimum score"
+                                min="0"
+                                max="17"
+                                type="number"
+                                value={draftFilters.min_score}
+                                onChange={event => updateDraft("min_score", event.target.value)}
                             />
-                            <span>Content-only</span>
+                        </label>
+                        <label className={styles.compactFilterField}>
+                            <span>Visibility</span>
+                            <select
+                                className={styles.selectInput}
+                                value={draftFilters.visible}
+                                onChange={event => updateDraft("visible", event.target.value as AdminSuspiciousReviewFilters["visible"])}
+                            >
+                                {visibleOptions.map(option => (
+                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                ))}
+                            </select>
                         </label>
                     </div>
                     <div className={styles.filterActions}>
-                        <Button type="submit">
+                        <Button disabled={!draftDirty} type="submit">
                             <Search size={16}/>
                             Apply
                         </Button>
-                        <Button type="button" variant="outline" onClick={resetFilters}>
+                        <Button type="button" variant="outline" onClick={openFilters}>
+                            <SlidersHorizontal size={16}/>
+                            More
+                            {activeFilterCount > 0 && <Badge className={styles.filterCountBadge} variant="warning">{activeFilterCount}</Badge>}
+                        </Button>
+                        <Button disabled={defaultFiltersSelected && defaultDraftSelected} type="button" variant="ghost" onClick={resetFilters}>
                             <RotateCcw size={16}/>
                             Reset
                         </Button>
                     </div>
                 </form>
+                <div className={styles.appliedFilterRow}>
+                    {appliedFilterChips.length > 0 ? appliedFilterChips.map(chip => (
+                        <span key={chip.key}>{chip.label}</span>
+                    )) : <span>Default queue</span>}
+                </div>
+                {filtersOpen && createPortal((
+                    <div className={styles.filterSheetLayer}>
+                        <button aria-label="Close filters" className={styles.filterSheetBackdrop} type="button" onClick={cancelFilters}/>
+                        <aside aria-label="Suspicious review filters" aria-modal="true" className={styles.filterSheet} role="dialog">
+                            <header className={styles.filterSheetHeader}>
+                                <div>
+                                    <span><Filter size={14}/> Filters</span>
+                                    <h2>Suspicious review fields</h2>
+                                    <p>{draftDirty ? `${draftFilterCount} changed fields` : "No unapplied changes"}</p>
+                                </div>
+                                <Button size="icon" type="button" variant="ghost" aria-label="Close filters" onClick={cancelFilters}>
+                                    <X size={16}/>
+                                </Button>
+                            </header>
+
+                            <div className={styles.filterSheetBody}>
+                                <FilterGroup title="Find pairs">
+                                    <label className={styles.filterField}>
+                                        <span>Search</span>
+                                        <Input
+                                            placeholder="Professor, review ID, or text"
+                                            value={draftFilters.search}
+                                            onChange={event => updateDraft("search", event.target.value)}
+                                        />
+                                    </label>
+                                    <label className={styles.filterField}>
+                                        <span>Professor email</span>
+                                        <Input
+                                            placeholder="name@uaeu.ac.ae"
+                                            value={draftFilters.professor_email}
+                                            onChange={event => updateDraft("professor_email", event.target.value)}
+                                        />
+                                    </label>
+                                    <label className={cn(styles.filterToggle, draftFilters.include_content_only === "true" && styles.filterActive)}>
+                                        <input
+                                            checked={draftFilters.include_content_only === "true"}
+                                            type="checkbox"
+                                            onChange={event => updateDraft("include_content_only", event.target.checked ? "true" : "false")}
+                                        />
+                                        <span>Content-only matches</span>
+                                    </label>
+                                </FilterGroup>
+
+                                <FilterGroup title="Thresholds">
+                                    <div className={styles.rangePair}>
+                                        <label className={styles.filterField}>
+                                            <span>Minimum score</span>
+                                            <Input
+                                                min="0"
+                                                max="17"
+                                                type="number"
+                                                value={draftFilters.min_score}
+                                                onChange={event => updateDraft("min_score", event.target.value)}
+                                            />
+                                        </label>
+                                        <label className={styles.filterField}>
+                                            <span>Similarity</span>
+                                            <Input
+                                                max="1"
+                                                min="0.3"
+                                                step="0.05"
+                                                type="number"
+                                                value={draftFilters.similarity_threshold}
+                                                onChange={event => updateDraft("similarity_threshold", event.target.value)}
+                                            />
+                                        </label>
+                                    </div>
+                                </FilterGroup>
+
+                                <FilterGroup title="Visibility">
+                                    <label className={styles.filterField}>
+                                        <span>Visible reviews</span>
+                                        <select
+                                            className={styles.selectInput}
+                                            value={draftFilters.visible}
+                                            onChange={event => updateDraft("visible", event.target.value as AdminSuspiciousReviewFilters["visible"])}
+                                        >
+                                            {visibleOptions.map(option => (
+                                                <option key={option.value} value={option.value}>{option.label}</option>
+                                            ))}
+                                        </select>
+                                    </label>
+                                </FilterGroup>
+                            </div>
+
+                            <footer className={styles.filterSheetFooter}>
+                                <Button disabled={defaultDraftSelected} size="sm" type="button" variant="outline" onClick={resetDraftFilters}>
+                                    <RotateCcw size={15}/>
+                                    Reset
+                                </Button>
+                                <Button size="sm" type="button" variant="ghost" onClick={cancelFilters}>
+                                    Cancel
+                                </Button>
+                                <Button disabled={!draftDirty} size="sm" type="button" onClick={() => applyFilters()}>
+                                    <CheckCircle2 size={15}/>
+                                    Apply filters
+                                </Button>
+                            </footer>
+                        </aside>
+                    </div>
+                ), document.body)}
             </section>
 
             {pairs.length > 0 && (
@@ -414,6 +550,15 @@ function SummaryStat({icon, label, value}: { icon: ReactNode; label: string; val
                 <strong>{value}</strong>
                 <small>{label}</small>
             </div>
+        </div>
+    );
+}
+
+function FilterGroup({title, children}: { title: string; children: ReactNode }) {
+    return (
+        <div className={styles.filterGroup}>
+            <strong>{title}</strong>
+            <div>{children}</div>
         </div>
     );
 }
@@ -724,6 +869,35 @@ function countActiveFilters(filters: AdminSuspiciousReviewFilters) {
     return (Object.keys(defaultFilters) as Array<keyof AdminSuspiciousReviewFilters>)
         .filter(key => filters[key] !== defaultFilters[key])
         .length;
+}
+
+function filtersEqual(a: AdminSuspiciousReviewFilters, b: AdminSuspiciousReviewFilters) {
+    return (Object.keys(defaultFilters) as Array<keyof AdminSuspiciousReviewFilters>)
+        .every(key => a[key] === b[key]);
+}
+
+function filterChips(filters: AdminSuspiciousReviewFilters) {
+    const chips: { key: string; label: string }[] = [];
+    if (filters.search.trim()) {
+        chips.push({key: "search", label: `Search: ${filters.search.trim()}`});
+    }
+    if (filters.professor_email.trim()) {
+        chips.push({key: "professor_email", label: `Email: ${filters.professor_email.trim()}`});
+    }
+    if (filters.min_score !== defaultFilters.min_score) {
+        chips.push({key: "min_score", label: `Score ${filters.min_score || "0"}+`});
+    }
+    if (filters.similarity_threshold !== defaultFilters.similarity_threshold) {
+        chips.push({key: "similarity_threshold", label: `Similarity ${formatPercent(Number(filters.similarity_threshold))}+`});
+    }
+    if (filters.visible !== defaultFilters.visible) {
+        const selected = visibleOptions.find(option => option.value === filters.visible);
+        chips.push({key: "visible", label: selected?.label || filters.visible});
+    }
+    if (filters.include_content_only === "true") {
+        chips.push({key: "include_content_only", label: "Content-only"});
+    }
+    return chips;
 }
 
 function pairKey(pair: AdminSuspiciousReviewPair) {

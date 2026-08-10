@@ -71,12 +71,13 @@
 }
 
 .filters {
-  background: #fff;
+  background: #f8fbfc;
   border: 1px solid #dce5ec;
   border-radius: var(--radius);
   display: grid;
+  gap: 8px;
   min-width: 0;
-  padding: 8px;
+  padding: 10px;
   position: relative;
 }
 
@@ -110,12 +111,12 @@
   min-width: 0;
   overscroll-behavior: contain;
   position: relative;
-  width: min(620px, calc(100vw - 24px));
+  width: min(660px, calc(100vw - 24px));
 }
 
 .filterSheetHeader {
   align-items: flex-start;
-  background: #fff;
+  background: #f8fbfc;
   border-bottom: 1px solid #dce5ec;
   display: flex;
   gap: 12px;
@@ -168,12 +169,12 @@
   background: #f8fbfc;
   border-right: 1px solid #dce5ec;
   display: grid;
-  gap: 4px;
+  gap: 6px;
   align-content: start;
   min-width: 0;
   overscroll-behavior: contain;
   overflow-y: auto;
-  padding: 10px;
+  padding: 12px;
 }
 
 .filterSectionButton {
@@ -188,8 +189,8 @@
   font-weight: 800;
   gap: 8px;
   justify-content: space-between;
-  min-height: 34px;
-  padding: 0 9px;
+  min-height: 38px;
+  padding: 0 10px;
   text-align: left;
   transition: background 0.16s ease, border-color 0.16s ease, color 0.16s ease;
 
@@ -208,21 +209,25 @@
 
 .filterSectionContent {
   display: grid;
-  gap: 12px;
+  gap: 14px;
   align-content: start;
   min-height: 0;
   min-width: 0;
   overscroll-behavior: contain;
   overflow-y: auto;
-  padding: 14px;
+  padding: 16px;
 }
 
 .filterSectionHeader {
   align-items: center;
+  background: #f8fbfc;
+  border: 1px solid #e7eef4;
+  border-radius: var(--radius);
   display: flex;
   gap: 10px;
   justify-content: space-between;
   min-width: 0;
+  padding: 10px;
 
   strong {
     color: hsl(var(--foreground));
@@ -333,8 +338,8 @@
 
 .filterSummaryButton {
   align-items: center;
-  background: hsl(var(--secondary));
-  border: 1px solid hsl(var(--border));
+  background: #fff;
+  border: 1px solid #cfe3f1;
   border-radius: var(--radius);
   color: hsl(var(--foreground));
   cursor: pointer;
@@ -346,6 +351,11 @@
   min-height: 36px;
   padding: 0 11px;
   transition: background 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
+
+  &:hover {
+    border-color: #bae6fd;
+    box-shadow: 0 8px 20px hsl(var(--foreground) / 0.06);
+  }
 
   &:focus-visible {
     box-shadow: 0 0 0 3px hsl(var(--ring) / 0.16);
@@ -374,7 +384,7 @@
 
   span {
     background: #fff;
-    border: 1px solid hsl(var(--border));
+    border: 1px solid #dce5ec;
     border-radius: 999px;
     color: hsl(var(--muted-foreground));
     display: inline-flex;
@@ -463,13 +473,13 @@
 }
 
 .filterGroup {
-  background: #fbfdff;
-  border: 1px solid #e7eef4;
+  background: #fff;
+  border: 1px solid #dce5ec;
   border-radius: var(--radius);
   display: grid;
-  gap: 9px;
+  gap: 10px;
   min-width: 0;
-  padding: 10px;
+  padding: 12px;
 
   > strong {
     color: hsl(var(--foreground));
@@ -502,6 +512,10 @@
 .selectInput {
   appearance: none;
   background: #fff;
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2364757f' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpath d='m6%209%206%206%206-6'/%3e%3c/svg%3e");
+  background-position: right 10px center;
+  background-repeat: no-repeat;
+  background-size: 14px;
   border: 1px solid hsl(var(--input));
   border-radius: var(--radius);
   color: hsl(var(--foreground));

@@ -124,16 +124,94 @@
   background: #fff;
   border: 1px solid #dce5ec;
   border-radius: var(--radius);
+  display: grid;
+  gap: 9px;
   min-width: 0;
   padding: 10px;
 }
 
-.filterGrid {
-  align-items: end;
+.filterToolbar {
+  align-items: center;
   display: grid;
   gap: 10px;
-  grid-template-columns: minmax(220px, 1.4fr) minmax(200px, 1fr) minmax(112px, 0.45fr) minmax(112px, 0.45fr) minmax(170px, 0.75fr) minmax(132px, 0.5fr) auto;
+  grid-template-columns: minmax(260px, 1fr) auto auto;
   min-width: 0;
+}
+
+.filterSearch {
+  align-items: center;
+  background: #f8fbfc;
+  border: 1px solid #dce5ec;
+  border-radius: var(--radius);
+  display: grid;
+  gap: 8px;
+  grid-template-columns: auto minmax(0, 1fr);
+  min-width: 0;
+  padding: 0 10px;
+  transition: background 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
+
+  svg {
+    color: hsl(var(--muted-foreground));
+    flex: 0 0 auto;
+  }
+
+  input {
+    background: transparent;
+    border: 0;
+    box-shadow: none;
+    padding: 0;
+
+    &:focus-visible {
+      box-shadow: none;
+    }
+  }
+
+  &:focus-within {
+    background: #fff;
+    border-color: hsl(var(--ring));
+    box-shadow: 0 0 0 3px hsl(var(--ring) / 0.12);
+  }
+}
+
+.quickFilters {
+  align-items: center;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(92px, 0.55fr) minmax(168px, 1fr);
+  min-width: 0;
+}
+
+.compactFilterField {
+  align-items: center;
+  background: #f8fbfc;
+  border: 1px solid #dce5ec;
+  border-radius: var(--radius);
+  display: grid;
+  gap: 6px;
+  grid-template-columns: auto minmax(0, 1fr);
+  min-width: 0;
+  padding: 0 8px 0 10px;
+
+  > span {
+    color: hsl(var(--muted-foreground));
+    font-size: 10px;
+    font-weight: 800;
+    line-height: 1;
+    text-transform: uppercase;
+  }
+
+  input,
+  select {
+    background-color: transparent;
+    border: 0;
+    box-shadow: none;
+    height: 36px;
+    padding-left: 0;
+
+    &:focus-visible {
+      box-shadow: none;
+    }
+  }
 }
 
 .filterField {
@@ -153,6 +231,10 @@
 .selectInput {
   appearance: none;
   background: #fff;
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2364757f' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpath d='m6%209%206%206%206-6'/%3e%3c/svg%3e");
+  background-position: right 10px center;
+  background-repeat: no-repeat;
+  background-size: 14px;
   border: 1px solid hsl(var(--input));
   border-radius: var(--radius);
   color: hsl(var(--foreground));
@@ -216,6 +298,165 @@
   display: inline-flex;
   gap: 8px;
   justify-content: flex-end;
+}
+
+.filterCountBadge {
+  font-size: 10px;
+  min-height: 20px;
+  padding: 0 7px;
+}
+
+.appliedFilterRow {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  min-width: 0;
+
+  span {
+    background: #f8fbfc;
+    border: 1px solid #e7eef4;
+    border-radius: 999px;
+    color: hsl(var(--muted-foreground));
+    display: inline-flex;
+    font-size: 10px;
+    font-weight: 800;
+    line-height: 1;
+    max-width: min(260px, 100%);
+    min-height: 24px;
+    overflow: hidden;
+    padding: 0 8px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.filterSheetLayer {
+  height: 100dvh;
+  inset: 0;
+  position: fixed;
+  width: 100vw;
+  z-index: 90;
+}
+
+.filterSheetBackdrop {
+  background: hsl(var(--foreground) / 0.16);
+  border: 0;
+  cursor: pointer;
+  height: 100%;
+  inset: 0;
+  position: absolute;
+  width: 100%;
+}
+
+.filterSheet {
+  animation: drawerSlideIn 0.2s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  background: #fff;
+  border-left: 1px solid hsl(var(--border));
+  box-shadow: -18px 0 45px hsl(var(--foreground) / 0.14);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  height: 100dvh;
+  margin-left: auto;
+  min-width: 0;
+  overscroll-behavior: contain;
+  position: relative;
+  width: min(520px, calc(100vw - 24px));
+}
+
+.filterSheetHeader {
+  align-items: flex-start;
+  background: #fff;
+  border-bottom: 1px solid #dce5ec;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  min-width: 0;
+  padding: 16px 18px 14px;
+
+  > div {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+  }
+
+  span {
+    align-items: center;
+    color: hsl(var(--spaceread-blue));
+    display: inline-flex;
+    font-size: 11px;
+    font-weight: 800;
+    gap: 6px;
+    text-transform: uppercase;
+  }
+
+  h2 {
+    color: hsl(var(--foreground));
+    font-size: 20px;
+    font-weight: 800;
+    line-height: 1.2;
+    margin: 0;
+  }
+
+  p {
+    color: hsl(var(--muted-foreground));
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.4;
+    margin: 0;
+  }
+}
+
+.filterSheetBody {
+  align-content: start;
+  display: grid;
+  gap: 12px;
+  min-height: 0;
+  min-width: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 14px;
+}
+
+.filterGroup {
+  background: #fbfdff;
+  border: 1px solid #e7eef4;
+  border-radius: var(--radius);
+  display: grid;
+  gap: 9px;
+  min-width: 0;
+  padding: 10px;
+
+  > strong {
+    color: hsl(var(--foreground));
+    font-size: 12px;
+    font-weight: 800;
+    line-height: 1.35;
+  }
+
+  > div {
+    display: grid;
+    gap: 8px;
+    min-width: 0;
+  }
+}
+
+.rangePair {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  min-width: 0;
+}
+
+.filterSheetFooter {
+  align-items: center;
+  border-top: 1px solid #dce5ec;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+  min-width: 0;
+  padding: 12px 14px;
 }
 
 .bulkBar {
@@ -698,6 +939,18 @@
   }
 }
 
+@keyframes drawerSlideIn {
+  from {
+    opacity: 0;
+    transform: translateX(18px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
 @keyframes spin {
   to {
     transform: rotate(360deg);
@@ -707,6 +960,7 @@
 @media (prefers-reduced-motion: reduce) {
   .page,
   .stateNotice,
+  .filterSheet,
   .pairRow {
     animation-duration: 1ms;
   }
@@ -722,13 +976,22 @@
   }
 }
 
-@media (max-width: 1180px) {
-  .filterGrid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+@media (max-width: 1320px) {
+  .filterToolbar {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .filterSearch {
+    grid-column: 1 / -1;
+  }
+
+  .quickFilters {
+    justify-self: start;
   }
 
   .filterActions {
     justify-content: flex-start;
+    justify-self: end;
   }
 }
 
@@ -745,11 +1008,27 @@
   }
 
   .summaryStrip,
-  .filterGrid,
+  .filterToolbar,
+  .quickFilters,
   .bulkBar,
+  .rangePair,
   .reviewGrid,
   .pairAction {
     grid-template-columns: 1fr;
+  }
+
+  .filterActions {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    justify-self: stretch;
+
+    button {
+      min-width: 0;
+    }
+  }
+
+  .filterSheet {
+    width: min(100vw, calc(100vw - 12px));
   }
 
   .bulkActions {
