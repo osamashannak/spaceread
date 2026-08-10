@@ -59,6 +59,7 @@ const defaultReviewFilters: AdminReviewFilters = {
     has_session: "any",
     has_user: "any",
     has_ip: "any",
+    has_fingerprint: "any",
     search: "",
     review_id: "",
     professor_email: "",
@@ -73,6 +74,9 @@ const defaultReviewFilters: AdminReviewFilters = {
     session_id: "",
     user_id: "",
     ip_address: "",
+    fingerprint: "",
+    thumbmark_fingerprint: "",
+    creep_fingerprint: "",
     score_min: "",
     score_max: "",
     like_min: "",
@@ -92,7 +96,7 @@ const stateFilters: {
     label: string;
     options: { label: string; value: string }[];
 }[] = [
-    {key: "sort", label: "Sort", options: [{label: "Newest first", value: "newest"}, {label: "Oldest first", value: "oldest"}, {label: "Most reports", value: "most_reports"}, {label: "Most signals", value: "most_signals"}, {label: "Random on refresh", value: "random"}]},
+    {key: "sort", label: "Sort", options: [{label: "Newest first", value: "newest"}, {label: "Oldest first", value: "oldest"}, {label: "Most reports", value: "most_reports"}, {label: "New reports", value: "new_reports"}, {label: "Most signals", value: "most_signals"}, {label: "Random on refresh", value: "random"}]},
     {key: "deleted", label: "Deleted", options: [{label: "Exclude", value: "exclude"}, {label: "Include", value: "include"}, {label: "Only", value: "only"}]},
     {key: "visible", label: "Visibility", options: [{label: "Any", value: "any"}, {label: "Visible", value: "visible"}, {label: "Hidden", value: "hidden"}]},
     {key: "reviewed", label: "Reviewed", options: [{label: "Any", value: "any"}, {label: "Reviewed", value: "reviewed"}, {label: "Not reviewed", value: "not_reviewed"}]},
@@ -105,6 +109,7 @@ const stateFilters: {
     {key: "has_session", label: "Session", options: [{label: "Any", value: "any"}, {label: "Has session", value: "has"}, {label: "No session", value: "none"}]},
     {key: "has_user", label: "User", options: [{label: "Any", value: "any"}, {label: "Has user", value: "has"}, {label: "No user", value: "none"}]},
     {key: "has_ip", label: "IP address", options: [{label: "Any", value: "any"}, {label: "Has IP", value: "has"}, {label: "No IP", value: "none"}]},
+    {key: "has_fingerprint", label: "Fingerprint", options: [{label: "Any", value: "any"}, {label: "Has fingerprint", value: "has"}, {label: "No fingerprint", value: "none"}]},
 ];
 
 const textFilters: { key: SelectFilterKey; label: string; placeholder?: string }[] = [
@@ -122,6 +127,9 @@ const textFilters: { key: SelectFilterKey; label: string; placeholder?: string }
     {key: "session_id", label: "Session ID"},
     {key: "user_id", label: "User ID"},
     {key: "ip_address", label: "IP address"},
+    {key: "fingerprint", label: "Fingerprint", placeholder: "Any fingerprint payload or ID"},
+    {key: "thumbmark_fingerprint", label: "Thumbmark"},
+    {key: "creep_fingerprint", label: "Creep"},
 ];
 
 const rangeFilters: { label: string; minKey: SelectFilterKey; maxKey: SelectFilterKey; type?: "number" | "date" }[] = [
@@ -144,7 +152,7 @@ const filterSections: { key: FilterSectionKey; label: string }[] = [
 const sectionSelectFilterKeys: Record<FilterSectionKey, SelectFilterKey[]> = {
     common: ["sort"],
     status: ["deleted", "visible", "reviewed", "positive", "student_verified", "uaeu_origin", "media", "open_reports", "signals"],
-    identity: ["has_session", "has_user", "has_ip"],
+    identity: ["has_session", "has_user", "has_ip", "has_fingerprint"],
     content: [],
     metrics: [],
 };
@@ -152,7 +160,7 @@ const sectionSelectFilterKeys: Record<FilterSectionKey, SelectFilterKey[]> = {
 const sectionTextFilterKeys: Record<FilterSectionKey, SelectFilterKey[]> = {
     common: ["search"],
     status: [],
-    identity: ["review_id", "professor_email", "professor_name", "professor_college", "professor_university", "reviewer_user_id", "session_id", "user_id", "ip_address"],
+    identity: ["review_id", "professor_email", "professor_name", "professor_college", "professor_university", "reviewer_user_id", "session_id", "user_id", "ip_address", "fingerprint", "thumbmark_fingerprint", "creep_fingerprint"],
     content: ["language", "course_taken", "grade_received", "moderation_reason_code"],
     metrics: [],
 };
@@ -168,7 +176,7 @@ const sectionRangeFilterKeys: Record<FilterSectionKey, SelectFilterKey[]> = {
 const sectionFilterKeys: Record<FilterSectionKey, ReviewFilterKey[]> = {
     common: ["sort", "needs_attention", "search"],
     status: ["deleted", "visible", "reviewed", "positive", "student_verified", "uaeu_origin", "media", "open_reports", "signals"],
-    identity: ["has_session", "has_user", "has_ip", "review_id", "professor_email", "professor_name", "professor_college", "professor_university", "reviewer_user_id", "session_id", "user_id", "ip_address"],
+    identity: ["has_session", "has_user", "has_ip", "has_fingerprint", "review_id", "professor_email", "professor_name", "professor_college", "professor_university", "reviewer_user_id", "session_id", "user_id", "ip_address", "fingerprint", "thumbmark_fingerprint", "creep_fingerprint"],
     content: ["language", "course_taken", "grade_received", "moderation_reason_code"],
     metrics: ["score_min", "score_max", "like_min", "like_max", "dislike_min", "dislike_max", "reply_min", "reply_max", "created_from", "created_to", "reviewed_from", "reviewed_to"],
 };
@@ -870,6 +878,27 @@ function openReports(review: AdminReview) {
     return review.reports.filter(report => !report.resolved);
 }
 
+function latestOpenReportTime(review: AdminReview) {
+    return openReports(review)
+        .reduce((latest, report) => Math.max(latest, Date.parse(report.created_at) || 0), 0);
+}
+
+function reviewFingerprintValues(review: AdminReview) {
+    const values = [
+        review.thumbmark_fingerprint,
+        review.creep_fingerprint,
+        review.browser_fingerprint ? JSON.stringify(review.browser_fingerprint) : undefined,
+        ...(review.browser_fingerprint?.components || []).flatMap(component => [
+            component.source,
+            component.fingerprint,
+            component.version,
+            component.error,
+            component.signals ? JSON.stringify(component.signals) : undefined,
+        ]),
+    ];
+    return values.filter((value): value is string => Boolean(value));
+}
+
 function reviewStatus(review: AdminReview): { label: string; tone: Tone } {
     if (review.deleted_at) return {label: "Deleted", tone: "default"};
     if (review.visible) return {label: "Visible to users", tone: "success"};
@@ -886,6 +915,8 @@ function sortReviews(reviews: AdminReview[], sort: AdminReviewFilters["sort"]) {
             return timestamp(a.created_at) - timestamp(b.created_at) || a.id.localeCompare(b.id);
         case "most_reports":
             return openReports(b).length - openReports(a).length || timestamp(b.created_at) - timestamp(a.created_at);
+        case "new_reports":
+            return latestOpenReportTime(b) - latestOpenReportTime(a) || timestamp(b.created_at) - timestamp(a.created_at);
         case "most_signals":
             return b.signals.length - a.signals.length || timestamp(b.created_at) - timestamp(a.created_at);
         default:
@@ -919,6 +950,7 @@ function reviewMatchesFilters(review: AdminReview, filters: AdminReviewFilters) 
     if (!matchesPresence(filters.has_session, review.session_id)) return false;
     if (!matchesPresence(filters.has_user, review.user_id)) return false;
     if (!matchesPresence(filters.has_ip, review.ip_address)) return false;
+    if (!matchesCountState(filters.has_fingerprint, reviewFingerprintValues(review).length)) return false;
 
     if (filters.search && !containsAny(filters.search, [
         review.id,
@@ -932,6 +964,7 @@ function reviewMatchesFilters(review: AdminReview, filters: AdminReviewFilters) 
         review.language,
         review.moderation_reason_code,
         review.moderation_note,
+        ...reviewFingerprintValues(review),
     ])) return false;
 
     if (!matchesExact(filters.review_id, review.id)) return false;
@@ -947,6 +980,9 @@ function reviewMatchesFilters(review: AdminReview, filters: AdminReviewFilters) 
     if (!matchesExact(filters.session_id, review.session_id)) return false;
     if (!matchesExact(filters.user_id, review.user_id)) return false;
     if (!containsText(filters.ip_address, review.ip_address)) return false;
+    if (!containsAny(filters.fingerprint, reviewFingerprintValues(review))) return false;
+    if (!containsText(filters.thumbmark_fingerprint, review.thumbmark_fingerprint)) return false;
+    if (!containsText(filters.creep_fingerprint, review.creep_fingerprint)) return false;
 
     if (!matchesNumberRange(review.score, filters.score_min, filters.score_max)) return false;
     if (!matchesNumberRange(review.like_count, filters.like_min, filters.like_max)) return false;

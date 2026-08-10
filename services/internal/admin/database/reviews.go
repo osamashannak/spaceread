@@ -37,6 +37,7 @@ type ListReviewOptions struct {
 	HasSession           string
 	HasUser              string
 	HasIP                string
+	HasFingerprint       string
 	Search               string
 	ReviewID             *int64
 	ProfessorEmail       string
@@ -51,6 +52,9 @@ type ListReviewOptions struct {
 	SessionID            *int64
 	UserID               *int64
 	IPAddress            string
+	Fingerprint          string
+	ThumbmarkFingerprint string
+	CreepFingerprint     string
 	ScoreMin             *int
 	ScoreMax             *int
 	LikeMin              *int
@@ -261,6 +265,8 @@ type suspiciousReviewPairRow struct {
 	SameUaeuIP          bool
 	SameUser            bool
 	SameUserAgent       bool
+	SameThumbmark       bool
+	SameCreep           bool
 	SimilarContent      bool
 	SameLanguage        bool
 	SameScore           bool
@@ -345,6 +351,26 @@ func (db *AdminDB) ListSuspiciousReviewPairs(ctx context.Context, opts ListSuspi
 				AND r1.user_id IS NOT NULL
 				AND r2.user_id IS NOT NULL
 				AND r1.user_id = r2.user_id`, professorJoin, where),
+		fmt.Sprintf(`
+			SELECT r1.id AS review_1_id, r2.id AS review_2_id
+			FROM professor.review r1
+			JOIN professor.review r2
+				ON r1.professor_email = r2.professor_email
+				AND r1.id < r2.id
+%s
+			WHERE %s
+				AND r1.thumbmark_fingerprint IS NOT NULL
+				AND r1.thumbmark_fingerprint = r2.thumbmark_fingerprint`, professorJoin, where),
+		fmt.Sprintf(`
+			SELECT r1.id AS review_1_id, r2.id AS review_2_id
+			FROM professor.review r1
+			JOIN professor.review r2
+				ON r1.professor_email = r2.professor_email
+				AND r1.id < r2.id
+%s
+			WHERE %s
+				AND r1.creep_fingerprint IS NOT NULL
+				AND r1.creep_fingerprint = r2.creep_fingerprint`, professorJoin, where),
 	}
 	if opts.IncludeContentOnly {
 		candidateBranches = append(candidateBranches, fmt.Sprintf(`
@@ -371,6 +397,8 @@ func (db *AdminDB) ListSuspiciousReviewPairs(ctx context.Context, opts ListSuspi
 				(COALESCE(r1.ip_address = r2.ip_address, false) AND r1.uaeu_origin AND r2.uaeu_origin) AS same_uaeu_ip,
 				(r1.user_id IS NOT NULL AND r2.user_id IS NOT NULL AND r1.user_id = r2.user_id) AS same_user,
 				COALESCE(NULLIF(s1.user_agent, '') IS NOT NULL AND s1.user_agent = s2.user_agent, false) AS same_user_agent,
+				COALESCE(NULLIF(r1.thumbmark_fingerprint, '') IS NOT NULL AND r1.thumbmark_fingerprint = r2.thumbmark_fingerprint, false) AS same_thumbmark,
+				COALESCE(NULLIF(r1.creep_fingerprint, '') IS NOT NULL AND r1.creep_fingerprint = r2.creep_fingerprint, false) AS same_creep,
 				similarity(r1.content, r2.content)::double precision AS content_similarity,
 				r1.language = r2.language AS same_language,
 				r1.score = r2.score AS same_score,
@@ -391,6 +419,8 @@ func (db *AdminDB) ListSuspiciousReviewPairs(ctx context.Context, opts ListSuspi
 					(CASE WHEN same_ip AND same_uaeu_ip THEN 1 WHEN same_ip THEN 3 ELSE 0 END) +
 					(CASE WHEN same_user THEN 5 ELSE 0 END) +
 					(CASE WHEN same_user_agent THEN 2 ELSE 0 END) +
+					(CASE WHEN same_thumbmark THEN 4 ELSE 0 END) +
+					(CASE WHEN same_creep THEN 4 ELSE 0 END) +
 					(CASE WHEN content_similarity > $3 THEN 2 ELSE 0 END) +
 					(CASE WHEN same_language THEN 1 ELSE 0 END) +
 					(CASE WHEN same_score THEN 1 ELSE 0 END) +
@@ -409,6 +439,8 @@ func (db *AdminDB) ListSuspiciousReviewPairs(ctx context.Context, opts ListSuspi
 			same_uaeu_ip,
 			same_user,
 			same_user_agent,
+			same_thumbmark,
+			same_creep,
 			similar_content,
 			same_language,
 			same_score,
@@ -448,6 +480,8 @@ func (db *AdminDB) ListSuspiciousReviewPairs(ctx context.Context, opts ListSuspi
 			&row.SameUaeuIP,
 			&row.SameUser,
 			&row.SameUserAgent,
+			&row.SameThumbmark,
+			&row.SameCreep,
 			&row.SimilarContent,
 			&row.SameLanguage,
 			&row.SameScore,
@@ -495,6 +529,8 @@ func (db *AdminDB) ListSuspiciousReviewPairs(ctx context.Context, opts ListSuspi
 			SameUaeuIP:          row.SameUaeuIP,
 			SameUser:            row.SameUser,
 			SameUserAgent:       row.SameUserAgent,
+			SameThumbmark:       row.SameThumbmark,
+			SameCreep:           row.SameCreep,
 			SimilarContent:      row.SimilarContent,
 			SameLanguage:        row.SameLanguage,
 			SameScore:           row.SameScore,
@@ -1108,6 +1144,12 @@ func (db *AdminDB) listReviewIDs(ctx context.Context, opts ListReviewOptions) ([
 	addPresenceCondition("r.session_id", opts.HasSession)
 	addPresenceCondition("r.user_id", opts.HasUser)
 	addPresenceCondition("r.ip_address", opts.HasIP)
+	switch opts.HasFingerprint {
+	case "has":
+		add("(r.thumbmark_fingerprint IS NOT NULL OR r.creep_fingerprint IS NOT NULL OR r.browser_fingerprint IS NOT NULL)")
+	case "none":
+		add("r.thumbmark_fingerprint IS NULL AND r.creep_fingerprint IS NULL AND r.browser_fingerprint IS NULL")
+	}
 
 	switch opts.OpenReports {
 	case "has":
@@ -1136,6 +1178,9 @@ func (db *AdminDB) listReviewIDs(ctx context.Context, opts ListReviewOptions) ([
 			OR r.language ILIKE %[1]s
 			OR COALESCE(r.moderation_reason_code, '') ILIKE %[1]s
 			OR COALESCE(r.moderation_note, '') ILIKE %[1]s
+			OR COALESCE(r.thumbmark_fingerprint, '') ILIKE %[1]s
+			OR COALESCE(r.creep_fingerprint, '') ILIKE %[1]s
+			OR COALESCE(r.browser_fingerprint::text, '') ILIKE %[1]s
 		)`, param))
 	}
 
@@ -1162,6 +1207,16 @@ func (db *AdminDB) listReviewIDs(ctx context.Context, opts ListReviewOptions) ([
 	if opts.IPAddress != "" {
 		add(fmt.Sprintf("r.ip_address::text ILIKE %s", nextArg("%"+opts.IPAddress+"%")))
 	}
+	if opts.Fingerprint != "" {
+		param := nextArg("%" + opts.Fingerprint + "%")
+		add(fmt.Sprintf(`(
+			COALESCE(r.thumbmark_fingerprint, '') ILIKE %[1]s
+			OR COALESCE(r.creep_fingerprint, '') ILIKE %[1]s
+			OR COALESCE(r.browser_fingerprint::text, '') ILIKE %[1]s
+		)`, param))
+	}
+	addText("COALESCE(r.thumbmark_fingerprint, '')", opts.ThumbmarkFingerprint)
+	addText("COALESCE(r.creep_fingerprint, '')", opts.CreepFingerprint)
 
 	addIntMin("r.score", opts.ScoreMin)
 	addIntMax("r.score", opts.ScoreMax)
@@ -1199,7 +1254,8 @@ func (db *AdminDB) listReviewIDs(ctx context.Context, opts ListReviewOptions) ([
 		report_counts AS (
 			SELECT
 				review_id,
-				count(*) FILTER (WHERE resolved = false) AS open_report_count
+				count(*) FILTER (WHERE resolved = false) AS open_report_count,
+				max(created_at) FILTER (WHERE resolved = false) AS latest_open_report_at
 			FROM professor.review_report
 			GROUP BY review_id
 		)
@@ -1236,6 +1292,8 @@ func reviewListOrderBy(sort string) string {
 		return "r.created_at ASC, r.id ASC"
 	case "most_reports":
 		return "COALESCE(rc.open_report_count, 0) DESC, r.created_at DESC, r.id DESC"
+	case "new_reports":
+		return "rc.latest_open_report_at DESC NULLS LAST, r.created_at DESC, r.id DESC"
 	case "most_signals":
 		return "COALESCE(sc.signal_count, 0) DESC, r.created_at DESC, r.id DESC"
 	case "random":
@@ -1280,6 +1338,9 @@ func (db *AdminDB) loadReviews(ctx context.Context, ids []int64) ([]v1.AdminRevi
 			r.user_id,
 			r.ip_address::text,
 			s.user_agent,
+			r.browser_fingerprint,
+			r.thumbmark_fingerprint,
+			r.creep_fingerprint,
 			r.moderation_reason_code,
 			r.moderation_note,
 			a.id,
@@ -1327,6 +1388,7 @@ func (db *AdminDB) loadReviews(ctx context.Context, ids []int64) ([]v1.AdminRevi
 			attachmentCreatedAt            *time.Time
 			attachmentBlobName             *string
 			attachmentIPAddress            *string
+			browserFingerprint             []byte
 		)
 
 		if err := rows.Scan(
@@ -1358,6 +1420,9 @@ func (db *AdminDB) loadReviews(ctx context.Context, ids []int64) ([]v1.AdminRevi
 			&review.UserID,
 			&review.IPAddress,
 			&review.UserAgent,
+			&browserFingerprint,
+			&review.ThumbmarkFingerprint,
+			&review.CreepFingerprint,
 			&review.ModerationReasonCode,
 			&review.ModerationNote,
 			&attachmentID,
@@ -1383,6 +1448,10 @@ func (db *AdminDB) loadReviews(ctx context.Context, ids []int64) ([]v1.AdminRevi
 		review.Ratings = []v1.AdminReviewRating{}
 		review.Signals = []v1.AdminModerationSignal{}
 		review.ActionHistory = []v1.AdminModerationAction{}
+		if len(browserFingerprint) > 0 {
+			raw := json.RawMessage(append([]byte(nil), browserFingerprint...))
+			review.BrowserFingerprint = &raw
+		}
 
 		if attachmentID != nil && attachmentMimeType != nil && attachmentSize != nil && attachmentWidth != nil && attachmentHeight != nil && attachmentVisible != nil && attachmentReviewed != nil && attachmentCreatedAt != nil && attachmentBlobName != nil {
 			review.Attachment = &v1.AdminReviewAttachment{

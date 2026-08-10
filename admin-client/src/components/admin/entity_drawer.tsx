@@ -484,6 +484,8 @@ function ReviewDrawer({
                 </FieldGrid>
             </DrawerSection>
 
+            <FingerprintSection review={review} showSensitive={showSensitive}/>
+
             {media && (
                 <DrawerSection
                     title="Media"
@@ -1445,6 +1447,56 @@ function emitReviewUpdated(review: AdminReview) {
     window.dispatchEvent(new CustomEvent<AdminReview>("admin-review-updated", {detail: review}));
 }
 
+function FingerprintSection({review, showSensitive}: { review: AdminReview; showSensitive: boolean }) {
+    const components = review.browser_fingerprint?.components || [];
+    const hasFingerprint = Boolean(review.thumbmark_fingerprint || review.creep_fingerprint || components.length > 0);
+
+    if (!hasFingerprint) return null;
+
+    return (
+        <DrawerSection title="Fingerprints">
+            <FieldGrid>
+                {review.thumbmark_fingerprint && <Field label="Thumbmark" value={maskFingerprint(review.thumbmark_fingerprint, showSensitive)}/>}
+                {review.creep_fingerprint && <Field label="Creep" value={maskFingerprint(review.creep_fingerprint, showSensitive)}/>}
+                {review.browser_fingerprint?.version && <Field label="Payload version" value={review.browser_fingerprint.version}/>}
+                {review.browser_fingerprint?.generated_at && <Field label="Generated" value={review.browser_fingerprint.generated_at}/>}
+            </FieldGrid>
+            {components.length > 0 && (
+                <div className={styles.fingerprintList}>
+                    {components.map((component, index) => (
+                        <article className={styles.fingerprintItem} key={`${component.source}-${component.fingerprint}-${index}`}>
+                            <div>
+                                <strong>{component.source || "Fingerprint"}</strong>
+                                <span>{component.version || "No version"}{component.duration_ms !== undefined ? ` - ${component.duration_ms} ms` : ""}</span>
+                            </div>
+                            <code>{maskFingerprint(component.fingerprint, showSensitive)}</code>
+                            {component.error && <p>{component.error}</p>}
+                            {component.signals && Object.keys(component.signals).length > 0 && (
+                                <div className={styles.fingerprintSignals}>
+                                    {Object.entries(component.signals).slice(0, 8).map(([key, value]) => (
+                                        <span key={key}>{key}: {formatFingerprintSignal(value)}</span>
+                                    ))}
+                                </div>
+                            )}
+                        </article>
+                    ))}
+                </div>
+            )}
+        </DrawerSection>
+    );
+}
+
+function formatFingerprintSignal(value: unknown) {
+    if (value === null || value === undefined) return "";
+    if (typeof value === "string") return value;
+    if (typeof value === "number" || typeof value === "boolean") return String(value);
+    try {
+        return JSON.stringify(value);
+    } catch {
+        return String(value);
+    }
+}
+
 function activeReasonOptions(reasons: AdminReason[]) {
     return reasons
         .filter(reason => reason.active)
@@ -1506,6 +1558,11 @@ function maskEmail(value: string, visible: boolean) {
     const [local, domain] = value.split("@");
     if (!local || !domain) return "masked";
     return `${local.slice(0, 1)}***@${domain}`;
+}
+
+function maskFingerprint(value: string, visible: boolean) {
+    if (visible || value.length <= 12) return value;
+    return `${value.slice(0, 6)}...${value.slice(-4)}`;
 }
 
 function actionLabel(value: string) {

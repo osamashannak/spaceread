@@ -37,7 +37,7 @@ export type AdminSuspiciousReviewPairListResponse = {
 };
 
 export type AdminReviewFilters = {
-    sort: "newest" | "oldest" | "most_reports" | "most_signals" | "random";
+    sort: "newest" | "oldest" | "most_reports" | "new_reports" | "most_signals" | "random";
     needs_attention: boolean;
     deleted: "exclude" | "include" | "only";
     visible: "any" | "visible" | "hidden";
@@ -51,6 +51,7 @@ export type AdminReviewFilters = {
     has_session: "any" | "has" | "none";
     has_user: "any" | "has" | "none";
     has_ip: "any" | "has" | "none";
+    has_fingerprint: "any" | "has" | "none";
     search: string;
     review_id: string;
     professor_email: string;
@@ -65,6 +66,9 @@ export type AdminReviewFilters = {
     session_id: string;
     user_id: string;
     ip_address: string;
+    fingerprint: string;
+    thumbmark_fingerprint: string;
+    creep_fingerprint: string;
     score_min: string;
     score_max: string;
     like_min: string;
@@ -170,6 +174,9 @@ export type AdminReview = {
     user_id?: string;
     ip_address?: string;
     user_agent?: string;
+    browser_fingerprint?: AdminClientFingerprint;
+    thumbmark_fingerprint?: string;
+    creep_fingerprint?: string;
     moderation_reason_code?: string;
     moderation_note?: string;
     reports: AdminReviewReport[];
@@ -189,11 +196,28 @@ export type AdminSuspiciousReviewPair = {
     same_uaeu_ip: boolean;
     same_user: boolean;
     same_user_agent: boolean;
+    same_thumbmark: boolean;
+    same_creep: boolean;
     similar_content: boolean;
     same_language: boolean;
     same_score: boolean;
     same_recommendation: boolean;
     close_timing: boolean;
+};
+
+export type AdminClientFingerprint = {
+    version?: string;
+    generated_at?: string;
+    components?: AdminClientFingerprintComponent[];
+};
+
+export type AdminClientFingerprintComponent = {
+    source: string;
+    fingerprint: string;
+    version?: string;
+    duration_ms?: number;
+    signals?: Record<string, unknown>;
+    error?: string;
 };
 
 export type AdminReviewAttachment = {

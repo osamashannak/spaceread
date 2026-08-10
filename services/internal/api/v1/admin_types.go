@@ -68,6 +68,8 @@ type AdminSuspiciousReviewPair struct {
 	SameUaeuIP          bool        `json:"same_uaeu_ip"`
 	SameUser            bool        `json:"same_user"`
 	SameUserAgent       bool        `json:"same_user_agent"`
+	SameThumbmark       bool        `json:"same_thumbmark"`
+	SameCreep           bool        `json:"same_creep"`
 	SimilarContent      bool        `json:"similar_content"`
 	SameLanguage        bool        `json:"same_language"`
 	SameScore           bool        `json:"same_score"`
@@ -105,6 +107,9 @@ type AdminReview struct {
 	UserID               *int64                  `json:"user_id,string,omitempty"`
 	IPAddress            *string                 `json:"ip_address,omitempty"`
 	UserAgent            *string                 `json:"user_agent,omitempty"`
+	BrowserFingerprint   *json.RawMessage        `json:"browser_fingerprint,omitempty"`
+	ThumbmarkFingerprint *string                 `json:"thumbmark_fingerprint,omitempty"`
+	CreepFingerprint     *string                 `json:"creep_fingerprint,omitempty"`
 	ModerationReasonCode *string                 `json:"moderation_reason_code,omitempty"`
 	ModerationNote       *string                 `json:"moderation_note,omitempty"`
 	Reports              []AdminReviewReport     `json:"reports"`

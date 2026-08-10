@@ -314,6 +314,7 @@
   min-width: 0;
 
   span {
+    align-items: center;
     background: #f8fbfc;
     border: 1px solid #e7eef4;
     border-radius: 999px;
@@ -321,6 +322,7 @@
     display: inline-flex;
     font-size: 10px;
     font-weight: 800;
+    justify-content: center;
     line-height: 1;
     max-width: min(260px, 100%);
     min-height: 24px;

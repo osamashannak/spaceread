@@ -805,6 +805,26 @@ function pairSignals(pair: AdminSuspiciousReviewPair, showSensitive: boolean) {
             detail: pair.review_1.user_agent ? maskUserAgent(pair.review_1.user_agent, showSensitive) : undefined,
         });
     }
+    if (pair.same_thumbmark) {
+        signals.push({
+            key: "same_thumbmark",
+            label: "Same thumbmark",
+            weight: 4,
+            tone: "danger",
+            icon: <Fingerprint size={13}/>,
+            detail: pair.review_1.thumbmark_fingerprint ? maskFingerprint(pair.review_1.thumbmark_fingerprint, showSensitive) : undefined,
+        });
+    }
+    if (pair.same_creep) {
+        signals.push({
+            key: "same_creep",
+            label: "Same creep",
+            weight: 4,
+            tone: "danger",
+            icon: <Fingerprint size={13}/>,
+            detail: pair.review_1.creep_fingerprint ? maskFingerprint(pair.review_1.creep_fingerprint, showSensitive) : undefined,
+        });
+    }
     if (pair.similar_content) {
         signals.push({
             key: "similar_content",
@@ -957,4 +977,9 @@ function maskIpAddress(value: string, visible: boolean) {
 function maskUserAgent(value: string, visible: boolean) {
     if (visible) return value;
     return "Hidden";
+}
+
+function maskFingerprint(value: string, visible: boolean) {
+    if (visible || value.length <= 12) return value;
+    return `${value.slice(0, 6)}...${value.slice(-4)}`;
 }
