@@ -62,12 +62,22 @@ func realMain(ctx context.Context) error {
 
 	blobStorage, err := blobstorage.New(cfg.Azure.AttachmentsContainer)
 	if err != nil {
-		return fmt.Errorf("blobstorage.New: %w", err)
+		return fmt.Errorf("blobstorage.New attachments: %w", err)
 	}
 
-	adminStore := adminDB.New(db, adminDB.WithAttachmentURLFormatter(func(blobName string) string {
-		return blobStorage.FormatSASURL(blobName, "")
-	}))
+	materialStorage, err := blobstorage.New(cfg.Azure.MaterialsContainer)
+	if err != nil {
+		return fmt.Errorf("blobstorage.New materials: %w", err)
+	}
+
+	adminStore := adminDB.New(db,
+		adminDB.WithAttachmentURLFormatter(func(blobName string) string {
+			return blobStorage.FormatSASURL(blobName, "")
+		}),
+		adminDB.WithCourseFileURLFormatter(func(blobName string) string {
+			return materialStorage.FormatSASURL(blobName, "")
+		}),
+	)
 
 	logger.Info("setting up gateway")
 

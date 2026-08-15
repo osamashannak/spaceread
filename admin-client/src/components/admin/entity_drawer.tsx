@@ -1163,12 +1163,16 @@ function CourseFileRow({file}: { file: AdminCourseFileSummary }) {
             meta={[
                 `File ${file.id}`,
                 file.course_tag,
+                file.course_name,
                 file.type,
                 formatBytes(file.size),
+                `${file.download_count} downloads`,
+                file.signal_count > 0 ? `${file.signal_count} signals` : undefined,
                 file.visible ? "Visible" : "Hidden",
                 file.reviewed ? "Reviewed" : "Not reviewed",
                 file.session_id ? <EntityLink key="session" target={{type: "session", id: file.session_id}}>Session {file.session_id}</EntityLink> : undefined,
                 file.user_id ? <EntityLink key="user" target={{type: "user", id: file.user_id}}>User {file.user_id}</EntityLink> : undefined,
+                file.url ? <a key="file-url" href={file.url} target="_blank" rel="noreferrer">Open file <ExternalLink size={12}/></a> : undefined,
                 formatDateTime(file.created_at),
             ]}
         />

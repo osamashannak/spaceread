@@ -54,8 +54,18 @@ type AdminSuspiciousReviewPairListResponse struct {
 	Offset int                         `json:"offset"`
 }
 
+type AdminCourseFileListResponse struct {
+	Files  []AdminCourseFileSummary `json:"files"`
+	Limit  int                      `json:"limit"`
+	Offset int                      `json:"offset"`
+}
+
 type AdminReviewResponse struct {
 	Review AdminReview `json:"review"`
+}
+
+type AdminCourseFileResponse struct {
+	File AdminCourseFileSummary `json:"file"`
 }
 
 type AdminSuspiciousReviewPair struct {
@@ -261,6 +271,16 @@ type AdminReviewReplyNoteRequest struct {
 	Note *string `json:"note" required:"true"`
 }
 
+type AdminCourseFileVisibilityRequest struct {
+	Visible    *bool   `json:"visible" required:"true"`
+	ReasonCode *string `json:"reason_code"`
+	Note       *string `json:"note"`
+}
+
+type AdminCourseFileNoteRequest struct {
+	Note *string `json:"note" required:"true"`
+}
+
 type AdminDecisionResponse struct {
 	Success             bool        `json:"success"`
 	Review              AdminReview `json:"review"`
@@ -294,6 +314,12 @@ type AdminReplyDecisionResponse struct {
 	Review  AdminReview      `json:"review"`
 	Reply   AdminReviewReply `json:"reply"`
 	Action  string           `json:"action"`
+}
+
+type AdminCourseFileDecisionResponse struct {
+	Success bool                   `json:"success"`
+	File    AdminCourseFileSummary `json:"file"`
+	Action  string                 `json:"action"`
 }
 
 type AdminReviewReplyResponse struct {
@@ -470,21 +496,27 @@ type AdminProfessorRequestSummary struct {
 }
 
 type AdminCourseFileSummary struct {
-	ID                   int64      `json:"id,string"`
-	Name                 string     `json:"name"`
-	Type                 string     `json:"type"`
-	Size                 int        `json:"size"`
-	Visible              bool       `json:"visible"`
-	Reviewed             bool       `json:"reviewed"`
-	CourseTag            string     `json:"course_tag"`
-	DownloadCount        int        `json:"download_count"`
-	CreatedAt            time.Time  `json:"created_at"`
-	UserID               *int64     `json:"user_id,string,omitempty"`
-	SessionID            *int64     `json:"session_id,string,omitempty"`
-	ReviewedAt           *time.Time `json:"reviewed_at,omitempty"`
-	ReviewerUserID       *int64     `json:"reviewer_user_id,string,omitempty"`
-	ModerationReasonCode *string    `json:"moderation_reason_code,omitempty"`
-	ModerationNote       *string    `json:"moderation_note,omitempty"`
+	ID                   int64                   `json:"id,string"`
+	Name                 string                  `json:"name"`
+	Type                 string                  `json:"type"`
+	Size                 int                     `json:"size"`
+	Visible              bool                    `json:"visible"`
+	Reviewed             bool                    `json:"reviewed"`
+	CourseTag            string                  `json:"course_tag"`
+	CourseName           string                  `json:"course_name"`
+	DownloadCount        int                     `json:"download_count"`
+	CreatedAt            time.Time               `json:"created_at"`
+	UserID               *int64                  `json:"user_id,string,omitempty"`
+	SessionID            *int64                  `json:"session_id,string,omitempty"`
+	ReviewedAt           *time.Time              `json:"reviewed_at,omitempty"`
+	ReviewerUserID       *int64                  `json:"reviewer_user_id,string,omitempty"`
+	ModerationReasonCode *string                 `json:"moderation_reason_code,omitempty"`
+	ModerationNote       *string                 `json:"moderation_note,omitempty"`
+	BlobName             string                  `json:"blob_name"`
+	URL                  string                  `json:"url,omitempty"`
+	SignalCount          int                     `json:"signal_count"`
+	Signals              []AdminModerationSignal `json:"signals,omitempty"`
+	ActionHistory        []AdminModerationAction `json:"action_history,omitempty"`
 }
 
 type AdminSessionDetailResponse struct {

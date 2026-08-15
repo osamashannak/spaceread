@@ -36,6 +36,12 @@ export type AdminSuspiciousReviewPairListResponse = {
     offset: number;
 };
 
+export type AdminCourseFileListResponse = {
+    files: AdminCourseFileSummary[];
+    limit: number;
+    offset: number;
+};
+
 export type AdminReviewFilters = {
     sort: "newest" | "oldest" | "most_reports" | "new_reports" | "most_signals" | "random";
     needs_attention: boolean;
@@ -77,6 +83,34 @@ export type AdminReviewFilters = {
     dislike_max: string;
     reply_min: string;
     reply_max: string;
+    created_from: string;
+    created_to: string;
+    reviewed_from: string;
+    reviewed_to: string;
+};
+
+export type AdminCourseFileFilters = {
+    sort: "newest" | "oldest" | "largest" | "most_downloads" | "most_signals";
+    needs_attention: boolean;
+    visible: "any" | "visible" | "hidden";
+    reviewed: "any" | "reviewed" | "not_reviewed";
+    signals: "any" | "has" | "none";
+    has_session: "any" | "has" | "none";
+    has_user: "any" | "has" | "none";
+    search: string;
+    file_id: string;
+    name: string;
+    course_tag: string;
+    course_name: string;
+    file_type: string;
+    moderation_reason_code: string;
+    reviewer_user_id: string;
+    session_id: string;
+    user_id: string;
+    size_min: string;
+    size_max: string;
+    download_min: string;
+    download_max: string;
     created_from: string;
     created_to: string;
     reviewed_from: string;
@@ -141,6 +175,12 @@ export type AdminReplyDecisionResponse = {
     success: boolean;
     review: AdminReview;
     reply: AdminReviewReply;
+    action: string;
+};
+
+export type AdminCourseFileDecisionResponse = {
+    success: boolean;
+    file: AdminCourseFileSummary;
     action: string;
 };
 
@@ -491,6 +531,7 @@ export type AdminCourseFileSummary = {
     visible: boolean;
     reviewed: boolean;
     course_tag: string;
+    course_name: string;
     download_count: number;
     created_at: string;
     user_id?: string;
@@ -499,6 +540,11 @@ export type AdminCourseFileSummary = {
     reviewer_user_id?: string;
     moderation_reason_code?: string;
     moderation_note?: string;
+    blob_name: string;
+    url?: string;
+    signal_count: number;
+    signals?: AdminModerationSignal[];
+    action_history?: AdminModerationAction[];
 };
 
 export type AdminSessionDetailResponse = {
@@ -574,8 +620,24 @@ export async function listAdminSuspiciousReviewPairs(signal?: AbortSignal, filte
     return adminFetch<AdminSuspiciousReviewPairListResponse>(`/reviews/suspicious?${params.toString()}`, {signal});
 }
 
+export async function listAdminCourseFiles(signal?: AbortSignal, filters?: AdminCourseFileFilters) {
+    const params = new URLSearchParams({limit: "100"});
+    if (filters) {
+        for (const [key, value] of Object.entries(filters)) {
+            if (value !== "" && value !== "any") {
+                params.set(key, String(value));
+            }
+        }
+    }
+    return adminFetch<AdminCourseFileListResponse>(`/course-files?${params.toString()}`, {signal});
+}
+
 export async function getAdminReview(reviewId: string, signal?: AbortSignal) {
     return adminFetch<{ review: AdminReview }>(`/reviews/${encodeURIComponent(reviewId)}`, {signal});
+}
+
+export async function getAdminCourseFile(fileId: string, signal?: AbortSignal) {
+    return adminFetch<{ file: AdminCourseFileSummary }>(`/course-files/${encodeURIComponent(fileId)}`, {signal});
 }
 
 export async function getAdminReviewReply(replyId: string, signal?: AbortSignal) {
@@ -629,6 +691,23 @@ export async function hideSuspiciousReviewPairs(
 
 export async function saveReviewNote(reviewId: string, body: { note: string }) {
     return adminFetch<AdminDecisionResponse>(`/reviews/${encodeURIComponent(reviewId)}/note`, {
+        method: "POST",
+        body: JSON.stringify(body),
+    });
+}
+
+export async function setCourseFileVisibility(
+    fileId: string,
+    body: { visible: boolean; reason_code?: string; note?: string },
+) {
+    return adminFetch<AdminCourseFileDecisionResponse>(`/course-files/${encodeURIComponent(fileId)}/visibility`, {
+        method: "POST",
+        body: JSON.stringify(body),
+    });
+}
+
+export async function saveCourseFileNote(fileId: string, body: { note: string }) {
+    return adminFetch<AdminCourseFileDecisionResponse>(`/course-files/${encodeURIComponent(fileId)}/note`, {
         method: "POST",
         body: JSON.stringify(body),
     });

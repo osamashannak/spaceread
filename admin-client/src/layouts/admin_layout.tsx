@@ -1,6 +1,7 @@
 import {useMemo} from "react";
 import {Outlet, useLocation} from "react-router-dom";
 import {
+    FileText,
     MessageSquareText,
     ShieldAlert,
     SlidersHorizontal,
@@ -16,6 +17,7 @@ const navSections: NavSection[] = [
         items: [
             {to: "/reviews", label: "Reviews", icon: MessageSquareText},
             {to: "/reviews/suspicious", label: "Suspicious", icon: ShieldAlert},
+            {to: "/course-files", label: "Course files", icon: FileText},
             {to: "/reasons", label: "Reasons", icon: SlidersHorizontal},
         ],
     },

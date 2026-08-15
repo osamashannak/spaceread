@@ -1030,6 +1030,12 @@ func (db *AdminDB) listProfessorRequestSummaries(ctx context.Context, where stri
 
 func (db *AdminDB) listCourseFileSummaries(ctx context.Context, where string, args ...any) ([]v1.AdminCourseFileSummary, error) {
 	rows, err := db.db.Pool.Query(ctx, fmt.Sprintf(`
+		WITH signal_counts AS (
+			SELECT target_id, count(*) AS signal_count
+			FROM moderation.signal
+			WHERE target_type = 'course_file'
+			GROUP BY target_id
+		)
 		SELECT
 			cf.id,
 			cf.name,
@@ -1038,6 +1044,7 @@ func (db *AdminDB) listCourseFileSummaries(ctx context.Context, where string, ar
 			cf.visible,
 			cf.reviewed,
 			cf.course_tag,
+			COALESCE(c.name, cf.course_tag) AS course_name,
 			cf.download_count,
 			cf.created_at,
 			cf.user_id,
@@ -1045,8 +1052,12 @@ func (db *AdminDB) listCourseFileSummaries(ctx context.Context, where string, ar
 			cf.reviewed_at,
 			cf.reviewer_user_id,
 			cf.moderation_reason_code,
-			cf.moderation_note
+			cf.moderation_note,
+			cf.blob_name,
+			COALESCE(sc.signal_count, 0)::int
 		FROM course.file cf
+		LEFT JOIN course.course c ON c.tag = cf.course_tag
+		LEFT JOIN signal_counts sc ON sc.target_id = cf.id::text
 		WHERE %s
 		ORDER BY cf.created_at DESC
 		LIMIT %d`, where, entityActivityLimit), args...)
@@ -1066,6 +1077,7 @@ func (db *AdminDB) listCourseFileSummaries(ctx context.Context, where string, ar
 			&file.Visible,
 			&file.Reviewed,
 			&file.CourseTag,
+			&file.CourseName,
 			&file.DownloadCount,
 			&file.CreatedAt,
 			&file.UserID,
@@ -1074,9 +1086,12 @@ func (db *AdminDB) listCourseFileSummaries(ctx context.Context, where string, ar
 			&file.ReviewerUserID,
 			&file.ModerationReasonCode,
 			&file.ModerationNote,
+			&file.BlobName,
+			&file.SignalCount,
 		); err != nil {
 			return nil, err
 		}
+		file.URL = db.formatCourseFileURL(file.BlobName)
 		files = append(files, file)
 	}
 	return files, rows.Err()
