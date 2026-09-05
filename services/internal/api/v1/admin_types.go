@@ -76,6 +76,7 @@ type AdminSuspiciousReviewPair struct {
 	CreatedDeltaSeconds int64       `json:"created_delta_seconds"`
 	SameIP              bool        `json:"same_ip"`
 	SameUaeuIP          bool        `json:"same_uaeu_ip"`
+	SameSession         bool        `json:"same_session"`
 	SameUser            bool        `json:"same_user"`
 	SameUserAgent       bool        `json:"same_user_agent"`
 	SameThumbmark       bool        `json:"same_thumbmark"`

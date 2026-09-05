@@ -95,19 +95,17 @@ type ReviewVisibilityDecision struct {
 	SkipAlreadyHidden bool
 }
 
-type ReviewPairVisibilityDecision struct {
+type ReviewPairKeepLatestDecision struct {
 	Review1ID      int64
 	Review2ID      int64
-	Visible        bool
 	ActorUserID    *int64
 	ReasonCode     *string
 	Note           *string
 	ResolveReports bool
 }
 
-type ReviewPairBulkVisibilityDecision struct {
+type ReviewPairBulkKeepLatestDecision struct {
 	Pairs          []ReviewPairRef
-	Visible        bool
 	ActorUserID    *int64
 	ReasonCode     *string
 	Note           *string
@@ -263,6 +261,7 @@ type suspiciousReviewPairRow struct {
 	CreatedDeltaSeconds int64
 	SameIP              bool
 	SameUaeuIP          bool
+	SameSession         bool
 	SameUser            bool
 	SameUserAgent       bool
 	SameThumbmark       bool
@@ -298,7 +297,6 @@ func (db *AdminDB) ListSuspiciousReviewPairs(ctx context.Context, opts ListSuspi
 		"r1.id < r2.id",
 		"r1.session_id IS NOT NULL",
 		"r2.session_id IS NOT NULL",
-		"r1.session_id <> r2.session_id",
 	}
 
 	switch opts.Visible {
@@ -330,6 +328,15 @@ func (db *AdminDB) ListSuspiciousReviewPairs(ctx context.Context, opts ListSuspi
 
 	where := strings.Join(conditions, "\n\t\t\tAND ")
 	candidateBranches := []string{
+		fmt.Sprintf(`
+			SELECT r1.id AS review_1_id, r2.id AS review_2_id
+			FROM professor.review r1
+			JOIN professor.review r2
+				ON r1.professor_email = r2.professor_email
+				AND r1.id < r2.id
+%s
+			WHERE %s
+				AND r1.session_id = r2.session_id`, professorJoin, where),
 		fmt.Sprintf(`
 			SELECT r1.id AS review_1_id, r2.id AS review_2_id
 			FROM professor.review r1
@@ -395,6 +402,7 @@ func (db *AdminDB) ListSuspiciousReviewPairs(ctx context.Context, opts ListSuspi
 				r2.id AS review_2_id,
 				COALESCE(r1.ip_address = r2.ip_address, false) AS same_ip,
 				(COALESCE(r1.ip_address = r2.ip_address, false) AND r1.uaeu_origin AND r2.uaeu_origin) AS same_uaeu_ip,
+				(r1.session_id = r2.session_id) AS same_session,
 				(r1.user_id IS NOT NULL AND r2.user_id IS NOT NULL AND r1.user_id = r2.user_id) AS same_user,
 				COALESCE(NULLIF(s1.user_agent, '') IS NOT NULL AND s1.user_agent = s2.user_agent, false) AS same_user_agent,
 				COALESCE(NULLIF(r1.thumbmark_fingerprint, '') IS NOT NULL AND r1.thumbmark_fingerprint = r2.thumbmark_fingerprint, false) AS same_thumbmark,
@@ -417,6 +425,7 @@ func (db *AdminDB) ListSuspiciousReviewPairs(ctx context.Context, opts ListSuspi
 				created_delta_seconds < 3600 AS close_timing,
 				(
 					(CASE WHEN same_ip AND same_uaeu_ip THEN 1 WHEN same_ip THEN 3 ELSE 0 END) +
+					(CASE WHEN same_session THEN 6 ELSE 0 END) +
 					(CASE WHEN same_user THEN 5 ELSE 0 END) +
 					(CASE WHEN same_user_agent THEN 2 ELSE 0 END) +
 					(CASE WHEN same_thumbmark THEN 4 ELSE 0 END) +
@@ -437,6 +446,7 @@ func (db *AdminDB) ListSuspiciousReviewPairs(ctx context.Context, opts ListSuspi
 			created_delta_seconds,
 			same_ip,
 			same_uaeu_ip,
+			same_session,
 			same_user,
 			same_user_agent,
 			same_thumbmark,
@@ -478,6 +488,7 @@ func (db *AdminDB) ListSuspiciousReviewPairs(ctx context.Context, opts ListSuspi
 			&row.CreatedDeltaSeconds,
 			&row.SameIP,
 			&row.SameUaeuIP,
+			&row.SameSession,
 			&row.SameUser,
 			&row.SameUserAgent,
 			&row.SameThumbmark,
@@ -527,6 +538,7 @@ func (db *AdminDB) ListSuspiciousReviewPairs(ctx context.Context, opts ListSuspi
 			CreatedDeltaSeconds: row.CreatedDeltaSeconds,
 			SameIP:              row.SameIP,
 			SameUaeuIP:          row.SameUaeuIP,
+			SameSession:         row.SameSession,
 			SameUser:            row.SameUser,
 			SameUserAgent:       row.SameUserAgent,
 			SameThumbmark:       row.SameThumbmark,
@@ -573,74 +585,30 @@ func (db *AdminDB) SetReviewVisibility(ctx context.Context, decision ReviewVisib
 	}, nil
 }
 
-func (db *AdminDB) SetReviewPairVisibility(ctx context.Context, decision ReviewPairVisibilityDecision) (*PairDecisionResult, error) {
-	tx, err := db.db.Pool.Begin(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback(ctx)
-
-	firstID := decision.Review1ID
-	secondID := decision.Review2ID
-	if secondID < firstID {
-		firstID, secondID = secondID, firstID
-	}
-
-	first, err := updateReviewVisibilityInTx(ctx, tx, ReviewVisibilityDecision{
-		ReviewID:          firstID,
-		Visible:           decision.Visible,
-		ActorUserID:       decision.ActorUserID,
-		ReasonCode:        decision.ReasonCode,
-		Note:              decision.Note,
-		ResolveReports:    decision.ResolveReports,
-		SkipAlreadyHidden: true,
+func (db *AdminDB) KeepLatestReviewInPair(ctx context.Context, decision ReviewPairKeepLatestDecision) (*PairDecisionResult, error) {
+	result, err := db.KeepLatestReviewsInPairs(ctx, ReviewPairBulkKeepLatestDecision{
+		Pairs: []ReviewPairRef{{
+			Review1ID: decision.Review1ID,
+			Review2ID: decision.Review2ID,
+		}},
+		ActorUserID:    decision.ActorUserID,
+		ReasonCode:     decision.ReasonCode,
+		Note:           decision.Note,
+		ResolveReports: decision.ResolveReports,
 	})
 	if err != nil {
 		return nil, err
 	}
-
-	second, err := updateReviewVisibilityInTx(ctx, tx, ReviewVisibilityDecision{
-		ReviewID:          secondID,
-		Visible:           decision.Visible,
-		ActorUserID:       decision.ActorUserID,
-		ReasonCode:        decision.ReasonCode,
-		Note:              decision.Note,
-		ResolveReports:    decision.ResolveReports,
-		SkipAlreadyHidden: true,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	if err := tx.Commit(ctx); err != nil {
-		return nil, err
-	}
-
-	reviews, err := db.loadReviews(ctx, []int64{decision.Review1ID, decision.Review2ID})
-	if err != nil {
-		return nil, err
-	}
-
-	reviewsByID := make(map[int64]v1.AdminReview, len(reviews))
-	for _, review := range reviews {
-		reviewsByID[review.ID] = review
-	}
-
-	review1, ok1 := reviewsByID[decision.Review1ID]
-	review2, ok2 := reviewsByID[decision.Review2ID]
-	if !ok1 || !ok2 {
+	if len(result.Pairs) != 1 {
 		return nil, ErrNotFound
 	}
 
-	return &PairDecisionResult{
-		Review1:             &review1,
-		Review2:             &review2,
-		ResolvedReportCount: first.ResolvedReportCount + second.ResolvedReportCount,
-		Action:              pairVisibilityAction(decision.Visible, first, second),
-	}, nil
+	pair := result.Pairs[0]
+	pair.ResolvedReportCount = result.ResolvedReportCount
+	return &pair, nil
 }
 
-func (db *AdminDB) SetReviewPairsVisibility(ctx context.Context, decision ReviewPairBulkVisibilityDecision) (*PairBatchDecisionResult, error) {
+func (db *AdminDB) KeepLatestReviewsInPairs(ctx context.Context, decision ReviewPairBulkKeepLatestDecision) (*PairBatchDecisionResult, error) {
 	tx, err := db.db.Pool.Begin(ctx)
 	if err != nil {
 		return nil, err
@@ -666,11 +634,31 @@ func (db *AdminDB) SetReviewPairsVisibility(ctx context.Context, decision Review
 	})
 
 	resultsByID := make(map[int64]*visibilityUpdateResult, len(reviewIDs))
-	totalResolvedReports := int64(0)
+	reviewStates, err := lockReviewStates(ctx, tx, reviewIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	keptReviewIDs := latestReviewIDsByPairComponent(decision.Pairs, reviewStates)
+	targetReviewIDs := make([]int64, 0, len(reviewIDs)-len(keptReviewIDs))
 	for _, reviewID := range reviewIDs {
+		state := reviewStates[reviewID]
+		if _, keep := keptReviewIDs[reviewID]; keep {
+			resultsByID[reviewID] = &visibilityUpdateResult{
+				PreviousVisible: state.Visible,
+				Action:          "skipped",
+				Skipped:         true,
+			}
+			continue
+		}
+		targetReviewIDs = append(targetReviewIDs, reviewID)
+	}
+
+	totalResolvedReports := int64(0)
+	for _, reviewID := range targetReviewIDs {
 		result, err := updateReviewVisibilityInTx(ctx, tx, ReviewVisibilityDecision{
 			ReviewID:          reviewID,
-			Visible:           decision.Visible,
+			Visible:           false,
 			ActorUserID:       decision.ActorUserID,
 			ReasonCode:        decision.ReasonCode,
 			Note:              decision.Note,
@@ -709,7 +697,7 @@ func (db *AdminDB) SetReviewPairsVisibility(ctx context.Context, decision Review
 
 		first := resultsByID[pair.Review1ID]
 		second := resultsByID[pair.Review2ID]
-		action := pairVisibilityAction(decision.Visible, first, second)
+		action := pairVisibilityAction(false, first, second)
 		if action != "skipped" {
 			anyChanged = true
 		}
@@ -722,7 +710,7 @@ func (db *AdminDB) SetReviewPairsVisibility(ctx context.Context, decision Review
 
 	action := "skipped"
 	if anyChanged {
-		action = reviewVisibilityAction(true, decision.Visible)
+		action = reviewVisibilityAction(true, false)
 	}
 
 	return &PairBatchDecisionResult{
@@ -730,6 +718,90 @@ func (db *AdminDB) SetReviewPairsVisibility(ctx context.Context, decision Review
 		ResolvedReportCount: totalResolvedReports,
 		Action:              action,
 	}, nil
+}
+
+type reviewVisibilityState struct {
+	CreatedAt time.Time
+	Visible   bool
+}
+
+func lockReviewStates(ctx context.Context, tx queryExecRunner, reviewIDs []int64) (map[int64]reviewVisibilityState, error) {
+	rows, err := tx.Query(ctx, `
+		SELECT id, created_at, visible
+		FROM professor.review
+		WHERE id = ANY($1::bigint[]) AND deleted_at IS NULL
+		ORDER BY id
+		FOR UPDATE`, reviewIDs)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	states := make(map[int64]reviewVisibilityState, len(reviewIDs))
+	for rows.Next() {
+		var (
+			id    int64
+			state reviewVisibilityState
+		)
+		if err := rows.Scan(&id, &state.CreatedAt, &state.Visible); err != nil {
+			return nil, err
+		}
+		states[id] = state
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(states) != len(reviewIDs) {
+		return nil, ErrNotFound
+	}
+	return states, nil
+}
+
+func latestReviewIDsByPairComponent(pairs []ReviewPairRef, states map[int64]reviewVisibilityState) map[int64]struct{} {
+	parents := make(map[int64]int64, len(states))
+	for id := range states {
+		parents[id] = id
+	}
+
+	var find func(int64) int64
+	find = func(id int64) int64 {
+		parent := parents[id]
+		if parent != id {
+			parents[id] = find(parent)
+		}
+		return parents[id]
+	}
+	union := func(firstID, secondID int64) {
+		firstRoot := find(firstID)
+		secondRoot := find(secondID)
+		if firstRoot != secondRoot {
+			parents[secondRoot] = firstRoot
+		}
+	}
+
+	for _, pair := range pairs {
+		union(pair.Review1ID, pair.Review2ID)
+	}
+
+	latestByRoot := make(map[int64]int64)
+	for id, state := range states {
+		root := find(id)
+		latestID, ok := latestByRoot[root]
+		if !ok {
+			latestByRoot[root] = id
+			continue
+		}
+		latestState := states[latestID]
+		if state.CreatedAt.After(latestState.CreatedAt) || (state.CreatedAt.Equal(latestState.CreatedAt) && id > latestID) {
+			latestByRoot[root] = id
+		}
+	}
+
+	kept := make(map[int64]struct{}, len(latestByRoot))
+	for _, id := range latestByRoot {
+		kept[id] = struct{}{}
+	}
+	return kept
 }
 
 type visibilityUpdateResult struct {
@@ -741,6 +813,7 @@ type visibilityUpdateResult struct {
 
 type queryExecRunner interface {
 	txRunner
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
 	QueryRow(ctx context.Context, sql string, arguments ...any) pgx.Row
 }
 

@@ -234,6 +234,7 @@ export type AdminSuspiciousReviewPair = {
     created_delta_seconds: number;
     same_ip: boolean;
     same_uaeu_ip: boolean;
+    same_session: boolean;
     same_user: boolean;
     same_user_agent: boolean;
     same_thumbmark: boolean;

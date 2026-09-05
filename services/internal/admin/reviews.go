@@ -172,9 +172,9 @@ func (s *Server) ListSuspiciousReviewPairs() http.Handler {
 		pairs, err := s.db.ListSuspiciousReviewPairs(r.Context(), admindb.ListSuspiciousReviewPairOptions{
 			Limit:               limit,
 			Offset:              offset,
-			MinScore:            parseBoundedInt(r.URL.Query().Get("min_score"), 5, 0, 17),
+			MinScore:            parseBoundedInt(r.URL.Query().Get("min_score"), 5, 0, 31),
 			SimilarityThreshold: parseBoundedFloat(r.URL.Query().Get("similarity_threshold"), defaultSimilarityThreshold, 0.3, 1),
-			Visible:             parseChoiceQuery(r, "visible", "at_least_one", "at_least_one", "both", "include_hidden"),
+			Visible:             parseChoiceQuery(r, "visible", "both", "at_least_one", "both", "include_hidden"),
 			ProfessorEmail:      strings.TrimSpace(r.URL.Query().Get("professor_email")),
 			Search:              strings.TrimSpace(r.URL.Query().Get("search")),
 			IncludeContentOnly:  parseBoolQuery(r, "include_content_only", false),
@@ -227,17 +227,16 @@ func (s *Server) HideSuspiciousReviewPair() http.Handler {
 			resolveReports = *request.ResolveReports
 		}
 
-		result, err := s.db.SetReviewPairVisibility(ctx, admindb.ReviewPairVisibilityDecision{
+		result, err := s.db.KeepLatestReviewInPair(ctx, admindb.ReviewPairKeepLatestDecision{
 			Review1ID:      *request.Review1ID,
 			Review2ID:      *request.Review2ID,
-			Visible:        false,
 			ActorUserID:    s.actorUserID(ctx),
 			ReasonCode:     reasonCode,
 			Note:           cleanOptionalText(request.Note),
 			ResolveReports: resolveReports,
 		})
 		if err != nil {
-			s.writeDecisionError(w, r, err, "failed to hide suspicious review pair")
+			s.writeDecisionError(w, r, err, "failed to hide older suspicious review")
 			return
 		}
 
@@ -301,16 +300,15 @@ func (s *Server) HideSuspiciousReviewPairs() http.Handler {
 			resolveReports = *request.ResolveReports
 		}
 
-		result, err := s.db.SetReviewPairsVisibility(ctx, admindb.ReviewPairBulkVisibilityDecision{
+		result, err := s.db.KeepLatestReviewsInPairs(ctx, admindb.ReviewPairBulkKeepLatestDecision{
 			Pairs:          pairs,
-			Visible:        false,
 			ActorUserID:    s.actorUserID(ctx),
 			ReasonCode:     reasonCode,
 			Note:           cleanOptionalText(request.Note),
 			ResolveReports: resolveReports,
 		})
 		if err != nil {
-			s.writeDecisionError(w, r, err, "failed to hide suspicious review pairs")
+			s.writeDecisionError(w, r, err, "failed to hide older suspicious reviews")
 			return
 		}
 

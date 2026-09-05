@@ -33,7 +33,6 @@ import {
     type AdminReview,
     type AdminSuspiciousReviewFilters,
     type AdminSuspiciousReviewPair,
-    hideSuspiciousReviewPair,
     hideSuspiciousReviewPairs,
     listAdminSuspiciousReviewPairs,
 } from "@/lib/admin_api";
@@ -42,19 +41,27 @@ import styles from "./suspicious_reviews.module.scss";
 
 type LoadState = "loading" | "ready" | "error";
 type BadgeTone = "default" | "warning" | "danger" | "info" | "success" | "outline";
+type SuspiciousReviewGroup = {
+    key: string;
+    pairs: AdminSuspiciousReviewPair[];
+    reviews: AdminReview[];
+    suspicionScore: number;
+    contentSimilarity: number;
+    createdSpanSeconds: number;
+};
 
 const defaultFilters: AdminSuspiciousReviewFilters = {
     min_score: "5",
     similarity_threshold: "0.5",
-    visible: "at_least_one",
+    visible: "both",
     search: "",
     professor_email: "",
     include_content_only: "false",
 };
 
 const visibleOptions: { label: string; value: AdminSuspiciousReviewFilters["visible"] }[] = [
+    {label: "All matched reviews visible", value: "both"},
     {label: "At least one visible", value: "at_least_one"},
-    {label: "Both visible", value: "both"},
     {label: "Include hidden", value: "include_hidden"},
 ];
 
@@ -71,7 +78,7 @@ export function SuspiciousReviewsPage() {
     const [loadState, setLoadState] = useState<LoadState>("loading");
     const [error, setError] = useState<string | null>(null);
     const [isRefreshing, setIsRefreshing] = useState(false);
-    const [selectedPairKeys, setSelectedPairKeys] = useState<Set<string>>(new Set());
+    const [selectedGroupKeys, setSelectedGroupKeys] = useState<Set<string>>(new Set());
     const [bulkReason, setBulkReason] = useState("");
     const [bulkNote, setBulkNote] = useState("");
     const [bulkPending, setBulkPending] = useState(false);
@@ -113,7 +120,7 @@ export function SuspiciousReviewsPage() {
         event?.preventDefault();
         setFilters({...draftFilters});
         setFiltersOpen(false);
-        setSelectedPairKeys(new Set());
+        setSelectedGroupKeys(new Set());
     }
 
     function openFilters() {
@@ -134,10 +141,12 @@ export function SuspiciousReviewsPage() {
         setDraftFilters(defaultFilters);
         setFilters(defaultFilters);
         setFiltersOpen(false);
-        setSelectedPairKeys(new Set());
+        setSelectedGroupKeys(new Set());
     }
 
-    const totalSignals = useMemo(() => pairs.reduce((sum, pair) => sum + pairSignals(pair, showSensitive).length, 0), [pairs, showSensitive]);
+    const groups = useMemo(() => groupSuspiciousReviewPairs(pairs), [pairs]);
+    const totalSignals = useMemo(() => groups.reduce((sum, group) => sum + groupSignals(group, showSensitive).length, 0), [groups, showSensitive]);
+    const extraReviewCount = useMemo(() => groups.reduce((sum, group) => sum + Math.max(0, group.reviews.length - 1), 0), [groups]);
     const activeFilterCount = countActiveFilters(filters);
     const draftFilterCount = countActiveFilters(draftFilters);
     const appliedFilterChips = useMemo(() => filterChips(filters), [filters]);
@@ -145,17 +154,17 @@ export function SuspiciousReviewsPage() {
     const defaultFiltersSelected = filtersEqual(filters, defaultFilters);
     const defaultDraftSelected = filtersEqual(draftFilters, defaultFilters);
     const reasonOptions = useMemo(() => activeReasonOptions(reasons), [reasons]);
-    const visiblePairKeys = useMemo(() => pairs.map(pairKey), [pairs]);
-    const selectedVisibleCount = visiblePairKeys.filter(key => selectedPairKeys.has(key)).length;
-    const allVisiblePairsSelected = visiblePairKeys.length > 0 && selectedVisibleCount === visiblePairKeys.length;
+    const visibleGroupKeys = useMemo(() => groups.map(group => group.key), [groups]);
+    const selectedVisibleCount = visibleGroupKeys.filter(key => selectedGroupKeys.has(key)).length;
+    const allVisibleGroupsSelected = visibleGroupKeys.length > 0 && selectedVisibleCount === visibleGroupKeys.length;
 
     useEffect(() => {
-        const visibleKeys = new Set(visiblePairKeys);
-        setSelectedPairKeys(current => {
+        const visibleKeys = new Set(visibleGroupKeys);
+        setSelectedGroupKeys(current => {
             const next = new Set([...current].filter(key => visibleKeys.has(key)));
             return next.size === current.size ? current : next;
         });
-    }, [visiblePairKeys]);
+    }, [visibleGroupKeys]);
 
     useEffect(() => {
         setBulkReason(current => (
@@ -197,10 +206,10 @@ export function SuspiciousReviewsPage() {
         })));
     }
 
-    function togglePairSelection(key: string, checked: boolean) {
+    function toggleGroupSelection(key: string, checked: boolean) {
         setBulkMessage("");
         setBulkError("");
-        setSelectedPairKeys(current => {
+        setSelectedGroupKeys(current => {
             const next = new Set(current);
             if (checked) {
                 next.add(key);
@@ -214,29 +223,29 @@ export function SuspiciousReviewsPage() {
     function toggleVisibleSelection() {
         setBulkMessage("");
         setBulkError("");
-        setSelectedPairKeys(current => {
+        setSelectedGroupKeys(current => {
             const next = new Set(current);
-            if (allVisiblePairsSelected) {
-                visiblePairKeys.forEach(key => next.delete(key));
+            if (allVisibleGroupsSelected) {
+                visibleGroupKeys.forEach(key => next.delete(key));
             } else {
-                visiblePairKeys.forEach(key => next.add(key));
+                visibleGroupKeys.forEach(key => next.add(key));
             }
             return next;
         });
     }
 
-    function clearPairSelection() {
+    function clearGroupSelection() {
         setBulkMessage("");
         setBulkError("");
-        setSelectedPairKeys(new Set());
+        setSelectedGroupKeys(new Set());
     }
 
-    async function runBulkHideBoth(event: FormEvent<HTMLFormElement>) {
+    async function runBulkKeepLatest(event: FormEvent<HTMLFormElement>) {
         event.preventDefault();
-        const targets = pairs.filter(pair => selectedPairKeys.has(pairKey(pair)));
+        const targets = groups.filter(group => selectedGroupKeys.has(group.key));
         if (targets.length === 0) return;
         if (!bulkReason) {
-            setBulkError("Choose a reason before hiding selected pairs.");
+            setBulkError("Choose a reason before hiding older reviews.");
             return;
         }
 
@@ -246,7 +255,7 @@ export function SuspiciousReviewsPage() {
 
         try {
             const response = await hideSuspiciousReviewPairs({
-                pairs: targets.map(pair => ({
+                pairs: targets.flatMap(group => group.pairs).map(pair => ({
                     review_1_id: pair.review_1.id,
                     review_2_id: pair.review_2.id,
                 })),
@@ -255,10 +264,11 @@ export function SuspiciousReviewsPage() {
                 resolve_reports: true,
             });
             response.pairs.forEach(pair => updatePairReviews(pair.review_1, pair.review_2));
-            setSelectedPairKeys(new Set());
-            setBulkMessage(bulkSuccessMessage(response.pairs.length, response.resolved_report_count));
+            setSelectedGroupKeys(new Set());
+            const olderReviewCount = targets.reduce((sum, group) => sum + visibleOlderReviewCount(group), 0);
+            setBulkMessage(bulkSuccessMessage(targets.length, olderReviewCount, response.resolved_report_count));
         } catch (err: unknown) {
-            setBulkError(err instanceof AdminApiError ? err.message : "Selected pairs could not be hidden.");
+            setBulkError(err instanceof AdminApiError ? err.message : "Older reviews could not be hidden.");
         } finally {
             setBulkPending(false);
         }
@@ -285,8 +295,8 @@ export function SuspiciousReviewsPage() {
             </div>
 
             <section className={styles.summaryStrip} aria-label="Suspicious review summary">
-                <SummaryStat icon={<Gauge size={16}/>} label="Pairs" value={pairs.length}/>
-                <SummaryStat icon={<Filter size={16}/>} label="Filters" value={activeFilterCount}/>
+                <SummaryStat icon={<UserRound size={16}/>} label="Repeat groups" value={groups.length}/>
+                <SummaryStat icon={<Gauge size={16}/>} label="Older reviews" value={extraReviewCount}/>
                 <SummaryStat icon={<AlertCircle size={16}/>} label="Signals" value={totalSignals}/>
             </section>
 
@@ -307,7 +317,7 @@ export function SuspiciousReviewsPage() {
                             <Input
                                 aria-label="Minimum score"
                                 min="0"
-                                max="17"
+                                max="31"
                                 type="number"
                                 value={draftFilters.min_score}
                                 onChange={event => updateDraft("min_score", event.target.value)}
@@ -363,7 +373,7 @@ export function SuspiciousReviewsPage() {
                             </header>
 
                             <div className={styles.filterSheetBody}>
-                                <FilterGroup title="Find pairs">
+                                <FilterGroup title="Find repeated reviewers">
                                     <label className={styles.filterField}>
                                         <span>Search</span>
                                         <Input
@@ -396,7 +406,7 @@ export function SuspiciousReviewsPage() {
                                             <span>Minimum score</span>
                                             <Input
                                                 min="0"
-                                                max="17"
+                                                max="31"
                                                 type="number"
                                                 value={draftFilters.min_score}
                                                 onChange={event => updateDraft("min_score", event.target.value)}
@@ -450,15 +460,15 @@ export function SuspiciousReviewsPage() {
                 ), document.body)}
             </section>
 
-            {pairs.length > 0 && (
-                <form className={styles.bulkBar} onSubmit={runBulkHideBoth}>
+            {groups.length > 0 && (
+                <form className={styles.bulkBar} onSubmit={runBulkKeepLatest}>
                     <label className={styles.selectionToggle}>
                         <input
-                            checked={allVisiblePairsSelected}
+                            checked={allVisibleGroupsSelected}
                             type="checkbox"
                             onChange={toggleVisibleSelection}
                         />
-                        <span>{selectedVisibleCount} of {visiblePairKeys.length} pairs selected</span>
+                        <span>{selectedVisibleCount} of {visibleGroupKeys.length} groups selected</span>
                     </label>
                     <label className={styles.bulkField}>
                         <span>Reason</span>
@@ -484,12 +494,12 @@ export function SuspiciousReviewsPage() {
                         />
                     </label>
                     <div className={styles.bulkActions}>
-                        <Button disabled={selectedVisibleCount === 0 || bulkPending} type="button" variant="outline" onClick={clearPairSelection}>
+                        <Button disabled={selectedVisibleCount === 0 || bulkPending} type="button" variant="outline" onClick={clearGroupSelection}>
                             Clear
                         </Button>
                         <Button disabled={selectedVisibleCount === 0 || bulkPending || !bulkReason} type="submit" variant="destructive">
                             {bulkPending ? <LoaderCircle className={styles.spin} size={16}/> : <EyeOff size={16}/>}
-                            Hide selected
+                            Keep latest in selected
                         </Button>
                     </div>
                     {bulkMessage && <p className={styles.actionStatus}>{bulkMessage}</p>}
@@ -512,26 +522,26 @@ export function SuspiciousReviewsPage() {
                         </Button>
                     </div>
                 )}
-                {loadState === "ready" && pairs.length === 0 && (
+                {loadState === "ready" && groups.length === 0 && (
                     <div className={styles.stateNotice}>
                         <CheckCircle2 size={20}/>
                         <div>
-                            <strong>No suspicious pairs found</strong>
-                            <span>Try lowering the minimum score or widening the visibility filter.</span>
+                            <strong>No repeated reviewers found</strong>
+                            <span>Each visible reviewer currently has at most one matched review per professor.</span>
                         </div>
                     </div>
                 )}
-                {pairs.length > 0 && (
+                {groups.length > 0 && (
                     <div className={styles.pairList}>
-                        {pairs.map(pair => (
-                            <SuspiciousPairRow
-                                key={`${pair.review_1.id}-${pair.review_2.id}`}
-                                pair={pair}
+                        {groups.map(group => (
+                            <SuspiciousGroupRow
+                                key={group.key}
+                                group={group}
                                 reasonOptions={reasonOptions}
-                                selectedForBatch={selectedPairKeys.has(pairKey(pair))}
+                                selectedForBatch={selectedGroupKeys.has(group.key)}
                                 showSensitive={showSensitive}
-                                onPairHidden={updatePairReviews}
-                                onSelectionChange={checked => togglePairSelection(pairKey(pair), checked)}
+                                onGroupUpdated={updates => updates.forEach(pair => updatePairReviews(pair.review_1, pair.review_2))}
+                                onSelectionChange={checked => toggleGroupSelection(group.key, checked)}
                                 onOpenReview={review => openEntity({type: "review", id: review.id})}
                             />
                         ))}
@@ -563,30 +573,32 @@ function FilterGroup({title, children}: { title: string; children: ReactNode }) 
     );
 }
 
-function SuspiciousPairRow({
-    pair,
+function SuspiciousGroupRow({
+    group,
     reasonOptions,
     selectedForBatch,
     showSensitive,
-    onPairHidden,
+    onGroupUpdated,
     onSelectionChange,
     onOpenReview,
 }: {
-    pair: AdminSuspiciousReviewPair;
+    group: SuspiciousReviewGroup;
     reasonOptions: AdminReason[];
     selectedForBatch: boolean;
     showSensitive: boolean;
-    onPairHidden: (review1: AdminReview, review2: AdminReview) => void;
+    onGroupUpdated: (pairs: { review_1: AdminReview; review_2: AdminReview }[]) => void;
     onSelectionChange: (checked: boolean) => void;
     onOpenReview: (review: AdminReview) => void;
 }) {
-    const signals = pairSignals(pair, showSensitive);
+    const latestReview = group.reviews[0];
+    const olderReviews = group.reviews.slice(1);
+    const visibleOlderCount = olderReviews.filter(review => review.visible).length;
+    const signals = groupSignals(group, showSensitive);
     const [reason, setReason] = useState("");
     const [note, setNote] = useState("");
     const [pending, setPending] = useState(false);
     const [message, setMessage] = useState("");
     const [error, setError] = useState("");
-    const bothHidden = !pair.review_1.visible && !pair.review_2.visible;
 
     useEffect(() => {
         setReason(current => (
@@ -596,10 +608,10 @@ function SuspiciousPairRow({
         ));
     }, [reasonOptions]);
 
-    async function runHideBoth(event: FormEvent<HTMLFormElement>) {
+    async function runKeepLatest(event: FormEvent<HTMLFormElement>) {
         event.preventDefault();
         if (!reason) {
-            setError("Choose a reason before hiding reviews.");
+            setError("Choose a reason before hiding older reviews.");
             return;
         }
 
@@ -608,19 +620,21 @@ function SuspiciousPairRow({
         setMessage("");
 
         try {
-            const response = await hideSuspiciousReviewPair({
-                review_1_id: pair.review_1.id,
-                review_2_id: pair.review_2.id,
+            const response = await hideSuspiciousReviewPairs({
+                pairs: group.pairs.map(pair => ({
+                    review_1_id: pair.review_1.id,
+                    review_2_id: pair.review_2.id,
+                })),
                 reason_code: reason,
                 note: note || undefined,
                 resolve_reports: true,
             });
-            onPairHidden(response.review_1, response.review_2);
+            onGroupUpdated(response.pairs);
             setMessage(response.resolved_report_count > 0
-                ? `Both reviews hidden. ${response.resolved_report_count} reports resolved.`
-                : "Both reviews hidden.");
+                ? `${visibleOlderCount} older ${pluralizeReview(visibleOlderCount)} hidden. Latest review #${latestReview.id} kept. ${response.resolved_report_count} reports resolved.`
+                : `${visibleOlderCount} older ${pluralizeReview(visibleOlderCount)} hidden. Latest review #${latestReview.id} kept.`);
         } catch (err) {
-            setError(err instanceof Error ? err.message : "Could not hide both reviews.");
+            setError(err instanceof Error ? err.message : "Could not hide older reviews.");
         } finally {
             setPending(false);
         }
@@ -630,24 +644,25 @@ function SuspiciousPairRow({
         <article className={cn(styles.pairRow, selectedForBatch && styles.pairSelected)}>
             <header className={styles.pairHeader}>
                 <div className={styles.pairTitle}>
-                    <label className={styles.pairSelector} aria-label={`Select reviews ${pair.review_1.id} and ${pair.review_2.id}`}>
+                    <label className={styles.pairSelector} aria-label={`Select ${group.reviews.length} matched reviews for ${latestReview.professor_name}`}>
                         <input
                             checked={selectedForBatch}
                             type="checkbox"
                             onChange={event => onSelectionChange(event.target.checked)}
                         />
                     </label>
-                    <Badge className={styles.scoreBadge} variant={scoreTone(pair.suspicion_score)}>
-                        Score {pair.suspicion_score}
+                    <Badge className={styles.scoreBadge} variant={scoreTone(group.suspicionScore)}>
+                        Score {group.suspicionScore}
                     </Badge>
                     <div>
-                        <strong>{pair.review_1.professor_name}</strong>
-                        <span>{pair.review_1.professor_email}</span>
+                        <strong>{latestReview.professor_name}</strong>
+                        <span>{latestReview.professor_email}</span>
                     </div>
                 </div>
                 <div className={styles.pairMeta}>
-                    <Badge variant="info">{formatPercent(pair.content_similarity)} text match</Badge>
-                    <Badge variant="outline">{formatDuration(pair.created_delta_seconds)} apart</Badge>
+                    <Badge variant="danger">{group.reviews.length} reviews from one matched reviewer</Badge>
+                    <Badge variant="info">Up to {formatPercent(group.contentSimilarity)} text match</Badge>
+                    <Badge variant="outline">{formatDuration(group.createdSpanSeconds)} span</Badge>
                 </div>
             </header>
 
@@ -663,16 +678,33 @@ function SuspiciousPairRow({
             </div>
 
             <div className={styles.reviewGrid}>
-                <ReviewCard label="First review" review={pair.review_1} showSensitive={showSensitive} onOpen={() => onOpenReview(pair.review_1)}/>
-                <ReviewCard label="Second review" review={pair.review_2} showSensitive={showSensitive} onOpen={() => onOpenReview(pair.review_2)}/>
+                <ReviewCard
+                    isLatest
+                    label="Latest review · keep"
+                    review={latestReview}
+                    showSensitive={showSensitive}
+                    onOpen={() => onOpenReview(latestReview)}
+                />
+                {olderReviews.map((review, index) => (
+                    <ReviewCard
+                        key={review.id}
+                        label={`Older review ${index + 1}`}
+                        review={review}
+                        showSensitive={showSensitive}
+                        onOpen={() => onOpenReview(review)}
+                    />
+                ))}
             </div>
 
-            <form className={styles.pairAction} onSubmit={runHideBoth}>
+            <form className={styles.pairAction} onSubmit={runKeepLatest}>
+                <p className={styles.actionExplainer}>
+                    Review #{latestReview.id} is the newest and will remain unchanged. {visibleOlderCount} visible older {pluralizeReview(visibleOlderCount)} will stop counting.
+                </p>
                 <label className={styles.actionField}>
                     <span>Reason</span>
                     <select
                         className={styles.selectInput}
-                        disabled={pending || bothHidden || reasonOptions.length === 0}
+                        disabled={pending || visibleOlderCount === 0 || reasonOptions.length === 0}
                         value={reason}
                         onChange={event => setReason(event.target.value)}
                     >
@@ -685,17 +717,17 @@ function SuspiciousPairRow({
                 <label className={cn(styles.actionField, styles.actionNote)}>
                     <span>Internal note</span>
                     <Input
-                        disabled={pending || bothHidden}
+                        disabled={pending || visibleOlderCount === 0}
                         placeholder="Optional"
                         value={note}
                         onChange={event => setNote(event.target.value)}
                     />
                 </label>
-                <Button disabled={pending || bothHidden || !reason} type="submit" variant="destructive">
+                <Button disabled={pending || visibleOlderCount === 0 || !reason} type="submit" variant="destructive">
                     {pending ? <LoaderCircle className={styles.spin} size={16}/> : <EyeOff size={16}/>}
-                    Hide both
+                    Hide {visibleOlderCount} older
                 </Button>
-                {message ? <p className={styles.actionStatus}>{message}</p> : bothHidden && <p className={styles.actionStatus}>Both reviews are hidden.</p>}
+                {message ? <p className={styles.actionStatus}>{message}</p> : visibleOlderCount === 0 && <p className={styles.actionStatus}>Only the latest matched review can still count.</p>}
                 {error && <p className={styles.actionError}>{error}</p>}
             </form>
         </article>
@@ -703,18 +735,20 @@ function SuspiciousPairRow({
 }
 
 function ReviewCard({
+    isLatest = false,
     label,
     review,
     showSensitive,
     onOpen,
 }: {
+    isLatest?: boolean;
     label: string;
     review: AdminReview;
     showSensitive: boolean;
     onOpen: () => void;
 }) {
     return (
-        <article className={styles.reviewCard}>
+        <article className={cn(styles.reviewCard, isLatest && styles.latestReviewCard)}>
             <div className={styles.reviewCardHead}>
                 <div>
                     <span>{label}</span>
@@ -727,6 +761,7 @@ function ReviewCard({
             </div>
             <BidiParagraph className={styles.reviewText}>{review.text}</BidiParagraph>
             <div className={styles.reviewBadges}>
+                {isLatest && <Badge variant="success">Latest · counts if visible</Badge>}
                 <Badge variant={review.visible ? "success" : "danger"}>{review.visible ? "Visible" : "Hidden"}</Badge>
                 <Badge variant={review.reviewed ? "success" : "warning"}>{review.reviewed ? "Reviewed" : "Not reviewed"}</Badge>
                 <Badge variant={review.positive ? "success" : "danger"}>{review.score}/5</Badge>
@@ -760,6 +795,91 @@ function SkeletonList() {
     );
 }
 
+function groupSuspiciousReviewPairs(pairs: AdminSuspiciousReviewPair[]): SuspiciousReviewGroup[] {
+    const parents = new Map<string, string>();
+    const reviewsById = new Map<string, AdminReview>();
+
+    for (const pair of pairs) {
+        parents.set(pair.review_1.id, pair.review_1.id);
+        parents.set(pair.review_2.id, pair.review_2.id);
+        reviewsById.set(pair.review_1.id, pair.review_1);
+        reviewsById.set(pair.review_2.id, pair.review_2);
+    }
+
+    function find(id: string): string {
+        const parent = parents.get(id) || id;
+        if (parent !== id) {
+            const root = find(parent);
+            parents.set(id, root);
+            return root;
+        }
+        return parent;
+    }
+
+    function union(firstId: string, secondId: string) {
+        const firstRoot = find(firstId);
+        const secondRoot = find(secondId);
+        if (firstRoot !== secondRoot) {
+            parents.set(secondRoot, firstRoot);
+        }
+    }
+
+    pairs.forEach(pair => union(pair.review_1.id, pair.review_2.id));
+
+    const pairsByRoot = new Map<string, AdminSuspiciousReviewPair[]>();
+    for (const pair of pairs) {
+        const root = find(pair.review_1.id);
+        const groupPairs = pairsByRoot.get(root) || [];
+        groupPairs.push(pair);
+        pairsByRoot.set(root, groupPairs);
+    }
+
+    const groups = [...pairsByRoot.values()].map(groupPairs => {
+        const reviewIds = new Set<string>();
+        for (const pair of groupPairs) {
+            reviewIds.add(pair.review_1.id);
+            reviewIds.add(pair.review_2.id);
+        }
+        const reviews = [...reviewIds]
+            .map(id => reviewsById.get(id))
+            .filter((review): review is AdminReview => Boolean(review))
+            .sort(compareReviewsNewestFirst);
+        const newestTimestamp = Date.parse(reviews[0]?.created_at || "");
+        const oldestTimestamp = Date.parse(reviews[reviews.length - 1]?.created_at || "");
+
+        return {
+            key: [...reviewIds].sort().join(":"),
+            pairs: groupPairs,
+            reviews,
+            suspicionScore: Math.max(...groupPairs.map(pair => pair.suspicion_score)),
+            contentSimilarity: Math.max(...groupPairs.map(pair => pair.content_similarity)),
+            createdSpanSeconds: Number.isFinite(newestTimestamp) && Number.isFinite(oldestTimestamp)
+                ? Math.max(0, Math.round((newestTimestamp - oldestTimestamp) / 1000))
+                : 0,
+        };
+    });
+
+    return groups.sort((first, second) => compareReviewsNewestFirst(first.reviews[0], second.reviews[0]));
+}
+
+function compareReviewsNewestFirst(first?: AdminReview, second?: AdminReview) {
+    const timeDifference = Date.parse(second?.created_at || "") - Date.parse(first?.created_at || "");
+    if (Number.isFinite(timeDifference) && timeDifference !== 0) return timeDifference;
+    return (second?.id || "").localeCompare(first?.id || "", undefined, {numeric: true});
+}
+
+function groupSignals(group: SuspiciousReviewGroup, showSensitive: boolean) {
+    const signalsByKey = new Map<string, ReturnType<typeof pairSignals>[number]>();
+    for (const pair of group.pairs) {
+        for (const signal of pairSignals(pair, showSensitive)) {
+            if (!signalsByKey.has(signal.key)) {
+                signalsByKey.set(signal.key, signal);
+            }
+        }
+    }
+    return [...signalsByKey.values()].sort((first, second) => second.weight - first.weight);
+}
+
 function pairSignals(pair: AdminSuspiciousReviewPair, showSensitive: boolean) {
     const signals: {
         key: string;
@@ -770,6 +890,16 @@ function pairSignals(pair: AdminSuspiciousReviewPair, showSensitive: boolean) {
         detail?: ReactNode;
     }[] = [];
 
+    if (pair.same_session) {
+        signals.push({
+            key: "same_session",
+            label: "Same session",
+            weight: 6,
+            tone: "danger",
+            icon: <UserRound size={13}/>,
+            detail: pair.review_1.session_id ? <EntityLink target={{type: "session", id: pair.review_1.session_id}}>{pair.review_1.session_id}</EntityLink> : undefined,
+        });
+    }
     if (pair.same_user) {
         signals.push({
             key: "same_user",
@@ -920,16 +1050,21 @@ function filterChips(filters: AdminSuspiciousReviewFilters) {
     return chips;
 }
 
-function pairKey(pair: AdminSuspiciousReviewPair) {
-    return `${pair.review_1.id}:${pair.review_2.id}`;
+function visibleOlderReviewCount(group: SuspiciousReviewGroup) {
+    return group.reviews.slice(1).filter(review => review.visible).length;
 }
 
-function bulkSuccessMessage(pairCount: number, resolvedReports: number) {
-    const pairLabel = pairCount === 1 ? "pair" : "pairs";
+function pluralizeReview(count: number) {
+    return count === 1 ? "review" : "reviews";
+}
+
+function bulkSuccessMessage(groupCount: number, reviewCount: number, resolvedReports: number) {
+    const groupLabel = groupCount === 1 ? "group" : "groups";
+    const message = `${reviewCount} older ${pluralizeReview(reviewCount)} hidden across ${groupCount} ${groupLabel}. The latest review in each group was kept.`;
     if (resolvedReports > 0) {
-        return `${pairCount} ${pairLabel} hidden. ${resolvedReports} reports resolved.`;
+        return `${message} ${resolvedReports} reports resolved.`;
     }
-    return `${pairCount} ${pairLabel} hidden.`;
+    return message;
 }
 
 function activeReasonOptions(reasons: AdminReason[]) {
