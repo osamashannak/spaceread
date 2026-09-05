@@ -926,11 +926,9 @@ function sortReviews(reviews: AdminReview[], sort: AdminReviewFilters["sort"]) {
 }
 
 function reviewMatchesFilters(review: AdminReview, filters: AdminReviewFilters) {
-    if (filters.needs_attention && !isReviewInDefaultQueue(review)) return false;
-    if (!filters.needs_attention) {
-        if (filters.deleted === "exclude" && review.deleted_at) return false;
-        if (filters.deleted === "only" && !review.deleted_at) return false;
-    }
+    if (filters.deleted === "exclude" && review.deleted_at) return false;
+    if (filters.deleted === "only" && !review.deleted_at) return false;
+    if (filters.needs_attention && !reviewNeedsAttention(review)) return false;
 
     if (!matchesChoice(filters.visible, review.visible, "visible", "hidden")) return false;
     if (!matchesChoice(filters.reviewed, review.reviewed, "reviewed", "not_reviewed")) return false;
@@ -994,8 +992,7 @@ function reviewMatchesFilters(review: AdminReview, filters: AdminReviewFilters) 
     return true;
 }
 
-function isReviewInDefaultQueue(review: AdminReview) {
-    if (review.deleted_at) return false;
+function reviewNeedsAttention(review: AdminReview) {
     if (!review.visible && review.reviewed) return false;
     return !review.reviewed || openReports(review).length > 0;
 }
@@ -1060,6 +1057,7 @@ function matchesPresence(value: string, actual?: string | null) {
 }
 
 function containsAny(needle: string, values: unknown[]) {
+    if (!needle) return true;
     return values.some(value => containsText(needle, value));
 }
 

@@ -124,7 +124,6 @@ export function SuspiciousReviewsPage() {
     }
 
     function openFilters() {
-        setDraftFilters(filters);
         setFiltersOpen(true);
     }
 

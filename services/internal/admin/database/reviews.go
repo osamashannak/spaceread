@@ -1176,18 +1176,17 @@ func (db *AdminDB) listReviewIDs(ctx context.Context, opts ListReviewOptions) ([
 		}
 	}
 
-	if opts.NeedsAttention {
+	switch opts.Deleted {
+	case "include":
+	case "only":
+		add("r.deleted_at IS NOT NULL")
+	default:
 		add("r.deleted_at IS NULL")
+	}
+
+	if opts.NeedsAttention {
 		add("NOT (r.visible = false AND r.reviewed = true)")
 		add("(r.reviewed = false OR COALESCE(rc.open_report_count, 0) > 0)")
-	} else {
-		switch opts.Deleted {
-		case "include":
-		case "only":
-			add("r.deleted_at IS NOT NULL")
-		default:
-			add("r.deleted_at IS NULL")
-		}
 	}
 
 	addBool("r.visible", opts.Visible)

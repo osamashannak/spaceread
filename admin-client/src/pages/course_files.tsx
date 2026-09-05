@@ -1060,6 +1060,7 @@ function matchesPresence(value: string, actual?: string | null) {
 }
 
 function containsAny(needle: string, values: unknown[]) {
+    if (!needle) return true;
     return values.some(value => containsText(needle, value));
 }
 
