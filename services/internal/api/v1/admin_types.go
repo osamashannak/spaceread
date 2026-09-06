@@ -46,6 +46,7 @@ type AdminReviewListResponse struct {
 	Reviews []AdminReview `json:"reviews"`
 	Limit   int           `json:"limit"`
 	Offset  int           `json:"offset"`
+	Total   int64         `json:"total"`
 }
 
 type AdminSuspiciousReviewPairListResponse struct {
@@ -230,6 +231,7 @@ type AdminReviewVisibilityRequest struct {
 type AdminReviewPairVisibilityRequest struct {
 	Review1ID      *int64  `json:"review_1_id,string" required:"true"`
 	Review2ID      *int64  `json:"review_2_id,string" required:"true"`
+	KeepReviewID   *int64  `json:"keep_review_id,string"`
 	ReasonCode     *string `json:"reason_code" required:"true"`
 	Note           *string `json:"note"`
 	ResolveReports *bool   `json:"resolve_reports"`
@@ -240,8 +242,13 @@ type AdminReviewPairRef struct {
 	Review2ID *int64 `json:"review_2_id,string" required:"true"`
 }
 
+type AdminReviewKeepRef struct {
+	ReviewID *int64 `json:"review_id,string" required:"true"`
+}
+
 type AdminReviewPairBulkVisibilityRequest struct {
 	Pairs          []AdminReviewPairRef `json:"pairs" required:"true"`
+	KeepReviews    []AdminReviewKeepRef `json:"keep_reviews"`
 	ReasonCode     *string              `json:"reason_code" required:"true"`
 	Note           *string              `json:"note"`
 	ResolveReports *bool                `json:"resolve_reports"`

@@ -28,6 +28,13 @@ export type AdminReviewListResponse = {
     reviews: AdminReview[];
     limit: number;
     offset: number;
+    total: number;
+};
+
+export type AdminReviewPageOptions = {
+    limit?: number;
+    offset?: number;
+    randomSeed?: number;
 };
 
 export type AdminSuspiciousReviewPairListResponse = {
@@ -597,8 +604,14 @@ export async function getAdminSession(signal?: AbortSignal) {
     return adminFetch<AdminSessionResponse>("/session", {signal});
 }
 
-export async function listAdminReviews(signal?: AbortSignal, filters?: AdminReviewFilters) {
-    const params = new URLSearchParams({limit: "100"});
+export async function listAdminReviews(signal?: AbortSignal, filters?: AdminReviewFilters, page: AdminReviewPageOptions = {}) {
+    const params = new URLSearchParams({
+        limit: String(page.limit ?? 100),
+        offset: String(page.offset ?? 0),
+    });
+    if (page.randomSeed !== undefined) {
+        params.set("random_seed", String(page.randomSeed));
+    }
     if (filters) {
         for (const [key, value] of Object.entries(filters)) {
             if (value !== "" && value !== "any") {
@@ -668,7 +681,7 @@ export async function setReviewVisibility(
 }
 
 export async function hideSuspiciousReviewPair(
-    body: { review_1_id: string; review_2_id: string; reason_code: string; note?: string; resolve_reports?: boolean },
+    body: { review_1_id: string; review_2_id: string; keep_review_id?: string; reason_code: string; note?: string; resolve_reports?: boolean },
 ) {
     return adminFetch<AdminPairDecisionResponse>("/reviews/suspicious/hide-pair", {
         method: "POST",
@@ -679,6 +692,7 @@ export async function hideSuspiciousReviewPair(
 export async function hideSuspiciousReviewPairs(
     body: {
         pairs: { review_1_id: string; review_2_id: string }[];
+        keep_reviews?: { review_id: string }[];
         reason_code: string;
         note?: string;
         resolve_reports?: boolean;

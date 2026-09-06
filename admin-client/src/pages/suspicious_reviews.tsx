@@ -79,6 +79,7 @@ export function SuspiciousReviewsPage() {
     const [error, setError] = useState<string | null>(null);
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [selectedGroupKeys, setSelectedGroupKeys] = useState<Set<string>>(new Set());
+    const [keptReviewIds, setKeptReviewIds] = useState<Record<string, string>>({});
     const [bulkReason, setBulkReason] = useState("");
     const [bulkNote, setBulkNote] = useState("");
     const [bulkPending, setBulkPending] = useState(false);
@@ -164,6 +165,19 @@ export function SuspiciousReviewsPage() {
             return next.size === current.size ? current : next;
         });
     }, [visibleGroupKeys]);
+
+    useEffect(() => {
+        setKeptReviewIds(current => {
+            const next: Record<string, string> = {};
+            groups.forEach(group => {
+                const currentID = current[group.key];
+                next[group.key] = group.reviews.some(review => review.id === currentID)
+                    ? currentID
+                    : group.reviews[0]?.id;
+            });
+            return keptReviewSelectionsEqual(current, next) ? current : next;
+        });
+    }, [groups]);
 
     useEffect(() => {
         setBulkReason(current => (
@@ -258,14 +272,19 @@ export function SuspiciousReviewsPage() {
                     review_1_id: pair.review_1.id,
                     review_2_id: pair.review_2.id,
                 })),
+                keep_reviews: targets.map(group => ({
+                    review_id: keptReviewIds[group.key] || group.reviews[0].id,
+                })),
                 reason_code: bulkReason,
                 note: bulkNote || undefined,
                 resolve_reports: true,
             });
             response.pairs.forEach(pair => updatePairReviews(pair.review_1, pair.review_2));
             setSelectedGroupKeys(new Set());
-            const olderReviewCount = targets.reduce((sum, group) => sum + visibleOlderReviewCount(group), 0);
-            setBulkMessage(bulkSuccessMessage(targets.length, olderReviewCount, response.resolved_report_count));
+            const hiddenReviewCount = targets.reduce((sum, group) => (
+                sum + visibleReviewsToHideCount(group, keptReviewIds[group.key] || group.reviews[0].id)
+            ), 0);
+            setBulkMessage(bulkSuccessMessage(targets.length, hiddenReviewCount, response.resolved_report_count));
         } catch (err: unknown) {
             setBulkError(err instanceof AdminApiError ? err.message : "Older reviews could not be hidden.");
         } finally {
@@ -498,7 +517,7 @@ export function SuspiciousReviewsPage() {
                         </Button>
                         <Button disabled={selectedVisibleCount === 0 || bulkPending || !bulkReason} type="submit" variant="destructive">
                             {bulkPending ? <LoaderCircle className={styles.spin} size={16}/> : <EyeOff size={16}/>}
-                            Keep latest in selected
+                            Keep chosen in selected
                         </Button>
                     </div>
                     {bulkMessage && <p className={styles.actionStatus}>{bulkMessage}</p>}
@@ -536,10 +555,12 @@ export function SuspiciousReviewsPage() {
                             <SuspiciousGroupRow
                                 key={group.key}
                                 group={group}
+                                keptReviewId={keptReviewIds[group.key] || group.reviews[0].id}
                                 reasonOptions={reasonOptions}
                                 selectedForBatch={selectedGroupKeys.has(group.key)}
                                 showSensitive={showSensitive}
                                 onGroupUpdated={updates => updates.forEach(pair => updatePairReviews(pair.review_1, pair.review_2))}
+                                onKeptReviewChange={reviewId => setKeptReviewIds(current => ({...current, [group.key]: reviewId}))}
                                 onSelectionChange={checked => toggleGroupSelection(group.key, checked)}
                                 onOpenReview={review => openEntity({type: "review", id: review.id})}
                             />
@@ -574,24 +595,29 @@ function FilterGroup({title, children}: { title: string; children: ReactNode }) 
 
 function SuspiciousGroupRow({
     group,
+    keptReviewId,
     reasonOptions,
     selectedForBatch,
     showSensitive,
     onGroupUpdated,
+    onKeptReviewChange,
     onSelectionChange,
     onOpenReview,
 }: {
     group: SuspiciousReviewGroup;
+    keptReviewId: string;
     reasonOptions: AdminReason[];
     selectedForBatch: boolean;
     showSensitive: boolean;
     onGroupUpdated: (pairs: { review_1: AdminReview; review_2: AdminReview }[]) => void;
+    onKeptReviewChange: (reviewId: string) => void;
     onSelectionChange: (checked: boolean) => void;
     onOpenReview: (review: AdminReview) => void;
 }) {
     const latestReview = group.reviews[0];
     const olderReviews = group.reviews.slice(1);
-    const visibleOlderCount = olderReviews.filter(review => review.visible).length;
+    const keptReview = group.reviews.find(review => review.id === keptReviewId) || latestReview;
+    const visibleHideCount = visibleReviewsToHideCount(group, keptReview.id);
     const signals = groupSignals(group, showSensitive);
     const [reason, setReason] = useState("");
     const [note, setNote] = useState("");
@@ -624,14 +650,15 @@ function SuspiciousGroupRow({
                     review_1_id: pair.review_1.id,
                     review_2_id: pair.review_2.id,
                 })),
+                keep_reviews: [{review_id: keptReview.id}],
                 reason_code: reason,
                 note: note || undefined,
                 resolve_reports: true,
             });
             onGroupUpdated(response.pairs);
             setMessage(response.resolved_report_count > 0
-                ? `${visibleOlderCount} older ${pluralizeReview(visibleOlderCount)} hidden. Latest review #${latestReview.id} kept. ${response.resolved_report_count} reports resolved.`
-                : `${visibleOlderCount} older ${pluralizeReview(visibleOlderCount)} hidden. Latest review #${latestReview.id} kept.`);
+                ? `${visibleHideCount} ${pluralizeReview(visibleHideCount)} hidden. Review #${keptReview.id} kept. ${response.resolved_report_count} reports resolved.`
+                : `${visibleHideCount} ${pluralizeReview(visibleHideCount)} hidden. Review #${keptReview.id} kept.`);
         } catch (err) {
             setError(err instanceof Error ? err.message : "Could not hide older reviews.");
         } finally {
@@ -679,17 +706,23 @@ function SuspiciousGroupRow({
             <div className={styles.reviewGrid}>
                 <ReviewCard
                     isLatest
-                    label="Latest review · keep"
+                    isKept={keptReview.id === latestReview.id}
+                    keepChoiceName={`keep-review-${group.key}`}
+                    label="Latest review"
                     review={latestReview}
                     showSensitive={showSensitive}
+                    onKeep={() => onKeptReviewChange(latestReview.id)}
                     onOpen={() => onOpenReview(latestReview)}
                 />
                 {olderReviews.map((review, index) => (
                     <ReviewCard
                         key={review.id}
+                        isKept={keptReview.id === review.id}
+                        keepChoiceName={`keep-review-${group.key}`}
                         label={`Older review ${index + 1}`}
                         review={review}
                         showSensitive={showSensitive}
+                        onKeep={() => onKeptReviewChange(review.id)}
                         onOpen={() => onOpenReview(review)}
                     />
                 ))}
@@ -697,13 +730,13 @@ function SuspiciousGroupRow({
 
             <form className={styles.pairAction} onSubmit={runKeepLatest}>
                 <p className={styles.actionExplainer}>
-                    Review #{latestReview.id} is the newest and will remain unchanged. {visibleOlderCount} visible older {pluralizeReview(visibleOlderCount)} will stop counting.
+                    Review #{keptReview.id} is selected to remain unchanged. {visibleHideCount} other visible {pluralizeReview(visibleHideCount)} will stop counting.
                 </p>
                 <label className={styles.actionField}>
                     <span>Reason</span>
                     <select
                         className={styles.selectInput}
-                        disabled={pending || visibleOlderCount === 0 || reasonOptions.length === 0}
+                        disabled={pending || visibleHideCount === 0 || reasonOptions.length === 0}
                         value={reason}
                         onChange={event => setReason(event.target.value)}
                     >
@@ -716,17 +749,17 @@ function SuspiciousGroupRow({
                 <label className={cn(styles.actionField, styles.actionNote)}>
                     <span>Internal note</span>
                     <Input
-                        disabled={pending || visibleOlderCount === 0}
+                        disabled={pending || visibleHideCount === 0}
                         placeholder="Optional"
                         value={note}
                         onChange={event => setNote(event.target.value)}
                     />
                 </label>
-                <Button disabled={pending || visibleOlderCount === 0 || !reason} type="submit" variant="destructive">
+                <Button disabled={pending || visibleHideCount === 0 || !reason} type="submit" variant="destructive">
                     {pending ? <LoaderCircle className={styles.spin} size={16}/> : <EyeOff size={16}/>}
-                    Hide {visibleOlderCount} older
+                    Hide {visibleHideCount} other
                 </Button>
-                {message ? <p className={styles.actionStatus}>{message}</p> : visibleOlderCount === 0 && <p className={styles.actionStatus}>Only the latest matched review can still count.</p>}
+                {message ? <p className={styles.actionStatus}>{message}</p> : visibleHideCount === 0 && <p className={styles.actionStatus}>Only the selected review can still count.</p>}
                 {error && <p className={styles.actionError}>{error}</p>}
             </form>
         </article>
@@ -735,32 +768,50 @@ function SuspiciousGroupRow({
 
 function ReviewCard({
     isLatest = false,
+    isKept,
+    keepChoiceName,
     label,
     review,
     showSensitive,
+    onKeep,
     onOpen,
 }: {
     isLatest?: boolean;
+    isKept: boolean;
+    keepChoiceName: string;
     label: string;
     review: AdminReview;
     showSensitive: boolean;
+    onKeep: () => void;
     onOpen: () => void;
 }) {
     return (
-        <article className={cn(styles.reviewCard, isLatest && styles.latestReviewCard)}>
+        <article className={cn(styles.reviewCard, isKept && styles.keptReviewCard)}>
             <div className={styles.reviewCardHead}>
                 <div>
                     <span>{label}</span>
                     <strong><EntityLink target={{type: "review", id: review.id}}>#{review.id}</EntityLink></strong>
                 </div>
-                <Button size="sm" type="button" variant="outline" onClick={onOpen}>
-                    <MessageSquareText size={15}/>
-                    Open
-                </Button>
+                <div className={styles.reviewCardActions}>
+                    <label className={styles.keepChoice}>
+                        <input
+                            checked={isKept}
+                            name={keepChoiceName}
+                            type="radio"
+                            onChange={onKeep}
+                        />
+                        <span>Keep this</span>
+                    </label>
+                    <Button size="sm" type="button" variant="outline" onClick={onOpen}>
+                        <MessageSquareText size={15}/>
+                        Open
+                    </Button>
+                </div>
             </div>
             <BidiParagraph className={styles.reviewText}>{review.text}</BidiParagraph>
             <div className={styles.reviewBadges}>
-                {isLatest && <Badge variant="success">Latest · counts if visible</Badge>}
+                {isLatest && <Badge variant="info">Latest</Badge>}
+                {isKept && <Badge variant="success">Selected to keep</Badge>}
                 <Badge variant={review.visible ? "success" : "danger"}>{review.visible ? "Visible" : "Hidden"}</Badge>
                 <Badge variant={review.reviewed ? "success" : "warning"}>{review.reviewed ? "Reviewed" : "Not reviewed"}</Badge>
                 <Badge variant={review.positive ? "success" : "danger"}>{review.score}/5</Badge>
@@ -1049,8 +1100,8 @@ function filterChips(filters: AdminSuspiciousReviewFilters) {
     return chips;
 }
 
-function visibleOlderReviewCount(group: SuspiciousReviewGroup) {
-    return group.reviews.slice(1).filter(review => review.visible).length;
+function visibleReviewsToHideCount(group: SuspiciousReviewGroup, keptReviewId: string) {
+    return group.reviews.filter(review => review.visible && review.id !== keptReviewId).length;
 }
 
 function pluralizeReview(count: number) {
@@ -1059,11 +1110,17 @@ function pluralizeReview(count: number) {
 
 function bulkSuccessMessage(groupCount: number, reviewCount: number, resolvedReports: number) {
     const groupLabel = groupCount === 1 ? "group" : "groups";
-    const message = `${reviewCount} older ${pluralizeReview(reviewCount)} hidden across ${groupCount} ${groupLabel}. The latest review in each group was kept.`;
+    const message = `${reviewCount} ${pluralizeReview(reviewCount)} hidden across ${groupCount} ${groupLabel}. The chosen review in each group was kept.`;
     if (resolvedReports > 0) {
         return `${message} ${resolvedReports} reports resolved.`;
     }
     return message;
+}
+
+function keptReviewSelectionsEqual(first: Record<string, string>, second: Record<string, string>) {
+    const firstKeys = Object.keys(first);
+    const secondKeys = Object.keys(second);
+    return firstKeys.length === secondKeys.length && firstKeys.every(key => first[key] === second[key]);
 }
 
 function activeReasonOptions(reasons: AdminReason[]) {

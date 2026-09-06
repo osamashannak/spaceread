@@ -674,6 +674,25 @@
   gap: 0;
 }
 
+.paginationStatus {
+  align-items: center;
+  background: #f8fbfc;
+  border-top: 1px solid #dce5ec;
+  color: hsl(var(--muted-foreground));
+  display: flex;
+  font-size: 12px;
+  font-weight: 700;
+  gap: 8px;
+  justify-content: center;
+  min-height: 58px;
+  padding: 12px 14px;
+  text-align: center;
+
+  svg {
+    color: hsl(var(--spaceread-blue));
+  }
+}
+
 .stateNotice {
   align-items: center;
   animation: noticeIn 0.18s ease-out both;

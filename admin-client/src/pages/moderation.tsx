@@ -1,4 +1,4 @@
-import {type KeyboardEvent, type ReactNode, useCallback, useEffect, useMemo, useState} from "react";
+import {type KeyboardEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState} from "react";
 import {createPortal} from "react-dom";
 import {
     AlertCircle,
@@ -43,6 +43,9 @@ type SelectFilterKey = {
 }[ReviewFilterKey];
 type FilterSectionKey = "common" | "status" | "identity" | "content" | "metrics";
 type BulkReviewAction = "keep" | "hide" | "note";
+type ReviewLoadMode = "initial" | "refresh" | "more";
+
+const reviewPageSize = 100;
 
 const defaultReviewFilters: AdminReviewFilters = {
     sort: "newest",
@@ -188,9 +191,12 @@ const dateFormatter = new Intl.DateTimeFormat(undefined, {
 
 export function ModerationPage() {
     const [reviews, setReviews] = useState<AdminReview[]>([]);
+    const [totalReviewCount, setTotalReviewCount] = useState(0);
+    const [nextOffset, setNextOffset] = useState(0);
     const [loadState, setLoadState] = useState<LoadState>("loading");
     const [error, setError] = useState<string | null>(null);
     const [isRefreshing, setIsRefreshing] = useState(false);
+    const [isLoadingMore, setIsLoadingMore] = useState(false);
     const [selectedId, setSelectedId] = useState<string | null>(null);
     const [selectedReviewIds, setSelectedReviewIds] = useState<Set<string>>(new Set());
     const [filters, setFilters] = useState<AdminReviewFilters>(defaultReviewFilters);
@@ -204,37 +210,70 @@ export function ModerationPage() {
     const [bulkMessage, setBulkMessage] = useState("");
     const [bulkError, setBulkError] = useState("");
     const [bulkActionMessage, setBulkActionMessage] = useState("");
+    const loadMoreTriggerRef = useRef<HTMLDivElement | null>(null);
+    const activeRequestRef = useRef<AbortController | null>(null);
+    const loadingMoreRef = useRef(false);
+    const randomSeedRef = useRef(createRandomSeed());
     const {openEntity, reasons} = useAdminEntityDrawer();
 
-    const loadReviews = useCallback((mode: "initial" | "refresh" = "initial") => {
+    const loadReviews = useCallback((mode: ReviewLoadMode = "initial", offset = 0) => {
+        if (mode === "more" && loadingMoreRef.current) return;
+
+        activeRequestRef.current?.abort();
         const controller = new AbortController();
+        activeRequestRef.current = controller;
+        loadingMoreRef.current = mode === "more";
+
         if (mode === "initial") {
             setLoadState("loading");
-        } else {
+        } else if (mode === "refresh") {
             setIsRefreshing(true);
+        } else {
+            setIsLoadingMore(true);
         }
         setError(null);
 
-        listAdminReviews(controller.signal, filters)
+        listAdminReviews(controller.signal, filters, {
+            limit: reviewPageSize,
+            offset,
+            randomSeed: filters.sort === "random" ? randomSeedRef.current : undefined,
+        })
             .then(response => {
-                setReviews(response.reviews.filter(review => reviewMatchesFilters(review, filters)));
+                setReviews(current => mode === "more"
+                    ? mergeReviewPages(current, response.reviews)
+                    : response.reviews);
+                setTotalReviewCount(response.total);
+                setNextOffset(response.offset + response.reviews.length);
                 setLoadState("ready");
             })
             .catch((err: unknown) => {
                 if (controller.signal.aborted) return;
-                setLoadState("error");
+                if (mode !== "more") {
+                    setLoadState("error");
+                }
                 if (err instanceof AdminApiError) {
                     setError(err.message);
                     return;
                 }
-                setError("Could not load reviews.");
+                setError(mode === "more" ? "Could not load more reviews." : "Could not load reviews.");
             })
-            .finally(() => setIsRefreshing(false));
-
-        return () => controller.abort();
+            .finally(() => {
+                if (activeRequestRef.current !== controller) return;
+                activeRequestRef.current = null;
+                loadingMoreRef.current = false;
+                setIsRefreshing(false);
+                setIsLoadingMore(false);
+            });
     }, [filters]);
 
-    useEffect(() => loadReviews("initial"), [loadReviews]);
+    useEffect(() => {
+        setReviews([]);
+        setTotalReviewCount(0);
+        setNextOffset(0);
+        loadReviews("initial", 0);
+
+        return () => activeRequestRef.current?.abort();
+    }, [loadReviews]);
 
     const overlayOpen = filtersOpen || bulkActionsOpen;
 
@@ -295,9 +334,24 @@ export function ModerationPage() {
     const appliedFilterChips = useMemo(() => filterChips(filters), [filters]);
     const draftFilterCount = countActiveFilters(draftFilters);
     const draftDirty = !filtersEqual(draftFilters, filters);
+    const hasMoreReviews = nextOffset < totalReviewCount;
     const activeSelectFilters = stateFilters.filter(filter => sectionSelectFilterKeys[activeFilterSection].includes(filter.key));
     const activeTextFilters = textFilters.filter(filter => sectionTextFilterKeys[activeFilterSection].includes(filter.key));
     const activeRangeFilters = rangeFilters.filter(filter => sectionRangeFilterKeys[activeFilterSection].includes(filter.minKey));
+
+    useEffect(() => {
+        const trigger = loadMoreTriggerRef.current;
+        if (!trigger || loadState !== "ready" || !hasMoreReviews || isLoadingMore || error) return;
+
+        const observer = new IntersectionObserver(entries => {
+            if (!entries.some(entry => entry.isIntersecting)) return;
+            observer.disconnect();
+            loadReviews("more", nextOffset);
+        }, {rootMargin: "500px 0px"});
+
+        observer.observe(trigger);
+        return () => observer.disconnect();
+    }, [error, hasMoreReviews, isLoadingMore, loadReviews, loadState, nextOffset]);
 
     useEffect(() => {
         setBulkReason(current => (
@@ -317,6 +371,9 @@ export function ModerationPage() {
     }
 
     function applyFilters() {
+        if (draftFilters.sort === "random") {
+            randomSeedRef.current = createRandomSeed();
+        }
         setFilters({...draftFilters});
         setFiltersOpen(false);
         setSelectedId(null);
@@ -343,6 +400,13 @@ export function ModerationPage() {
 
     function resetDraftFilters() {
         setDraftFilters(defaultReviewFilters);
+    }
+
+    function refreshReviews() {
+        if (filters.sort === "random") {
+            randomSeedRef.current = createRandomSeed();
+        }
+        loadReviews("refresh", 0);
     }
 
     function toggleReviewSelection(reviewId: string, checked: boolean) {
@@ -448,7 +512,12 @@ export function ModerationPage() {
                 </div>
                 <div className={styles.introActions}>
                     {isRefreshing && <span className={cn(styles.previewNote, styles.refreshingNote)}>Refreshing</span>}
-                    <Button className={styles.refreshButton} disabled={isRefreshing} type="button" variant="outline" onClick={() => loadReviews("refresh")}>
+                    {loadState === "ready" && (
+                        <span className={styles.previewNote} aria-label={`${totalReviewCount} total reviews`}>
+                            {totalReviewCount.toLocaleString()} total
+                        </span>
+                    )}
+                    <Button className={styles.refreshButton} disabled={isRefreshing} type="button" variant="outline" onClick={refreshReviews}>
                         {isRefreshing ? <LoaderCircle className={styles.spin} size={16}/> : <RefreshCw size={16}/>}
                         Refresh
                     </Button>
@@ -615,7 +684,7 @@ export function ModerationPage() {
                             type="checkbox"
                             onChange={toggleVisibleSelection}
                         />
-                        <span>{selectedReviewIds.size > 0 ? `${selectedReviewIds.size} selected` : `${orderedReviews.length} visible`}</span>
+                        <span>{selectedReviewIds.size > 0 ? `${selectedReviewIds.size} selected` : `${orderedReviews.length.toLocaleString()} of ${totalReviewCount.toLocaleString()} loaded`}</span>
                     </label>
                     <div className={styles.selectionActions}>
                         <Button size="sm" type="button" variant="outline" onClick={toggleVisibleSelection}>
@@ -718,7 +787,7 @@ export function ModerationPage() {
                             <strong>Reviews could not be loaded</strong>
                             <span>{error || "The admin service did not return a usable response."}</span>
                         </div>
-                        <Button type="button" variant="outline" onClick={() => loadReviews("initial")}>
+                        <Button type="button" variant="outline" onClick={() => loadReviews("initial", 0)}>
                             <RefreshCw size={16}/>
                             Refresh
                         </Button>
@@ -734,18 +803,34 @@ export function ModerationPage() {
                     </div>
                 )}
                 {orderedReviews.length > 0 && (
-                    <div className={styles.queue}>
-                        {orderedReviews.map(review => (
-                            <ReviewQueueItem
-                                key={review.id}
-                                review={review}
-                                selectedForBatch={selectedReviewIds.has(review.id)}
-                                selected={review.id === selectedId}
-                                onOpen={() => openReview(review)}
-                                onSelectionChange={checked => toggleReviewSelection(review.id, checked)}
-                            />
-                        ))}
-                    </div>
+                    <>
+                        <div className={styles.queue}>
+                            {orderedReviews.map(review => (
+                                <ReviewQueueItem
+                                    key={review.id}
+                                    review={review}
+                                    selectedForBatch={selectedReviewIds.has(review.id)}
+                                    selected={review.id === selectedId}
+                                    onOpen={() => openReview(review)}
+                                    onSelectionChange={checked => toggleReviewSelection(review.id, checked)}
+                                />
+                            ))}
+                        </div>
+                        <div className={styles.paginationStatus} ref={loadMoreTriggerRef} aria-live="polite">
+                            {isLoadingMore ? (
+                                <><LoaderCircle className={styles.spin} size={16}/> Loading the next {reviewPageSize} reviews…</>
+                            ) : error && loadState === "ready" ? (
+                                <>
+                                    <span>{error}</span>
+                                    <Button size="sm" type="button" variant="outline" onClick={() => loadReviews("more", nextOffset)}>Try again</Button>
+                                </>
+                            ) : hasMoreReviews ? (
+                                <span>Scroll to load more · {orderedReviews.length.toLocaleString()} of {totalReviewCount.toLocaleString()} loaded</span>
+                            ) : (
+                                <span>All {totalReviewCount.toLocaleString()} reviews loaded</span>
+                            )}
+                        </div>
+                    </>
                 )}
             </section>
         </div>
@@ -1116,6 +1201,16 @@ function timestamp(value?: string) {
     if (!value) return 0;
     const parsed = new Date(value).getTime();
     return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+function createRandomSeed() {
+    return Math.floor(Math.random() * 2_147_483_647);
+}
+
+function mergeReviewPages(current: AdminReview[], incoming: AdminReview[]) {
+    const merged = new Map(current.map(review => [review.id, review]));
+    incoming.forEach(review => merged.set(review.id, review));
+    return [...merged.values()];
 }
 
 function activeReasonOptions(reasons: AdminReason[]) {

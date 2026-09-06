@@ -101,11 +101,16 @@ func (s *Server) ListReviews() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		limit := parseBoundedInt(r.URL.Query().Get("limit"), defaultReviewLimit, 1, maxReviewLimit)
 		offset := parseBoundedInt(r.URL.Query().Get("offset"), 0, 0, 1_000_000)
+		randomSeed := int64(0)
+		if parsed := parseOptionalInt64(r.URL.Query().Get("random_seed")); parsed != nil {
+			randomSeed = *parsed
+		}
 
-		reviews, err := s.db.ListReviews(r.Context(), admindb.ListReviewOptions{
+		reviews, total, err := s.db.ListReviews(r.Context(), admindb.ListReviewOptions{
 			Limit:                limit,
 			Offset:               offset,
 			Sort:                 parseChoiceQuery(r, "sort", "newest", "newest", "oldest", "most_reports", "new_reports", "most_signals", "random"),
+			RandomSeed:           randomSeed,
 			NeedsAttention:       parseBoolQuery(r, "needs_attention", true),
 			Deleted:              parseChoiceQuery(r, "deleted", "exclude", "exclude", "include", "only"),
 			Visible:              parseBoolChoiceQuery(r, "visible", "visible", "hidden"),
@@ -160,6 +165,7 @@ func (s *Server) ListReviews() http.Handler {
 			Reviews: reviews,
 			Limit:   limit,
 			Offset:  offset,
+			Total:   total,
 		})
 	})
 }
@@ -212,6 +218,10 @@ func (s *Server) HideSuspiciousReviewPair() http.Handler {
 			writeError(w, http.StatusBadRequest, "reviews must be different")
 			return
 		}
+		if request.KeepReviewID != nil && *request.KeepReviewID != *request.Review1ID && *request.KeepReviewID != *request.Review2ID {
+			writeError(w, http.StatusBadRequest, "kept review must belong to the pair")
+			return
+		}
 
 		reasonCode := cleanOptionalText(request.ReasonCode)
 		if reasonCode == nil {
@@ -230,6 +240,7 @@ func (s *Server) HideSuspiciousReviewPair() http.Handler {
 		result, err := s.db.KeepLatestReviewInPair(ctx, admindb.ReviewPairKeepLatestDecision{
 			Review1ID:      *request.Review1ID,
 			Review2ID:      *request.Review2ID,
+			KeepReviewID:   request.KeepReviewID,
 			ActorUserID:    s.actorUserID(ctx),
 			ReasonCode:     reasonCode,
 			Note:           cleanOptionalText(request.Note),
@@ -271,6 +282,7 @@ func (s *Server) HideSuspiciousReviewPairs() http.Handler {
 		}
 
 		pairs := make([]admindb.ReviewPairRef, 0, len(request.Pairs))
+		pairReviewIDs := make(map[int64]struct{}, len(request.Pairs)*2)
 		for _, pair := range request.Pairs {
 			if pair.Review1ID == nil || pair.Review2ID == nil || *pair.Review1ID <= 0 || *pair.Review2ID <= 0 {
 				writeError(w, http.StatusBadRequest, "invalid review pair")
@@ -284,6 +296,26 @@ func (s *Server) HideSuspiciousReviewPairs() http.Handler {
 				Review1ID: *pair.Review1ID,
 				Review2ID: *pair.Review2ID,
 			})
+			pairReviewIDs[*pair.Review1ID] = struct{}{}
+			pairReviewIDs[*pair.Review2ID] = struct{}{}
+		}
+
+		keepReviewIDs := make([]int64, 0, len(request.KeepReviews))
+		seenKeepReviewIDs := make(map[int64]struct{}, len(request.KeepReviews))
+		for _, keep := range request.KeepReviews {
+			if keep.ReviewID == nil || *keep.ReviewID <= 0 {
+				writeError(w, http.StatusBadRequest, "invalid kept review")
+				return
+			}
+			if _, ok := pairReviewIDs[*keep.ReviewID]; !ok {
+				writeError(w, http.StatusBadRequest, "kept review must belong to a selected group")
+				return
+			}
+			if _, duplicate := seenKeepReviewIDs[*keep.ReviewID]; duplicate {
+				continue
+			}
+			seenKeepReviewIDs[*keep.ReviewID] = struct{}{}
+			keepReviewIDs = append(keepReviewIDs, *keep.ReviewID)
 		}
 
 		reasonCode := cleanOptionalText(request.ReasonCode)
@@ -302,6 +334,7 @@ func (s *Server) HideSuspiciousReviewPairs() http.Handler {
 
 		result, err := s.db.KeepLatestReviewsInPairs(ctx, admindb.ReviewPairBulkKeepLatestDecision{
 			Pairs:          pairs,
+			KeepReviewIDs:  keepReviewIDs,
 			ActorUserID:    s.actorUserID(ctx),
 			ReasonCode:     reasonCode,
 			Note:           cleanOptionalText(request.Note),
@@ -493,6 +526,10 @@ func (s *Server) validReason(w http.ResponseWriter, r *http.Request, reasonCode 
 func (s *Server) writeDecisionError(w http.ResponseWriter, r *http.Request, err error, message string) {
 	if errors.Is(err, admindb.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "review target not found")
+		return
+	}
+	if errors.Is(err, admindb.ErrConflict) {
+		writeError(w, http.StatusConflict, "choose only one review to keep in each group")
 		return
 	}
 

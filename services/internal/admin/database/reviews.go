@@ -24,6 +24,7 @@ type ListReviewOptions struct {
 	Limit                int
 	Offset               int
 	Sort                 string
+	RandomSeed           int64
 	NeedsAttention       bool
 	Deleted              string
 	Visible              *bool
@@ -98,6 +99,7 @@ type ReviewVisibilityDecision struct {
 type ReviewPairKeepLatestDecision struct {
 	Review1ID      int64
 	Review2ID      int64
+	KeepReviewID   *int64
 	ActorUserID    *int64
 	ReasonCode     *string
 	Note           *string
@@ -106,6 +108,7 @@ type ReviewPairKeepLatestDecision struct {
 
 type ReviewPairBulkKeepLatestDecision struct {
 	Pairs          []ReviewPairRef
+	KeepReviewIDs  []int64
 	ActorUserID    *int64
 	ReasonCode     *string
 	Note           *string
@@ -233,13 +236,17 @@ func (db *AdminDB) UpdateReason(ctx context.Context, update ReasonUpdate) (*v1.A
 	return &reason, nil
 }
 
-func (db *AdminDB) ListReviews(ctx context.Context, opts ListReviewOptions) ([]v1.AdminReview, error) {
-	ids, err := db.listReviewIDs(ctx, opts)
+func (db *AdminDB) ListReviews(ctx context.Context, opts ListReviewOptions) ([]v1.AdminReview, int64, error) {
+	ids, total, err := db.listReviewIDs(ctx, opts)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
-	return db.loadReviews(ctx, ids)
+	reviews, err := db.loadReviews(ctx, ids)
+	if err != nil {
+		return nil, 0, err
+	}
+	return reviews, total, nil
 }
 
 func (db *AdminDB) GetReview(ctx context.Context, id int64) (*v1.AdminReview, error) {
@@ -591,6 +598,7 @@ func (db *AdminDB) KeepLatestReviewInPair(ctx context.Context, decision ReviewPa
 			Review1ID: decision.Review1ID,
 			Review2ID: decision.Review2ID,
 		}},
+		KeepReviewIDs:  optionalReviewIDSlice(decision.KeepReviewID),
 		ActorUserID:    decision.ActorUserID,
 		ReasonCode:     decision.ReasonCode,
 		Note:           decision.Note,
@@ -639,7 +647,10 @@ func (db *AdminDB) KeepLatestReviewsInPairs(ctx context.Context, decision Review
 		return nil, err
 	}
 
-	keptReviewIDs := latestReviewIDsByPairComponent(decision.Pairs, reviewStates)
+	keptReviewIDs, err := reviewIDsToKeepByPairComponent(decision.Pairs, reviewStates, decision.KeepReviewIDs)
+	if err != nil {
+		return nil, err
+	}
 	targetReviewIDs := make([]int64, 0, len(reviewIDs)-len(keptReviewIDs))
 	for _, reviewID := range reviewIDs {
 		state := reviewStates[reviewID]
@@ -757,7 +768,7 @@ func lockReviewStates(ctx context.Context, tx queryExecRunner, reviewIDs []int64
 	return states, nil
 }
 
-func latestReviewIDsByPairComponent(pairs []ReviewPairRef, states map[int64]reviewVisibilityState) map[int64]struct{} {
+func reviewIDsToKeepByPairComponent(pairs []ReviewPairRef, states map[int64]reviewVisibilityState, selectedReviewIDs []int64) (map[int64]struct{}, error) {
 	parents := make(map[int64]int64, len(states))
 	for id := range states {
 		parents[id] = id
@@ -797,11 +808,33 @@ func latestReviewIDsByPairComponent(pairs []ReviewPairRef, states map[int64]revi
 		}
 	}
 
+	selectedByRoot := make(map[int64]int64, len(selectedReviewIDs))
+	for _, id := range selectedReviewIDs {
+		if _, ok := states[id]; !ok {
+			return nil, ErrNotFound
+		}
+		root := find(id)
+		if selectedID, ok := selectedByRoot[root]; ok && selectedID != id {
+			return nil, ErrConflict
+		}
+		selectedByRoot[root] = id
+	}
+	for root, id := range selectedByRoot {
+		latestByRoot[root] = id
+	}
+
 	kept := make(map[int64]struct{}, len(latestByRoot))
 	for _, id := range latestByRoot {
 		kept[id] = struct{}{}
 	}
-	return kept
+	return kept, nil
+}
+
+func optionalReviewIDSlice(id *int64) []int64 {
+	if id == nil {
+		return nil
+	}
+	return []int64{*id}
 }
 
 type visibilityUpdateResult struct {
@@ -1120,7 +1153,7 @@ func (db *AdminDB) SaveReviewNote(ctx context.Context, decision ReviewNoteDecisi
 	}, nil
 }
 
-func (db *AdminDB) listReviewIDs(ctx context.Context, opts ListReviewOptions) ([]int64, error) {
+func (db *AdminDB) listReviewIDs(ctx context.Context, opts ListReviewOptions) ([]int64, int64, error) {
 	args := []any{opts.Limit, opts.Offset}
 	conditions := make([]string, 0)
 	nextArg := func(value any) string {
@@ -1308,6 +1341,10 @@ func (db *AdminDB) listReviewIDs(ctx context.Context, opts ListReviewOptions) ([
 		where = strings.Join(conditions, "\n\t\t\tAND ")
 	}
 	orderBy := reviewListOrderBy(opts.Sort)
+	if opts.Sort == "random" {
+		seedArg := nextArg(opts.RandomSeed)
+		orderBy = fmt.Sprintf("md5(r.id::text || ':' || %s::text), r.id", seedArg)
+	}
 
 	query := fmt.Sprintf(`
 		WITH signal_source AS (
@@ -1331,7 +1368,7 @@ func (db *AdminDB) listReviewIDs(ctx context.Context, opts ListReviewOptions) ([
 			FROM professor.review_report
 			GROUP BY review_id
 		)
-		SELECT r.id
+		SELECT r.id, count(*) OVER() AS total_count
 		FROM professor.review r
 		LEFT JOIN professor.professor p ON p.email = r.professor_email
 		LEFT JOIN report_counts rc ON rc.review_id = r.id
@@ -1342,20 +1379,24 @@ func (db *AdminDB) listReviewIDs(ctx context.Context, opts ListReviewOptions) ([
 
 	rows, err := db.db.Pool.Query(ctx, query, args...)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer rows.Close()
 
 	ids := make([]int64, 0)
+	var total int64
 	for rows.Next() {
 		var id int64
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
+		if err := rows.Scan(&id, &total); err != nil {
+			return nil, 0, err
 		}
 		ids = append(ids, id)
 	}
 
-	return ids, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+	}
+	return ids, total, nil
 }
 
 func reviewListOrderBy(sort string) string {
