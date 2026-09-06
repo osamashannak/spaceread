@@ -41,6 +41,7 @@ import styles from "./suspicious_reviews.module.scss";
 
 type LoadState = "loading" | "ready" | "error";
 type BadgeTone = "default" | "warning" | "danger" | "info" | "success" | "outline";
+type GroupSort = "recency" | "score" | "group_size";
 type SuspiciousReviewGroup = {
     key: string;
     pairs: AdminSuspiciousReviewPair[];
@@ -65,6 +66,12 @@ const visibleOptions: { label: string; value: AdminSuspiciousReviewFilters["visi
     {label: "Include hidden", value: "include_hidden"},
 ];
 
+const groupSortOptions: { label: string; value: GroupSort }[] = [
+    {label: "Most recent", value: "recency"},
+    {label: "Highest score", value: "score"},
+    {label: "Largest group", value: "group_size"},
+];
+
 const dateFormatter = new Intl.DateTimeFormat(undefined, {
     dateStyle: "medium",
     timeStyle: "short",
@@ -80,6 +87,7 @@ export function SuspiciousReviewsPage() {
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [selectedGroupKeys, setSelectedGroupKeys] = useState<Set<string>>(new Set());
     const [keptReviewIds, setKeptReviewIds] = useState<Record<string, string>>({});
+    const [groupSort, setGroupSort] = useState<GroupSort>("recency");
     const [bulkReason, setBulkReason] = useState("");
     const [bulkNote, setBulkNote] = useState("");
     const [bulkPending, setBulkPending] = useState(false);
@@ -144,7 +152,8 @@ export function SuspiciousReviewsPage() {
         setSelectedGroupKeys(new Set());
     }
 
-    const groups = useMemo(() => groupSuspiciousReviewPairs(pairs), [pairs]);
+    const groupedReviews = useMemo(() => groupSuspiciousReviewPairs(pairs), [pairs]);
+    const groups = useMemo(() => sortSuspiciousReviewGroups(groupedReviews, groupSort), [groupedReviews, groupSort]);
     const totalSignals = useMemo(() => groups.reduce((sum, group) => sum + groupSignals(group, showSensitive).length, 0), [groups, showSensitive]);
     const extraReviewCount = useMemo(() => groups.reduce((sum, group) => sum + Math.max(0, group.reviews.length - 1), 0), [groups]);
     const activeFilterCount = countActiveFilters(filters);
@@ -331,7 +340,7 @@ export function SuspiciousReviewsPage() {
                     </label>
                     <div className={styles.quickFilters}>
                         <label className={styles.compactFilterField}>
-                            <span>Score</span>
+                            <span>Min score</span>
                             <Input
                                 aria-label="Minimum score"
                                 min="0"
@@ -349,6 +358,19 @@ export function SuspiciousReviewsPage() {
                                 onChange={event => updateDraft("visible", event.target.value as AdminSuspiciousReviewFilters["visible"])}
                             >
                                 {visibleOptions.map(option => (
+                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                ))}
+                            </select>
+                        </label>
+                        <label className={styles.compactFilterField}>
+                            <span>Sort</span>
+                            <select
+                                aria-label="Sort suspicious groups"
+                                className={styles.selectInput}
+                                value={groupSort}
+                                onChange={event => setGroupSort(event.target.value as GroupSort)}
+                            >
+                                {groupSortOptions.map(option => (
                                     <option key={option.value} value={option.value}>{option.label}</option>
                                 ))}
                             </select>
@@ -916,6 +938,23 @@ function compareReviewsNewestFirst(first?: AdminReview, second?: AdminReview) {
     const timeDifference = Date.parse(second?.created_at || "") - Date.parse(first?.created_at || "");
     if (Number.isFinite(timeDifference) && timeDifference !== 0) return timeDifference;
     return (second?.id || "").localeCompare(first?.id || "", undefined, {numeric: true});
+}
+
+function sortSuspiciousReviewGroups(groups: SuspiciousReviewGroup[], sort: GroupSort) {
+    return [...groups].sort((first, second) => {
+        if (sort === "score") {
+            const scoreDifference = second.suspicionScore - first.suspicionScore;
+            if (scoreDifference !== 0) return scoreDifference;
+        }
+        if (sort === "group_size") {
+            const sizeDifference = second.reviews.length - first.reviews.length;
+            if (sizeDifference !== 0) return sizeDifference;
+        }
+
+        const recencyDifference = compareReviewsNewestFirst(first.reviews[0], second.reviews[0]);
+        if (recencyDifference !== 0) return recencyDifference;
+        return first.key.localeCompare(second.key, undefined, {numeric: true});
+    });
 }
 
 function groupSignals(group: SuspiciousReviewGroup, showSensitive: boolean) {
