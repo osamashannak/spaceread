@@ -978,12 +978,17 @@ func (s *Server) AddReviewRating() http.Handler {
 			return
 		}
 
+		browserFingerprint, thumbmarkFingerprint, creepFingerprint := sanitizeClientFingerprint(request.ClientFingerprint)
+
 		rating := model.ReviewRating{
-			ReviewId:  request.ReviewID,
-			SessionId: profile.SessionId,
-			UserId:    profile.UserId,
-			Value:     *value,
-			IpAddress: utils.GetClientIP(r),
+			ReviewId:             request.ReviewID,
+			SessionId:            profile.SessionId,
+			UserId:               profile.UserId,
+			Value:                *value,
+			IpAddress:            utils.GetClientIP(r),
+			BrowserFingerprint:   browserFingerprint,
+			ThumbmarkFingerprint: thumbmarkFingerprint,
+			CreepFingerprint:     creepFingerprint,
 		}
 
 		err = s.db.InsertReviewRating(ctx, &rating)

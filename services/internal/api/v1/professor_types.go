@@ -103,8 +103,9 @@ type ReviewAttachmentResponse struct {
 }
 
 type ReviewRatingBody struct {
-	ReviewID int64  `json:"review_id,string"`
-	Rating   string `json:"rating"`
+	ReviewID          int64                  `json:"review_id,string"`
+	Rating            string                 `json:"rating"`
+	ClientFingerprint *ClientFingerprintBody `json:"client_fingerprint"`
 }
 
 type ReviewPostResponse struct {

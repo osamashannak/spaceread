@@ -1,4 +1,5 @@
 import {
+    ClientFingerprintAPI,
     ProfessorAPI,
     ProfessorRequestFormAPI,
     ReviewAPI,
@@ -364,7 +365,7 @@ export const deleteReply = async (replyId: string) => {
     return response as { success: boolean, message: string };
 }
 
-export const addRating = async (review_id: string, rating: string) => {
+export const addRating = async (review_id: string, rating: string, client_fingerprint?: ClientFingerprintAPI) => {
 
     try {
         await fetch(HOST + "/comment/rating", {
@@ -375,7 +376,8 @@ export const addRating = async (review_id: string, rating: string) => {
             },
             body: JSON.stringify({
                 review_id,
-                rating
+                rating,
+                client_fingerprint
             }),
             credentials: "include"
         });

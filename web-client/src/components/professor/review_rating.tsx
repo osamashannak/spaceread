@@ -1,6 +1,7 @@
 import {useRef, useState} from "react";
 import styles from "../../styles/components/global/rating.module.scss";
 import {addRating, removeRating} from "../../api/professor.ts";
+import {collectReviewClientFingerprint} from "../../lib/browser_fingerprint.ts";
 
 export default function ReviewRating(props: { id: string, likes: number, dislikes: number, self: string | null, restricted?: boolean }) {
 
@@ -21,6 +22,8 @@ export default function ReviewRating(props: { id: string, likes: number, dislike
             return;
         }
 
+        const fingerprintPromise = collectReviewClientFingerprint();
+
         // Replace dislike to like
         if (liked === false) {
             await removeRating(props.id);
@@ -28,7 +31,8 @@ export default function ReviewRating(props: { id: string, likes: number, dislike
 
         setLiked(true);
 
-        await addRating(props.id, "like");
+        const clientFingerprint = await fingerprintPromise.catch(() => undefined);
+        await addRating(props.id, "like", clientFingerprint);
 
         running.current = false;
     }
@@ -46,6 +50,8 @@ export default function ReviewRating(props: { id: string, likes: number, dislike
             return;
         }
 
+        const fingerprintPromise = collectReviewClientFingerprint();
+
         // Replace like to dislike
         if (liked) {
             await removeRating(props.id);
@@ -53,7 +59,8 @@ export default function ReviewRating(props: { id: string, likes: number, dislike
 
         setLiked(false);
 
-        await addRating(props.id, "dislike");
+        const clientFingerprint = await fingerprintPromise.catch(() => undefined);
+        await addRating(props.id, "dislike", clientFingerprint);
 
         running.current = false;
     }

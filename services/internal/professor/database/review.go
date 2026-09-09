@@ -177,9 +177,19 @@ func (db *ProfessorDB) ExistsReviewRatingFromIdentity(ctx context.Context, revie
 
 func (db *ProfessorDB) InsertReviewRating(ctx context.Context, rating *model.ReviewRating) error {
 	_, err := db.Db.Pool.Exec(ctx,
-		`INSERT INTO professor.review_rating (value, ip_address, review_id, session_id, user_id)
-		 VALUES ($1, $2, $3, $4, $5)`,
-		rating.Value, rating.IpAddress, rating.ReviewId, rating.SessionId, rating.UserId)
+		`INSERT INTO professor.review_rating (
+			value, ip_address, review_id, session_id, user_id,
+			browser_fingerprint, thumbmark_fingerprint, creep_fingerprint
+		)
+		 VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8)`,
+		rating.Value,
+		rating.IpAddress,
+		rating.ReviewId,
+		rating.SessionId,
+		rating.UserId,
+		rating.BrowserFingerprint,
+		rating.ThumbmarkFingerprint,
+		rating.CreepFingerprint)
 	return err
 }
 

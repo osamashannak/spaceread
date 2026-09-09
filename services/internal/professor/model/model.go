@@ -61,12 +61,15 @@ type ReviewAttachment struct {
 }
 
 type ReviewRating struct {
-	Value     bool
-	IpAddress string
-	CreatedAt time.Time
-	ReviewId  int64
-	SessionId int64
-	UserId    *int64
+	Value                bool
+	IpAddress            string
+	CreatedAt            time.Time
+	ReviewId             int64
+	SessionId            int64
+	UserId               *int64
+	BrowserFingerprint   *string
+	ThumbmarkFingerprint *string
+	CreepFingerprint     *string
 }
 
 type ReviewReply struct {
