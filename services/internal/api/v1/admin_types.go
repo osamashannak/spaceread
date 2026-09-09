@@ -55,6 +55,12 @@ type AdminSuspiciousReviewPairListResponse struct {
 	Offset int                         `json:"offset"`
 }
 
+type AdminSuspiciousReviewRatingPairListResponse struct {
+	Pairs  []AdminSuspiciousReviewRatingPair `json:"pairs"`
+	Limit  int                               `json:"limit"`
+	Offset int                               `json:"offset"`
+}
+
 type AdminCourseFileListResponse struct {
 	Files  []AdminCourseFileSummary `json:"files"`
 	Limit  int                      `json:"limit"`
@@ -87,6 +93,33 @@ type AdminSuspiciousReviewPair struct {
 	SameScore           bool        `json:"same_score"`
 	SameRecommendation  bool        `json:"same_recommendation"`
 	CloseTiming         bool        `json:"close_timing"`
+}
+
+type AdminSuspiciousReviewRatingPair struct {
+	Review              AdminSuspiciousReviewRatingReview `json:"review"`
+	Rating1             AdminReviewRating                 `json:"rating_1"`
+	Rating2             AdminReviewRating                 `json:"rating_2"`
+	SuspicionScore      int                               `json:"suspicion_score"`
+	CreatedDeltaSeconds int64                             `json:"created_delta_seconds"`
+	SameIP              bool                              `json:"same_ip"`
+	SameUserAgent       bool                              `json:"same_user_agent"`
+	SameThumbmark       bool                              `json:"same_thumbmark"`
+	SameCreep           bool                              `json:"same_creep"`
+	SameValue           bool                              `json:"same_value"`
+	CloseTiming         bool                              `json:"close_timing"`
+}
+
+type AdminSuspiciousReviewRatingReview struct {
+	ID             int64     `json:"id,string"`
+	ProfessorEmail string    `json:"professor_email"`
+	ProfessorName  string    `json:"professor_name"`
+	Text           string    `json:"text"`
+	Score          int       `json:"score"`
+	Positive       bool      `json:"positive"`
+	CreatedAt      time.Time `json:"created_at"`
+	Visible        bool      `json:"visible"`
+	LikeCount      int       `json:"like_count"`
+	DislikeCount   int       `json:"dislike_count"`
 }
 
 type AdminReview struct {
@@ -187,12 +220,15 @@ type AdminReviewReply struct {
 }
 
 type AdminReviewRating struct {
-	ReviewID  int64     `json:"review_id,string"`
-	Value     string    `json:"value"`
-	SessionID int64     `json:"session_id,string"`
-	UserID    *int64    `json:"user_id,string,omitempty"`
-	IPAddress string    `json:"ip_address"`
-	CreatedAt time.Time `json:"created_at"`
+	ReviewID             int64     `json:"review_id,string"`
+	Value                string    `json:"value"`
+	SessionID            int64     `json:"session_id,string"`
+	UserID               *int64    `json:"user_id,string,omitempty"`
+	IPAddress            string    `json:"ip_address"`
+	UserAgent            *string   `json:"user_agent,omitempty"`
+	ThumbmarkFingerprint *string   `json:"thumbmark_fingerprint,omitempty"`
+	CreepFingerprint     *string   `json:"creep_fingerprint,omitempty"`
+	CreatedAt            time.Time `json:"created_at"`
 }
 
 type AdminModerationSignal struct {

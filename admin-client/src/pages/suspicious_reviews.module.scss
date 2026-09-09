@@ -181,6 +181,10 @@
   min-width: 0;
 }
 
+.ratingQuickFilters {
+  grid-template-columns: minmax(106px, 0.5fr) repeat(3, minmax(150px, 1fr));
+}
+
 .compactFilterField {
   align-items: center;
   background: #f8fbfc;

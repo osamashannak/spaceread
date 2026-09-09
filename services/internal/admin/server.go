@@ -33,6 +33,7 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("GET /reviews/suspicious", s.gateway.RequireAdmin(s.ListSuspiciousReviewPairs()))
 	mux.Handle("POST /reviews/suspicious/hide-pair", s.gateway.RequireAdmin(s.gateway.RequireCSRF(s.HideSuspiciousReviewPair())))
 	mux.Handle("POST /reviews/suspicious/hide-pairs", s.gateway.RequireAdmin(s.gateway.RequireCSRF(s.HideSuspiciousReviewPairs())))
+	mux.Handle("GET /review-ratings/suspicious", s.gateway.RequireAdmin(s.ListSuspiciousReviewRatingPairs()))
 	mux.Handle("GET /reviews/{reviewID}", s.gateway.RequireAdmin(s.GetReview()))
 	mux.Handle("GET /course-files", s.gateway.RequireAdmin(s.ListCourseFiles()))
 	mux.Handle("GET /course-files/{fileID}", s.gateway.RequireAdmin(s.GetCourseFile()))

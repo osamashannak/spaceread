@@ -43,6 +43,12 @@ export type AdminSuspiciousReviewPairListResponse = {
     offset: number;
 };
 
+export type AdminSuspiciousReviewRatingPairListResponse = {
+    pairs: AdminSuspiciousReviewRatingPair[];
+    limit: number;
+    offset: number;
+};
+
 export type AdminCourseFileListResponse = {
     files: AdminCourseFileSummary[];
     limit: number;
@@ -131,6 +137,15 @@ export type AdminSuspiciousReviewFilters = {
     search: string;
     professor_email: string;
     include_content_only: "true" | "false";
+};
+
+export type AdminSuspiciousReviewRatingFilters = {
+    min_score: string;
+    value: "any" | "like" | "dislike" | "mixed";
+    visible: "visible" | "hidden" | "any";
+    search: string;
+    review_id: string;
+    professor_email: string;
 };
 
 export type AdminReasonsResponse = {
@@ -253,6 +268,33 @@ export type AdminSuspiciousReviewPair = {
     close_timing: boolean;
 };
 
+export type AdminSuspiciousReviewRatingReview = {
+    id: string;
+    professor_email: string;
+    professor_name: string;
+    text: string;
+    score: number;
+    positive: boolean;
+    created_at: string;
+    visible: boolean;
+    like_count: number;
+    dislike_count: number;
+};
+
+export type AdminSuspiciousReviewRatingPair = {
+    review: AdminSuspiciousReviewRatingReview;
+    rating_1: AdminReviewRating;
+    rating_2: AdminReviewRating;
+    suspicion_score: number;
+    created_delta_seconds: number;
+    same_ip: boolean;
+    same_user_agent: boolean;
+    same_thumbmark: boolean;
+    same_creep: boolean;
+    same_value: boolean;
+    close_timing: boolean;
+};
+
 export type AdminClientFingerprint = {
     version?: string;
     generated_at?: string;
@@ -329,6 +371,9 @@ export type AdminReviewRating = {
     session_id: string;
     user_id?: string;
     ip_address: string;
+    user_agent?: string;
+    thumbmark_fingerprint?: string;
+    creep_fingerprint?: string;
     created_at: string;
 };
 
@@ -632,6 +677,18 @@ export async function listAdminSuspiciousReviewPairs(signal?: AbortSignal, filte
         }
     }
     return adminFetch<AdminSuspiciousReviewPairListResponse>(`/reviews/suspicious?${params.toString()}`, {signal});
+}
+
+export async function listAdminSuspiciousReviewRatingPairs(signal?: AbortSignal, filters?: AdminSuspiciousReviewRatingFilters) {
+    const params = new URLSearchParams({limit: "100"});
+    if (filters) {
+        for (const [key, value] of Object.entries(filters)) {
+            if (value !== "" && !(key === "value" && value === "any")) {
+                params.set(key, String(value));
+            }
+        }
+    }
+    return adminFetch<AdminSuspiciousReviewRatingPairListResponse>(`/review-ratings/suspicious?${params.toString()}`, {signal});
 }
 
 export async function listAdminCourseFiles(signal?: AbortSignal, filters?: AdminCourseFileFilters) {

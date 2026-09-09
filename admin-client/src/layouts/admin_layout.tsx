@@ -5,6 +5,7 @@ import {
     MessageSquareText,
     ShieldAlert,
     SlidersHorizontal,
+    ThumbsUp,
 } from "lucide-react";
 import {AdminAccessGate} from "@/layouts/admin_access_gate";
 import {WorkspaceShell} from "@/components/admin/workspace_shell";
@@ -16,7 +17,8 @@ const navSections: NavSection[] = [
         label: "Moderation",
         items: [
             {to: "/reviews", label: "Reviews", icon: MessageSquareText},
-            {to: "/reviews/suspicious", label: "Suspicious", icon: ShieldAlert},
+            {to: "/reviews/suspicious", label: "Suspicious reviews", icon: ShieldAlert},
+            {to: "/review-ratings/suspicious", label: "Suspicious ratings", icon: ThumbsUp},
             {to: "/course-files", label: "Course files", icon: FileText},
             {to: "/reasons", label: "Reasons", icon: SlidersHorizontal},
         ],
