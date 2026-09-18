@@ -633,6 +633,7 @@ export type AdminProfessorMatch = {
     name: string;
     university: string;
     college: string;
+    visible: boolean;
     match_type: string;
     name_similarity: number;
 };

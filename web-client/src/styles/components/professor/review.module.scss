@@ -17,6 +17,13 @@
   &:last-of-type {
     margin-bottom: 40px;
   }
+
+  @media (max-width: 768px) {
+    &:last-of-type {
+      // Mobile end spacing belongs to the page so empty and related-review states match.
+      margin-bottom: 0;
+    }
+  }
 }
 
 .noComments {

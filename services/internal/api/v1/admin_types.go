@@ -597,6 +597,7 @@ type AdminProfessorMatch struct {
 	Name           string  `json:"name"`
 	University     string  `json:"university"`
 	College        string  `json:"college"`
+	Visible        bool    `json:"visible"`
 	MatchType      string  `json:"match_type"`
 	NameSimilarity float64 `json:"name_similarity"`
 }

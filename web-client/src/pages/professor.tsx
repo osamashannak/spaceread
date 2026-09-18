@@ -150,13 +150,20 @@ export default function Professor() {
             <div className={styles.profPage}>
 
                 <section className={styles.profInfoHead} style={{borderBottom: "none"}}>
-                    <div className={styles.profInfoLeft}>
-                        <h1 style={{width: "100px"}}><Skeleton/></h1>
-                        <p style={{width: "200px"}}><Skeleton/></p>
+                    <div className={styles.profIdentity}>
+                        <p className={styles.universityName} style={{width: "210px"}}><Skeleton/></p>
+                        <h1 style={{width: "150px"}}><Skeleton/></h1>
+                        <p className={styles.collegeName} style={{width: "130px"}}><Skeleton/></p>
                     </div>
 
-                    <div className={styles.profInfoRight}>
-                        <p className={styles.score}><Skeleton/></p>
+                    <div className={styles.profMetrics} aria-hidden="true">
+                        <div className={styles.ratingMetric}>
+                            <span className={styles.metricSkeleton} style={{width: "72px"}}><Skeleton/></span>
+                        </div>
+                        <span className={styles.metricDivider}/>
+                        <div className={styles.recommendationMetric}>
+                            <span className={styles.metricSkeleton} style={{width: "150px"}}><Skeleton/></span>
+                        </div>
                     </div>
                 </section>
 
@@ -191,6 +198,14 @@ export default function Professor() {
     }
 
     const score = parseFloat(professor.score.toFixed(1));
+    const recommendationCount = professor.reviews.length;
+    const recommendCount = professor.reviews.reduce((count, review) => count + (review.positive ? 1 : 0), 0);
+    const recommendPercentage = recommendationCount > 0
+        ? Math.round((recommendCount / recommendationCount) * 100)
+        : 0;
+    const recommendationDescription = recommendationCount > 0
+        ? `${recommendPercentage}% recommend, based on ${recommendationCount} ${recommendationCount === 1 ? "review" : "reviews"}.`
+        : "No recommendations yet.";
     const longestReview = professor.reviews.length > 0 ? professor.reviews.reduce((prev, current) => (prev.text.length > current.text.length) ? prev : current).text : undefined;
 
     return (
@@ -204,21 +219,52 @@ export default function Professor() {
                 <BackArrow text={"Professor"} />
 
                 <section className={styles.profInfoHead}>
-
-                    <div className={styles.infoLeft}>
-                        {score > 0 ?
-                            <div className={styles.infoLeftScore}>
-                                <span className={styles.score}>{score}</span>
-                                <span className={styles.outOf}>/5</span>
-                            </div>
-                            :
-                            <span className={styles.score}>N/A</span>}
-                    </div>
-
-                    <div className={styles.infoRight}>
+                    <div className={styles.profIdentity}>
                         <p className={styles.universityName}>{professor.university}</p>
                         <h1>{professor.name}</h1>
-                        <span className={styles.collegeName}>{professor.college}</span>
+                        <p className={styles.collegeName}>{professor.college}</p>
+                    </div>
+
+                    <div className={styles.profMetrics}>
+                        <div
+                            className={styles.ratingMetric}
+                            role="img"
+                            aria-label={score > 0 ? `${score} out of 5 overall rating.` : "No overall rating yet."}
+                        >
+                            <div className={styles.ratingValue} aria-hidden="true">
+                                <span className={styles.score}>{score > 0 ? score : "N/A"}</span>
+                                {score > 0 && <span className={styles.outOf}>/5</span>}
+                            </div>
+                            <span className={styles.metricCaption} aria-hidden="true">overall rating</span>
+                        </div>
+
+                        <span className={styles.metricDivider} aria-hidden="true"/>
+
+                        <div
+                            className={styles.recommendationMetric}
+                            role="img"
+                            aria-label={recommendationDescription}
+                            title={recommendationDescription}
+                        >
+                            {recommendationCount > 0 ? <>
+                                <div className={styles.recommendationHeading} aria-hidden="true">
+                                    <span className={styles.recommendationValue}>{recommendPercentage}%</span>
+                                    <span className={styles.recommendationLabel}>recommend</span>
+                                </div>
+                                <div className={styles.recommendationBar} aria-hidden="true">
+                                    <span
+                                        className={styles.recommendSegment}
+                                        style={{width: `${recommendPercentage}%`}}
+                                    />
+                                </div>
+                                <span className={styles.metricCaption} aria-hidden="true">
+                                    {recommendationCount} {recommendationCount === 1 ? "review" : "reviews"}
+                                </span>
+                            </> :
+                                <span className={styles.noRecommendations} aria-hidden="true">
+                                    No recommendations yet
+                                </span>}
+                        </div>
                     </div>
 
                 </section>

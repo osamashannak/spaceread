@@ -731,6 +731,9 @@ function MatchButton({match, selected, onSelect}: {match: AdminProfessorMatch; s
             <span className={styles.matchScore}>
                 <strong>{formatSimilarity(match.name_similarity)}</strong>
                 <small>{humanize(match.match_type)}</small>
+                <span className={cn(styles.matchVisibility, match.visible ? styles.matchVisible : styles.matchHidden)}>
+                    {match.visible ? "Visible" : "Hidden"}
+                </span>
             </span>
         </button>
     );

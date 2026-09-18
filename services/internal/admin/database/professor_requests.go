@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	professorRequestMatchLimit = 5
+	professorRequestMatchLimit   = 5
 	professorRequestMatchesQuery = `
 		SELECT
 			pr.id,
@@ -22,6 +22,7 @@ const (
 			candidate.name,
 			candidate.university,
 			candidate.college,
+			candidate.visible,
 			candidate.match_type,
 			candidate.name_similarity
 		FROM professor.professor_request pr
@@ -31,6 +32,7 @@ const (
 				p.name,
 				p.university,
 				p.college,
+				p.visible,
 				CASE
 					WHEN pr.professor_email IS NOT NULL AND lower(p.email) = lower(pr.professor_email) THEN 'exact_email'
 					WHEN lower(regexp_replace(btrim(p.name), '\s+', ' ', 'g')) = lower(regexp_replace(btrim(pr.professor_name), '\s+', ' ', 'g'))
@@ -342,6 +344,7 @@ func (db *AdminDB) attachProfessorRequestMatches(ctx context.Context, ids []int6
 			&match.Name,
 			&match.University,
 			&match.College,
+			&match.Visible,
 			&match.MatchType,
 			&match.NameSimilarity,
 		); err != nil {

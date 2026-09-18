@@ -629,6 +629,27 @@
   }
 }
 
+.matchVisibility {
+  border: 1px solid;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1;
+  padding: 4px 7px;
+}
+
+.matchVisible {
+  background: #ecfdf3;
+  border-color: #bbf7d0;
+  color: #166534;
+}
+
+.matchHidden {
+  background: #fff1f2;
+  border-color: #fecdd3;
+  color: #be123c;
+}
+
 .contextGrid {
   display: grid;
   gap: 10px;
