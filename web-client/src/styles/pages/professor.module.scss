@@ -563,17 +563,7 @@
   padding-bottom: 12px;
   margin: 0 auto auto;
 
-  @media (max-width: 768px) {
-    // Keep the end of every professor page clear of the fixed 50px navigation.
-    padding-bottom: 52px;
-  }
-
-  @media (max-width: 768px) and (display-mode: standalone) {
-    // The installed app uses a taller navigation bar for the device safe area.
-    padding-bottom: 84px;
-  }
-
-  @media (min-width: 768px) {
+  @media (min-width: 769px) {
     padding-top: 8px;
   }
 }

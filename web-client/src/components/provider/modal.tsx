@@ -24,18 +24,13 @@ export function ModalProvider({ children }: { children: ReactNode }) {
 
         const html = document.documentElement;
         const body = document.body;
-        const header = document.querySelector("header") as HTMLElement | null;
-        const mobileNav = document.querySelector(".mobileNav") as HTMLElement | null;
-
-        const elements = [html, body, header, mobileNav].filter(Boolean) as HTMLElement[];
+        const elements = [html, body];
 
         // Save previous inline styles
         elements.forEach(el => {
             prevStyles.current.set(el, {
                 overflow: el.style.overflow,
                 marginRight: el.style.marginRight,
-                position: el.style.position,
-                display: el.style.display,
                 overscrollBehaviorY: (el.style as any).overscrollBehaviorY,
             });
         });
@@ -46,11 +41,6 @@ export function ModalProvider({ children }: { children: ReactNode }) {
         (html.style as any).overscrollBehaviorY = "none";
         html.style.marginRight = `${scrollBarWidth}px`;
 
-        if (window.innerWidth <= 768) {
-            if (header) header.style.display = "none";
-            if (mobileNav) mobileNav.style.display = "none";
-        }
-
         return () => {
             // Restore previous styles
             elements.forEach(el => {
@@ -58,8 +48,6 @@ export function ModalProvider({ children }: { children: ReactNode }) {
                 if (prev) {
                     if ("overflow" in prev) el.style.overflow = prev.overflow || "";
                     if ("marginRight" in prev) el.style.marginRight = prev.marginRight || "";
-                    if ("position" in prev) el.style.position = prev.position || "";
-                    if ("display" in prev) el.style.display = prev.display || "";
                     if ("overscrollBehaviorY" in prev) (el.style as any).overscrollBehaviorY = prev.overscrollBehaviorY || "";
                 }
             });

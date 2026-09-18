@@ -5,10 +5,11 @@
   position: fixed;
   transform: translateX(-50%);
   width: min(420px, calc(100vw - 24px));
-  z-index: 1000;
+  // Toasts can be triggered from inside an open modal.
+  z-index: 5000;
 
   @media (max-width: 768px) {
-    bottom: 76px;
+    bottom: calc(16px + var(--mobile-shell-bottom-height) + var(--mobile-safe-bottom));
   }
 }
 

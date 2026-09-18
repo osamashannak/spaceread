@@ -11,7 +11,7 @@
     font-weight: 700;
   }
 
-  @media (min-width: 768px) {
+  @media (min-width: 769px) {
     z-index: 200;
     position: fixed;
     width: 600px;
@@ -25,7 +25,12 @@
 }
 
 .backArrow {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  color: inherit;
   cursor: pointer;
+  font: inherit;
   padding: 8px;
   display: flex;
   align-items: center;
@@ -36,5 +41,18 @@
 
   &:hover {
     background-color: rgba(0, 0, 0, 0.1);
+  }
+
+  &:focus-visible {
+    box-shadow: 0 0 0 3px rgba(5, 154, 229, 0.22);
+    outline: 2px solid #047fbd;
+    outline-offset: 1px;
+  }
+}
+
+@media (max-width: 768px) {
+  // Mobile detail navigation is provided by the shared contextual top bar.
+  .top {
+    display: none;
   }
 }

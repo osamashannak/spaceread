@@ -224,7 +224,7 @@
 
   :global(header),
   :global(footer),
-  :global([class*="mobileNav"]) {
+  :global([data-mobile-shell]) {
     display: none !important;
   }
 
