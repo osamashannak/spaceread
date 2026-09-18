@@ -15,6 +15,45 @@ import (
 
 const (
 	professorRequestMatchLimit   = 5
+	professorRequestGroupingCTEs = `
+		request_keys AS MATERIALIZED (
+			SELECT
+				pr.id,
+				CASE WHEN pr.professor_email IS NULL THEN NULL ELSE lower(pr.professor_email) END AS email_key,
+				lower(regexp_replace(btrim(pr.professor_name), '\s+', ' ', 'g')) AS name_key,
+				lower(regexp_replace(btrim(pr.university), '\s+', ' ', 'g')) AS university_key
+			FROM professor.professor_request pr
+		),
+		request_links AS MATERIALIZED (
+			SELECT id AS request_id, 'email'::text AS link_type, email_key AS key_one, ''::text AS key_two
+			FROM request_keys
+			WHERE email_key IS NOT NULL
+			UNION ALL
+			SELECT id, 'identity'::text, name_key, university_key
+			FROM request_keys
+		),
+		request_reach(root_id, request_id) AS (
+			SELECT id, id
+			FROM request_keys
+			UNION
+			SELECT reach.root_id, neighbor.request_id
+			FROM request_reach reach
+			JOIN request_links current_link ON current_link.request_id = reach.request_id
+			JOIN request_links neighbor
+			  ON neighbor.link_type = current_link.link_type
+			 AND neighbor.key_one = current_link.key_one
+			 AND neighbor.key_two = current_link.key_two
+		),
+		request_groups AS MATERIALIZED (
+			SELECT request_id, min(root_id) AS group_id
+			FROM request_reach
+			GROUP BY request_id
+		),
+		request_group_sizes AS MATERIALIZED (
+			SELECT group_id, count(*) AS request_count
+			FROM request_groups
+			GROUP BY group_id
+		)`
 	professorRequestMatchesQuery = `
 		SELECT
 			pr.id,
@@ -43,14 +82,18 @@ const (
 					WHEN pr.professor_email IS NOT NULL AND lower(p.email) = lower(pr.professor_email) THEN 0
 					WHEN lower(regexp_replace(btrim(p.name), '\s+', ' ', 'g')) = lower(regexp_replace(btrim(pr.professor_name), '\s+', ' ', 'g'))
 					 AND lower(regexp_replace(btrim(p.university), '\s+', ' ', 'g')) = lower(regexp_replace(btrim(pr.university), '\s+', ' ', 'g')) THEN 1
-					WHEN lower(regexp_replace(btrim(p.university), '\s+', ' ', 'g')) = lower(regexp_replace(btrim(pr.university), '\s+', ' ', 'g')) THEN 2
-					ELSE 3
+					WHEN similarity(lower(p.name), lower(pr.professor_name)) >= 0.85 THEN 2
+					WHEN lower(regexp_replace(btrim(p.university), '\s+', ' ', 'g')) = lower(regexp_replace(btrim(pr.university), '\s+', ' ', 'g')) THEN 3
+					ELSE 4
 				END AS match_priority,
 				similarity(lower(p.name), lower(pr.professor_name))::double precision AS name_similarity
 			FROM professor.professor p
 			WHERE (
 				pr.professor_email IS NOT NULL
 				AND lower(p.email) = lower(pr.professor_email)
+			) OR (
+				lower(regexp_replace(btrim(p.name), '\s+', ' ', 'g')) = lower(regexp_replace(btrim(pr.professor_name), '\s+', ' ', 'g'))
+				AND lower(regexp_replace(btrim(p.university), '\s+', ' ', 'g')) = lower(regexp_replace(btrim(pr.university), '\s+', ' ', 'g'))
 			) OR similarity(lower(p.name), lower(pr.professor_name)) >= 0.35
 			ORDER BY
 				match_priority,
@@ -70,10 +113,19 @@ var (
 )
 
 type ListProfessorRequestOptions struct {
-	Limit  int
-	Offset int
-	Status string
-	Search string
+	Limit     int
+	Offset    int
+	Status    string
+	Duplicate string
+	Search    string
+}
+
+type ProfessorRequestListResult struct {
+	Requests        []v1.AdminProfessorRequest
+	Total           int64
+	GroupTotal      int64
+	StatusCounts    v1.AdminProfessorRequestStatusCounts
+	DuplicateCounts v1.AdminProfessorRequestDuplicateCounts
 }
 
 type ProfessorRequestDecision struct {
@@ -94,27 +146,43 @@ type ProfessorRequestDecisionResult struct {
 	Action  string
 }
 
-func (db *AdminDB) ListProfessorRequests(ctx context.Context, opts ListProfessorRequestOptions) ([]v1.AdminProfessorRequest, int64, v1.AdminProfessorRequestStatusCounts, error) {
+func (db *AdminDB) ListProfessorRequests(ctx context.Context, opts ListProfessorRequestOptions) (*ProfessorRequestListResult, error) {
 	query, args := buildProfessorRequestListQuery(opts)
 	var (
-		ids   []int64
-		total int64
+		ids             []int64
+		total           int64
+		groupTotal      int64
+		statusCounts    v1.AdminProfessorRequestStatusCounts
+		duplicateCounts v1.AdminProfessorRequestDuplicateCounts
 	)
-	if err := db.db.Pool.QueryRow(ctx, query, args...).Scan(&ids, &total); err != nil {
-		return nil, 0, v1.AdminProfessorRequestStatusCounts{}, err
-	}
-
-	counts, err := db.professorRequestStatusCounts(ctx, opts.Search)
-	if err != nil {
-		return nil, 0, v1.AdminProfessorRequestStatusCounts{}, err
+	if err := db.db.Pool.QueryRow(ctx, query, args...).Scan(
+		&ids,
+		&total,
+		&groupTotal,
+		&statusCounts.Pending,
+		&statusCounts.Approved,
+		&statusCounts.Rejected,
+		&statusCounts.Dismissed,
+		&statusCounts.All,
+		&duplicateCounts.All,
+		&duplicateCounts.Likely,
+		&duplicateCounts.NotLikely,
+	); err != nil {
+		return nil, err
 	}
 
 	requests, err := db.loadProfessorRequests(ctx, ids, false)
 	if err != nil {
-		return nil, 0, v1.AdminProfessorRequestStatusCounts{}, err
+		return nil, err
 	}
 
-	return requests, total, counts, nil
+	return &ProfessorRequestListResult{
+		Requests:        requests,
+		Total:           total,
+		GroupTotal:      groupTotal,
+		StatusCounts:    statusCounts,
+		DuplicateCounts: duplicateCounts,
+	}, nil
 }
 
 func (db *AdminDB) GetProfessorRequest(ctx context.Context, requestID int64) (*v1.AdminProfessorRequest, error) {
@@ -138,43 +206,115 @@ func buildProfessorRequestListQuery(opts ListProfessorRequestOptions) (string, [
 	if opts.Status == "" {
 		opts.Status = "pending"
 	}
+	if opts.Duplicate != "likely" && opts.Duplicate != "not_likely" {
+		opts.Duplicate = "all"
+	}
 
 	args := []any{opts.Limit, opts.Offset}
-	conditions := make([]string, 0, 2)
+	statusCondition := "TRUE"
 	if opts.Status != "all" {
 		args = append(args, opts.Status)
-		conditions = append(conditions, fmt.Sprintf("pr.status = $%d", len(args)))
+		statusCondition = fmt.Sprintf("pr.status = $%d", len(args))
 	}
+
+	searchCondition := "TRUE"
 	if search := strings.TrimSpace(opts.Search); search != "" {
 		args = append(args, "%"+search+"%")
-		conditions = append(conditions, professorRequestSearchCondition("pr", len(args)))
+		searchCondition = professorRequestSearchCondition("pr", len(args))
 	}
 
-	where := "TRUE"
-	if len(conditions) > 0 {
-		where = strings.Join(conditions, "\n\t\t\tAND ")
-	}
+	duplicateCondition := professorRequestDuplicateFilterCondition("pr", opts.Duplicate)
 
 	query := fmt.Sprintf(`
-		WITH filtered AS (
-			SELECT pr.id, pr.created_at
+		WITH RECURSIVE
+		%s,
+		classified AS MATERIALIZED (
+			SELECT
+				pr.*,
+				request_groups.group_id,
+				%s AS likely_duplicate
 			FROM professor.professor_request pr
+			JOIN request_groups ON request_groups.request_id = pr.id
+		),
+		search_filtered AS MATERIALIZED (
+			SELECT pr.*
+			FROM classified pr
 			WHERE %s
 		),
-		page AS (
-			SELECT id, created_at
-			FROM filtered
-			ORDER BY created_at DESC, id DESC
+		status_filtered AS MATERIALIZED (
+			SELECT pr.*
+			FROM search_filtered pr
+			WHERE %s
+		),
+		filtered AS MATERIALIZED (
+			SELECT pr.*
+			FROM status_filtered pr
+			WHERE %s
+		),
+		matching_groups AS MATERIALIZED (
+			SELECT DISTINCT ON (pr.group_id)
+				pr.group_id,
+				pr.created_at AS latest_created_at,
+				pr.id AS latest_request_id
+			FROM filtered pr
+			ORDER BY pr.group_id, pr.created_at DESC, pr.id DESC
+		),
+		page_groups AS MATERIALIZED (
+			SELECT
+				group_id,
+				row_number() OVER (ORDER BY latest_created_at DESC, latest_request_id DESC, group_id) AS page_order
+			FROM matching_groups
+			ORDER BY latest_created_at DESC, latest_request_id DESC, group_id
 			LIMIT $1 OFFSET $2
+		),
+		status_counts AS (
+			SELECT
+				count(*) FILTER (WHERE pr.status = 'pending') AS pending,
+				count(*) FILTER (WHERE pr.status = 'approved') AS approved,
+				count(*) FILTER (WHERE pr.status = 'rejected') AS rejected,
+				count(*) FILTER (WHERE pr.status = 'dismissed') AS dismissed,
+				count(*) AS all_count
+			FROM search_filtered pr
+			WHERE %s
+		),
+		duplicate_counts AS (
+			SELECT
+				count(*) AS all_count,
+				count(*) FILTER (WHERE pr.likely_duplicate) AS likely,
+				count(*) FILTER (WHERE NOT pr.likely_duplicate) AS not_likely
+			FROM status_filtered pr
 		)
 		SELECT
 			COALESCE(
-				array_agg(page.id ORDER BY page.created_at DESC, page.id DESC)
-					FILTER (WHERE page.id IS NOT NULL),
+				(
+					SELECT array_agg(
+						pr.id
+						ORDER BY page_groups.page_order, (pr.status = 'pending') DESC, pr.created_at DESC, pr.id DESC
+					)
+					FROM filtered pr
+					JOIN page_groups ON page_groups.group_id = pr.group_id
+				),
 				ARRAY[]::bigint[]
 			),
-			(SELECT count(*) FROM filtered)
-		FROM page`, where)
+			(SELECT count(*) FROM filtered),
+			(SELECT count(*) FROM matching_groups),
+			status_counts.pending,
+			status_counts.approved,
+			status_counts.rejected,
+			status_counts.dismissed,
+			status_counts.all_count,
+			duplicate_counts.all_count,
+			duplicate_counts.likely,
+			duplicate_counts.not_likely
+		FROM status_counts
+		CROSS JOIN duplicate_counts`,
+		professorRequestGroupingCTEs,
+		professorRequestLikelyDuplicateCondition("pr"),
+		searchCondition,
+		statusCondition,
+		duplicateCondition,
+		duplicateCondition,
+	)
 
 	return query, args
 }
@@ -186,47 +326,29 @@ func professorRequestSearchCondition(alias string, argument int) string {
 	)`, alias, argument)
 }
 
-func (db *AdminDB) professorRequestStatusCounts(ctx context.Context, search string) (v1.AdminProfessorRequestStatusCounts, error) {
-	where := "TRUE"
-	args := []any{}
-	if search = strings.TrimSpace(search); search != "" {
-		args = append(args, "%"+search+"%")
-		where = professorRequestSearchCondition("pr", len(args))
+func professorRequestDuplicateFilterCondition(alias, duplicate string) string {
+	switch duplicate {
+	case "likely":
+		return alias + ".likely_duplicate"
+	case "not_likely":
+		return "NOT " + alias + ".likely_duplicate"
+	default:
+		return "TRUE"
 	}
+}
 
-	rows, err := db.db.Pool.Query(ctx, fmt.Sprintf(`
-		SELECT pr.status, count(*)
-		FROM professor.professor_request pr
-		WHERE %s
-		GROUP BY pr.status`, where), args...)
-	if err != nil {
-		return v1.AdminProfessorRequestStatusCounts{}, err
-	}
-	defer rows.Close()
-
-	var counts v1.AdminProfessorRequestStatusCounts
-	for rows.Next() {
-		var (
-			status string
-			count  int64
-		)
-		if err := rows.Scan(&status, &count); err != nil {
-			return v1.AdminProfessorRequestStatusCounts{}, err
-		}
-		switch status {
-		case "pending":
-			counts.Pending = count
-		case "approved":
-			counts.Approved = count
-		case "rejected":
-			counts.Rejected = count
-		case "dismissed":
-			counts.Dismissed = count
-		}
-		counts.All += count
-	}
-
-	return counts, rows.Err()
+func professorRequestLikelyDuplicateCondition(alias string) string {
+	return fmt.Sprintf(`EXISTS (
+		SELECT 1
+		FROM professor.professor candidate
+		WHERE (
+			%[1]s.professor_email IS NOT NULL
+			AND lower(candidate.email) = lower(%[1]s.professor_email)
+		) OR (
+			lower(regexp_replace(btrim(candidate.name), '\s+', ' ', 'g')) = lower(regexp_replace(btrim(%[1]s.professor_name), '\s+', ' ', 'g'))
+			AND lower(regexp_replace(btrim(candidate.university), '\s+', ' ', 'g')) = lower(regexp_replace(btrim(%[1]s.university), '\s+', ' ', 'g'))
+		) OR similarity(lower(candidate.name), lower(%[1]s.professor_name)) >= 0.85
+	)`, alias)
 }
 
 func (db *AdminDB) loadProfessorRequests(ctx context.Context, ids []int64, includeModerationContext bool) ([]v1.AdminProfessorRequest, error) {
@@ -234,7 +356,9 @@ func (db *AdminDB) loadProfessorRequests(ctx context.Context, ids []int64, inclu
 		return []v1.AdminProfessorRequest{}, nil
 	}
 
-	rows, err := db.db.Pool.Query(ctx, `
+	rows, err := db.db.Pool.Query(ctx, fmt.Sprintf(`
+		WITH RECURSIVE
+		%s
 		SELECT
 			pr.id,
 			pr.professor_name,
@@ -250,25 +374,16 @@ func (db *AdminDB) loadProfessorRequests(ctx context.Context, ids []int64, inclu
 			pr.moderation_reason_code,
 			pr.moderation_note,
 			pr.resolved_professor_email,
-			COALESCE(related.request_count, 0)::int
+			request_groups.group_id,
+			(request_group_sizes.request_count - 1)::int,
+			%s AS likely_duplicate
 		FROM professor.professor_request pr
-		LEFT JOIN LATERAL (
-			SELECT count(*) AS request_count
-			FROM professor.professor_request other
-			WHERE other.id <> pr.id
-			  AND (
-				(
-					pr.professor_email IS NOT NULL
-					AND other.professor_email IS NOT NULL
-					AND lower(other.professor_email) = lower(pr.professor_email)
-				)
-				OR (
-					lower(regexp_replace(btrim(other.professor_name), '\s+', ' ', 'g')) = lower(regexp_replace(btrim(pr.professor_name), '\s+', ' ', 'g'))
-					AND lower(regexp_replace(btrim(other.university), '\s+', ' ', 'g')) = lower(regexp_replace(btrim(pr.university), '\s+', ' ', 'g'))
-				)
-			  )
-		) related ON true
-		WHERE pr.id = ANY($1::bigint[])`, ids)
+		JOIN request_groups ON request_groups.request_id = pr.id
+		JOIN request_group_sizes ON request_group_sizes.group_id = request_groups.group_id
+		WHERE pr.id = ANY($1::bigint[])`,
+		professorRequestGroupingCTEs,
+		professorRequestLikelyDuplicateCondition("pr"),
+	), ids)
 	if err != nil {
 		return nil, err
 	}
@@ -292,7 +407,9 @@ func (db *AdminDB) loadProfessorRequests(ctx context.Context, ids []int64, inclu
 			&request.ModerationReasonCode,
 			&request.ModerationNote,
 			&request.ResolvedProfessorEmail,
+			&request.RelatedGroupID,
 			&request.RelatedRequestCount,
+			&request.LikelyDuplicate,
 		); err != nil {
 			return nil, err
 		}

@@ -68,12 +68,18 @@ export type AdminProfessorRequestStatusFilter = AdminProfessorRequestStatus | "a
 
 export type AdminProfessorRequestStatusCounts = Record<AdminProfessorRequestStatusFilter, number>;
 
+export type AdminProfessorRequestDuplicateFilter = "all" | "likely" | "not_likely";
+
+export type AdminProfessorRequestDuplicateCounts = Record<AdminProfessorRequestDuplicateFilter, number>;
+
 export type AdminProfessorRequestListResponse = {
     requests: AdminProfessorRequest[];
     limit: number;
     offset: number;
     total: number;
+    group_total: number;
     status_counts: AdminProfessorRequestStatusCounts;
+    duplicate_counts: AdminProfessorRequestDuplicateCounts;
 };
 
 export type AdminProfessorRequestResponse = {
@@ -622,7 +628,9 @@ export type AdminProfessorRequestSummary = {
 };
 
 export type AdminProfessorRequest = AdminProfessorRequestSummary & {
+    related_group_id: string;
     related_request_count: number;
+    likely_duplicate: boolean;
     matches: AdminProfessorMatch[];
     signals: AdminModerationSignal[];
     action_history: AdminModerationAction[];
@@ -782,6 +790,7 @@ export async function listAdminProfessorRequests(
     signal?: AbortSignal,
     options: {
         status?: AdminProfessorRequestStatusFilter;
+        duplicate?: AdminProfessorRequestDuplicateFilter;
         search?: string;
         limit?: number;
         offset?: number;
@@ -789,6 +798,7 @@ export async function listAdminProfessorRequests(
 ) {
     const params = new URLSearchParams({
         status: options.status || "pending",
+        duplicate: options.duplicate || "all",
         limit: String(options.limit ?? 100),
         offset: String(options.offset ?? 0),
     });

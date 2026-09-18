@@ -33,12 +33,14 @@ func (s *Server) ListProfessorRequests() http.Handler {
 		limit := parseBoundedInt(r.URL.Query().Get("limit"), defaultProfessorRequestLimit, 1, maxProfessorRequestLimit)
 		offset := parseBoundedInt(r.URL.Query().Get("offset"), 0, 0, 1_000_000)
 		status := parseChoiceQuery(r, "status", "pending", "pending", "approved", "rejected", "dismissed", "all")
+		duplicate := parseChoiceQuery(r, "duplicate", "all", "all", "likely", "not_likely")
 
-		requests, total, statusCounts, err := s.db.ListProfessorRequests(r.Context(), admindb.ListProfessorRequestOptions{
-			Limit:  limit,
-			Offset: offset,
-			Status: status,
-			Search: strings.TrimSpace(r.URL.Query().Get("search")),
+		result, err := s.db.ListProfessorRequests(r.Context(), admindb.ListProfessorRequestOptions{
+			Limit:     limit,
+			Offset:    offset,
+			Status:    status,
+			Duplicate: duplicate,
+			Search:    strings.TrimSpace(r.URL.Query().Get("search")),
 		})
 		if err != nil {
 			logging.FromContext(r.Context()).Errorf("failed to list professor requests: %v", err)
@@ -47,11 +49,13 @@ func (s *Server) ListProfessorRequests() http.Handler {
 		}
 
 		jsonutil.MarshalResponse(w, http.StatusOK, v1.AdminProfessorRequestListResponse{
-			Requests:     requests,
-			Limit:        limit,
-			Offset:       offset,
-			Total:        total,
-			StatusCounts: statusCounts,
+			Requests:        result.Requests,
+			Limit:           limit,
+			Offset:          offset,
+			Total:           result.Total,
+			GroupTotal:      result.GroupTotal,
+			StatusCounts:    result.StatusCounts,
+			DuplicateCounts: result.DuplicateCounts,
 		})
 	})
 }

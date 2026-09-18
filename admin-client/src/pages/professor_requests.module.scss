@@ -48,7 +48,32 @@
   padding: 12px;
 }
 
-.statusTabs {
+.filterControls {
+  align-items: flex-end;
+  display: flex;
+  flex: 1 1 720px;
+  flex-wrap: wrap;
+  gap: 10px;
+  min-width: 0;
+}
+
+.filterSet {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.filterLabel {
+  color: hsl(var(--muted-foreground));
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  padding-left: 3px;
+  text-transform: uppercase;
+}
+
+.statusTabs,
+.duplicateTabs {
   max-width: 100%;
   overflow-x: auto;
 }
@@ -111,6 +136,7 @@
   align-items: center;
   color: hsl(var(--muted-foreground));
   display: flex;
+  flex-wrap: wrap;
   font-size: 12px;
   gap: 12px;
   justify-content: space-between;
@@ -125,6 +151,47 @@
 .queue {
   display: grid;
   gap: 10px;
+  min-width: 0;
+}
+
+.relatedGroup {
+  background: hsl(var(--secondary) / 0.4);
+  border: 1px solid hsl(var(--border));
+  border-radius: 14px;
+  display: grid;
+  gap: 9px;
+  min-width: 0;
+  padding: 10px;
+}
+
+.relatedGroupHeader {
+  align-items: center;
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+  padding: 2px 4px;
+
+  > div:first-child {
+    display: grid;
+    gap: 3px;
+    min-width: 0;
+  }
+
+  strong {
+    color: hsl(var(--foreground));
+    font-size: 12px;
+  }
+
+  span {
+    color: hsl(var(--muted-foreground));
+    font-size: 10px;
+    line-height: 1.4;
+  }
+}
+
+.relatedGroupCards {
+  display: grid;
+  gap: 8px;
   min-width: 0;
 }
 
@@ -879,6 +946,11 @@
     width: 100%;
   }
 
+  .filterControls {
+    flex: none;
+    width: 100%;
+  }
+
   .requestOpen {
     grid-template-columns: minmax(200px, 1fr) minmax(220px, 1fr);
   }
@@ -900,6 +972,15 @@
 
   .statusTabs {
     display: flex;
+    width: 100%;
+  }
+
+  .duplicateTabs {
+    display: flex;
+    width: 100%;
+  }
+
+  .filterSet {
     width: 100%;
   }
 
@@ -925,6 +1006,11 @@
   .requestFooter {
     padding-left: 15px;
     padding-right: 15px;
+  }
+
+  .relatedGroupHeader {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .panel {

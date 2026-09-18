@@ -86,11 +86,13 @@ type AdminCourseFileListResponse struct {
 }
 
 type AdminProfessorRequestListResponse struct {
-	Requests     []AdminProfessorRequest           `json:"requests"`
-	Limit        int                               `json:"limit"`
-	Offset       int                               `json:"offset"`
-	Total        int64                             `json:"total"`
-	StatusCounts AdminProfessorRequestStatusCounts `json:"status_counts"`
+	Requests        []AdminProfessorRequest              `json:"requests"`
+	Limit           int                                  `json:"limit"`
+	Offset          int                                  `json:"offset"`
+	Total           int64                                `json:"total"`
+	GroupTotal      int64                                `json:"group_total"`
+	StatusCounts    AdminProfessorRequestStatusCounts    `json:"status_counts"`
+	DuplicateCounts AdminProfessorRequestDuplicateCounts `json:"duplicate_counts"`
 }
 
 type AdminProfessorRequestResponse struct {
@@ -109,6 +111,12 @@ type AdminProfessorRequestStatusCounts struct {
 	Rejected  int64 `json:"rejected"`
 	Dismissed int64 `json:"dismissed"`
 	All       int64 `json:"all"`
+}
+
+type AdminProfessorRequestDuplicateCounts struct {
+	All       int64 `json:"all"`
+	Likely    int64 `json:"likely"`
+	NotLikely int64 `json:"not_likely"`
 }
 
 type AdminReviewResponse struct {
@@ -586,7 +594,9 @@ type AdminProfessorRequestSummary struct {
 
 type AdminProfessorRequest struct {
 	AdminProfessorRequestSummary
+	RelatedGroupID      int64                   `json:"related_group_id,string"`
 	RelatedRequestCount int                     `json:"related_request_count"`
+	LikelyDuplicate     bool                    `json:"likely_duplicate"`
 	Matches             []AdminProfessorMatch   `json:"matches"`
 	Signals             []AdminModerationSignal `json:"signals,omitempty"`
 	ActionHistory       []AdminModerationAction `json:"action_history,omitempty"`

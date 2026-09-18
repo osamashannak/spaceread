@@ -35,6 +35,8 @@ import {
     type AdminProfessorMatch,
     type AdminProfessorRequest,
     type AdminProfessorRequestDecision,
+    type AdminProfessorRequestDuplicateCounts,
+    type AdminProfessorRequestDuplicateFilter,
     type AdminProfessorRequestStatusCounts,
     type AdminProfessorRequestStatusFilter,
     type AdminReason,
@@ -49,6 +51,11 @@ type LoadState = "loading" | "ready" | "error";
 type LoadMode = "initial" | "refresh";
 type DetailState = "loading" | "ready" | "error";
 type RecommendationKind = "ready" | "details" | "duplicate";
+type ProfessorRequestGroup = {
+    id: string;
+    requests: AdminProfessorRequest[];
+    total: number;
+};
 
 const pageSize = 100;
 const emptyCounts: AdminProfessorRequestStatusCounts = {
@@ -59,12 +66,24 @@ const emptyCounts: AdminProfessorRequestStatusCounts = {
     all: 0,
 };
 
+const emptyDuplicateCounts: AdminProfessorRequestDuplicateCounts = {
+    all: 0,
+    likely: 0,
+    not_likely: 0,
+};
+
 const statusTabs: {value: AdminProfessorRequestStatusFilter; label: string}[] = [
     {value: "pending", label: "Pending"},
     {value: "all", label: "All"},
     {value: "approved", label: "Approved"},
     {value: "rejected", label: "Rejected"},
     {value: "dismissed", label: "Dismissed"},
+];
+
+const duplicateTabs: {value: AdminProfessorRequestDuplicateFilter; label: string}[] = [
+    {value: "all", label: "All"},
+    {value: "likely", label: "Likely duplicate"},
+    {value: "not_likely", label: "Not likely duplicate"},
 ];
 
 const dateFormatter = new Intl.DateTimeFormat(undefined, {
@@ -75,9 +94,12 @@ const dateFormatter = new Intl.DateTimeFormat(undefined, {
 export function ProfessorRequestsPage() {
     const [requests, setRequests] = useState<AdminProfessorRequest[]>([]);
     const [counts, setCounts] = useState<AdminProfessorRequestStatusCounts>(emptyCounts);
+    const [duplicateCounts, setDuplicateCounts] = useState<AdminProfessorRequestDuplicateCounts>(emptyDuplicateCounts);
     const [total, setTotal] = useState(0);
+    const [groupTotal, setGroupTotal] = useState(0);
     const [offset, setOffset] = useState(0);
     const [status, setStatus] = useState<AdminProfessorRequestStatusFilter>("pending");
+    const [duplicate, setDuplicate] = useState<AdminProfessorRequestDuplicateFilter>("all");
     const [searchDraft, setSearchDraft] = useState("");
     const [search, setSearch] = useState("");
     const [loadState, setLoadState] = useState<LoadState>("loading");
@@ -107,14 +129,17 @@ export function ProfessorRequestsPage() {
 
         listAdminProfessorRequests(controller.signal, {
             status,
+            duplicate,
             search,
             limit: pageSize,
             offset: requestedOffset,
         })
             .then(response => {
-                setRequests(sortPendingFirst(response.requests || []));
+                setRequests((response.requests || []).map(normalizeRequest));
                 setCounts({...emptyCounts, ...response.status_counts});
+                setDuplicateCounts({...emptyDuplicateCounts, ...response.duplicate_counts});
                 setTotal(response.total);
+                setGroupTotal(response.group_total ?? response.total);
                 setOffset(response.offset);
                 setLoadState("ready");
             })
@@ -128,7 +153,7 @@ export function ProfessorRequestsPage() {
                 listControllerRef.current = null;
                 setIsRefreshing(false);
             });
-    }, [search, status]);
+    }, [duplicate, search, status]);
 
     useEffect(() => {
         setOffset(0);
@@ -245,15 +270,16 @@ export function ProfessorRequestsPage() {
             const updated = current.map(item => item.id === normalized.id ? normalized : item);
             return status !== "all" && normalized.status !== status
                 ? updated.filter(item => item.id !== normalized.id)
-                : sortPendingFirst(updated);
+                : updated;
         });
         void loadRequests("refresh", offset);
     }
 
+    const requestGroups = useMemo(() => groupProfessorRequests(requests), [requests]);
     const hasPrevious = offset > 0;
-    const hasNext = offset + requests.length < total;
-    const pageStart = total === 0 ? 0 : offset + 1;
-    const pageEnd = Math.min(offset + requests.length, total);
+    const hasNext = offset + requestGroups.length < groupTotal;
+    const pageStart = groupTotal === 0 ? 0 : offset + 1;
+    const pageEnd = Math.min(offset + requestGroups.length, groupTotal);
     const activeReasons = useMemo(() => reasons
         .filter(reason => reason.active)
         .sort((a, b) => a.sort_order - b.sort_order || a.code.localeCompare(b.code)), [reasons]);
@@ -273,16 +299,34 @@ export function ProfessorRequestsPage() {
             </header>
 
             <section className={styles.controls} aria-label="Professor request filters">
-                <Tabs value={status} onValueChange={value => setStatus(value as AdminProfessorRequestStatusFilter)}>
-                    <TabsList className={styles.statusTabs} aria-label="Filter by request status">
-                        {statusTabs.map(tab => (
-                            <TabsTrigger className={styles.statusTab} key={tab.value} value={tab.value}>
-                                <span>{tab.label}</span>
-                                <span className={styles.tabCount}>{counts[tab.value]}</span>
-                            </TabsTrigger>
-                        ))}
-                    </TabsList>
-                </Tabs>
+                <div className={styles.filterControls}>
+                    <div className={styles.filterSet}>
+                        <span className={styles.filterLabel}>Status</span>
+                        <Tabs value={status} onValueChange={value => setStatus(value as AdminProfessorRequestStatusFilter)}>
+                            <TabsList className={styles.statusTabs} aria-label="Filter by request status">
+                                {statusTabs.map(tab => (
+                                    <TabsTrigger className={styles.statusTab} key={tab.value} value={tab.value}>
+                                        <span>{tab.label}</span>
+                                        <span className={styles.tabCount}>{counts[tab.value]}</span>
+                                    </TabsTrigger>
+                                ))}
+                            </TabsList>
+                        </Tabs>
+                    </div>
+                    <div className={styles.filterSet}>
+                        <span className={styles.filterLabel}>Duplicate likelihood</span>
+                        <Tabs value={duplicate} onValueChange={value => setDuplicate(value as AdminProfessorRequestDuplicateFilter)}>
+                            <TabsList className={styles.duplicateTabs} aria-label="Filter by duplicate likelihood">
+                                {duplicateTabs.map(tab => (
+                                    <TabsTrigger className={styles.statusTab} key={tab.value} value={tab.value}>
+                                        <span>{tab.label}</span>
+                                        <span className={styles.tabCount}>{duplicateCounts[tab.value]}</span>
+                                    </TabsTrigger>
+                                ))}
+                            </TabsList>
+                        </Tabs>
+                    </div>
+                </div>
                 <form className={styles.searchForm} role="search" onSubmit={submitSearch}>
                     <label className={styles.searchField}>
                         <Search aria-hidden="true" size={16}/>
@@ -302,8 +346,15 @@ export function ProfessorRequestsPage() {
             </section>
 
             <div className={styles.resultBar} aria-live="polite">
-                <span>{search ? `Results for “${search}”` : `${statusLabel(status)} requests`}</span>
-                <strong>{total === 0 ? "No requests" : `${pageStart}–${pageEnd} of ${total}`}</strong>
+                <span>
+                    {search ? `Results for “${search}”` : `${statusLabel(status)} requests`}
+                    {` · ${duplicateFilterLabel(duplicate)}`}
+                </span>
+                <strong>
+                    {total === 0
+                        ? "No requests"
+                        : `${pageStart}–${pageEnd} of ${groupTotal} ${groupTotal === 1 ? "group" : "groups"} · ${total} ${total === 1 ? "request" : "requests"}`}
+                </strong>
             </div>
 
             <section className={styles.queue} aria-label="Professor request queue" aria-busy={loadState === "loading"}>
@@ -320,16 +371,18 @@ export function ProfessorRequestsPage() {
                 {loadState === "ready" && requests.length === 0 && (
                     <StateNotice
                         icon={<UserRoundPlus size={22}/>}
-                        title={search ? "No matching requests" : `No ${statusLabel(status).toLowerCase()} requests`}
-                        message={search ? "Try a name, email, university, or request ID." : "There is nothing in this queue right now."}
+                        title={emptyQueueTitle(search, status, duplicate)}
+                        message={search
+                            ? "Try a name, email, university, or request ID."
+                            : duplicate === "all" ? "There is nothing in this queue right now." : "Try another status or duplicate-likelihood filter."}
                     />
                 )}
-                {loadState === "ready" && requests.map(request => (
-                    <RequestCard
-                        key={request.id}
-                        request={normalizeRequest(request)}
-                        selected={selectedRequest?.id === request.id}
-                        onOpen={trigger => openRequest(request, trigger)}
+                {loadState === "ready" && requestGroups.map(group => (
+                    <RelatedRequestGroup
+                        key={group.id}
+                        group={group}
+                        selectedRequestId={selectedRequest?.id}
+                        onOpen={openRequest}
                     />
                 ))}
             </section>
@@ -339,7 +392,7 @@ export function ProfessorRequestsPage() {
                     <Button disabled={!hasPrevious} size="sm" type="button" variant="outline" onClick={() => loadRequests("initial", Math.max(0, offset - pageSize))}>
                         Previous
                     </Button>
-                    <span>{pageStart}–{pageEnd} of {total}</span>
+                    <span>{pageStart}–{pageEnd} of {groupTotal} {groupTotal === 1 ? "group" : "groups"}</span>
                     <Button disabled={!hasNext} size="sm" type="button" variant="outline" onClick={() => loadRequests("initial", offset + pageSize)}>
                         Next
                     </Button>
@@ -392,6 +445,52 @@ export function ProfessorRequestsPage() {
                 </div>
             ), document.body)}
         </div>
+    );
+}
+
+function RelatedRequestGroup({
+    group,
+    selectedRequestId,
+    onOpen,
+}: {
+    group: ProfessorRequestGroup;
+    selectedRequestId?: string;
+    onOpen: (request: AdminProfessorRequest, trigger: HTMLElement) => void;
+}) {
+    if (group.total <= 1) {
+        const request = group.requests[0];
+        return (
+            <RequestCard
+                request={request}
+                selected={selectedRequestId === request.id}
+                onOpen={trigger => onOpen(request, trigger)}
+            />
+        );
+    }
+
+    const shown = group.requests.length;
+    return (
+        <section className={styles.relatedGroup} aria-label={`${group.total} related professor requests`}>
+            <header className={styles.relatedGroupHeader}>
+                <div>
+                    <strong>Related requests</strong>
+                    <span>Grouped by matching email or professor name and university.</span>
+                </div>
+                <Badge variant="info">
+                    {shown < group.total ? `${shown} shown of ${group.total} requests` : `${group.total} requests`}
+                </Badge>
+            </header>
+            <div className={styles.relatedGroupCards}>
+                {group.requests.map(request => (
+                    <RequestCard
+                        key={request.id}
+                        request={request}
+                        selected={selectedRequestId === request.id}
+                        onOpen={trigger => onOpen(request, trigger)}
+                    />
+                ))}
+            </div>
+        </section>
     );
 }
 
@@ -825,13 +924,17 @@ function recommendationFor(request: AdminProfessorRequest): {
     icon: ReactNode;
 } {
     const likelyMatch = (request.matches || []).find(match => (
-        normalizedSimilarity(match.name_similarity) >= 0.85 || /email|exact/i.test(match.match_type)
+        normalizedSimilarity(match.name_similarity) >= 0.85
+        || match.match_type === "exact_email"
+        || match.match_type === "same_university_name"
     ));
-    if (likelyMatch) {
+    if (request.likely_duplicate || likelyMatch) {
         return {
             kind: "duplicate",
             label: "Likely duplicate",
-            description: `${likelyMatch.name} is a strong existing-professor match. Review the candidate before deciding.`,
+            description: likelyMatch
+                ? `${likelyMatch.name} is a strong existing-professor match. Review the candidate before deciding.`
+                : "A strong existing-professor match was found. Review the candidates before deciding.",
             tone: "danger",
             icon: <CopyCheck size={17}/>,
         };
@@ -862,19 +965,46 @@ function recommendationFor(request: AdminProfessorRequest): {
 function normalizeRequest(request: AdminProfessorRequest): AdminProfessorRequest {
     return {
         ...request,
+        related_group_id: request.related_group_id || request.id,
         related_request_count: request.related_request_count || 0,
+        likely_duplicate: Boolean(request.likely_duplicate),
         matches: request.matches || [],
         signals: request.signals || [],
         action_history: request.action_history || [],
     };
 }
 
-function sortPendingFirst(requests: AdminProfessorRequest[]) {
-    return [...requests].sort((a, b) => {
-        const pending = Number(b.status === "pending") - Number(a.status === "pending");
-        if (pending !== 0) return pending;
-        return timestamp(b.created_at) - timestamp(a.created_at) || b.id.localeCompare(a.id);
-    });
+function groupProfessorRequests(requests: AdminProfessorRequest[]): ProfessorRequestGroup[] {
+    const groups = new Map<string, ProfessorRequestGroup>();
+    for (const request of requests) {
+        const groupID = request.related_group_id || request.id;
+        const existing = groups.get(groupID);
+        const knownTotal = Math.max(1, request.related_request_count + 1);
+        if (existing) {
+            existing.requests.push(request);
+            existing.total = Math.max(existing.total, knownTotal, existing.requests.length);
+            continue;
+        }
+        groups.set(groupID, {
+            id: groupID,
+            requests: [request],
+            total: knownTotal,
+        });
+    }
+    return [...groups.values()];
+}
+
+function duplicateFilterLabel(filter: AdminProfessorRequestDuplicateFilter) {
+    if (filter === "likely") return "Likely duplicate";
+    if (filter === "not_likely") return "Not likely duplicate";
+    return "All duplicate likelihoods";
+}
+
+function emptyQueueTitle(search: string, status: AdminProfessorRequestStatusFilter, duplicate: AdminProfessorRequestDuplicateFilter) {
+    if (search) return "No matching requests";
+    if (duplicate === "likely") return "No likely duplicate requests";
+    if (duplicate === "not_likely") return "No requests without a likely duplicate";
+    return `No ${statusLabel(status).toLowerCase()} requests`;
 }
 
 function statusTone(status: string): "success" | "warning" | "danger" | "info" | "outline" {
@@ -913,12 +1043,6 @@ function formatDateTime(value?: string) {
     if (!value) return "Unknown";
     const date = new Date(value);
     return Number.isNaN(date.getTime()) ? value : dateFormatter.format(date);
-}
-
-function timestamp(value?: string) {
-    if (!value) return 0;
-    const parsed = new Date(value).getTime();
-    return Number.isNaN(parsed) ? 0 : parsed;
 }
 
 function decisionSuccessMessage(decision: AdminProfessorRequestDecision, action: string) {
