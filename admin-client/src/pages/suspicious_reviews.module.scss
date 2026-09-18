@@ -527,6 +527,148 @@
   justify-content: flex-end;
 }
 
+.ratingBulkBar {
+  align-items: center;
+  background: #fbfdff;
+  border-top: 1px solid #dce5ec;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: space-between;
+  min-width: 0;
+  padding: 10px 14px;
+}
+
+.ratingBulkActions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.selectionStatus {
+  color: #047857;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.4;
+}
+
+.deleteDialog {
+  animation: deleteDialogIn 0.18s ease-out both;
+  background: #fff;
+  border: 1px solid #fecaca;
+  border-radius: calc(var(--radius) + 2px);
+  box-shadow: 0 22px 60px hsl(var(--foreground) / 0.2);
+  display: grid;
+  gap: 14px;
+  left: 50%;
+  max-height: calc(100dvh - 32px);
+  max-width: calc(100vw - 24px);
+  overflow-y: auto;
+  padding: 18px;
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(500px, calc(100vw - 24px));
+}
+
+.deleteDialogHeader {
+  align-items: flex-start;
+  display: flex;
+  gap: 12px;
+  min-width: 0;
+
+  > div:last-child {
+    display: grid;
+    gap: 5px;
+    min-width: 0;
+  }
+
+  h2 {
+    color: hsl(var(--foreground));
+    font-size: 18px;
+    font-weight: 800;
+    line-height: 1.25;
+    margin: 0;
+  }
+
+  p {
+    color: hsl(var(--muted-foreground));
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.5;
+    margin: 0;
+  }
+}
+
+.deleteDialogIcon {
+  align-items: center;
+  background: #fef2f2;
+  border-radius: 999px;
+  color: #b91c1c;
+  display: inline-flex;
+  flex: 0 0 38px;
+  height: 38px;
+  justify-content: center;
+}
+
+.deleteDialogStats {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+
+  span {
+    background: #f8fafc;
+    border: 1px solid #e7eef4;
+    border-radius: var(--radius);
+    color: hsl(var(--muted-foreground));
+    display: grid;
+    font-size: 10px;
+    font-weight: 800;
+    gap: 2px;
+    line-height: 1.35;
+    padding: 9px;
+  }
+
+  strong {
+    color: hsl(var(--foreground));
+    font-size: 16px;
+  }
+}
+
+.deleteDialogFields {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(160px, 0.7fr) minmax(220px, 1.3fr);
+  min-width: 0;
+
+  textarea {
+    min-height: 76px;
+    resize: vertical;
+  }
+}
+
+.deleteWarning {
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  border-radius: var(--radius);
+  color: #9a3412;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.45;
+  margin: 0;
+  padding: 9px 10px;
+}
+
+.deleteDialogActions {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
 .feed {
   background: #fff;
   border-top: 1px solid rgb(239, 243, 244);
@@ -755,6 +897,12 @@
   padding: 10px;
 }
 
+.ratingCardSelected {
+  background: #f3fbff;
+  border-color: #7dd3fc;
+  box-shadow: inset 3px 0 0 #38bdf8;
+}
+
 .keptReviewCard {
   background: #f0fdf4;
   border-color: #86efac;
@@ -831,6 +979,43 @@
     background: #dcfce7;
     border-color: #86efac;
     color: #166534;
+  }
+}
+
+.ratingSelector {
+  align-items: center;
+  background: #fff;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+  color: hsl(var(--foreground));
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 11px;
+  font-weight: 800;
+  gap: 5px;
+  min-height: 30px;
+  padding: 0 8px;
+  white-space: nowrap;
+
+  input {
+    accent-color: hsl(var(--spaceread-blue));
+    cursor: pointer;
+    height: 14px;
+    margin: 0;
+    width: 14px;
+  }
+
+  span {
+    color: inherit;
+    font-size: inherit;
+    line-height: 1;
+    text-transform: none;
+  }
+
+  &:has(input:checked) {
+    background: #e0f2fe;
+    border-color: #7dd3fc;
+    color: #075985;
   }
 }
 
@@ -970,6 +1155,18 @@
   }
 }
 
+@keyframes deleteDialogIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, calc(-50% + 5px));
+  }
+
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%);
+  }
+}
+
 @keyframes rowIn {
   from {
     opacity: 0;
@@ -1026,6 +1223,7 @@
   .page,
   .stateNotice,
   .filterSheet,
+  .deleteDialog,
   .pairRow {
     animation-duration: 1ms;
   }
@@ -1098,6 +1296,35 @@
 
   .bulkActions {
     justify-content: flex-start;
+  }
+
+  .ratingBulkBar,
+  .ratingBulkActions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .ratingBulkActions {
+    button {
+      width: 100%;
+    }
+  }
+
+  .deleteDialogStats {
+    grid-template-columns: 1fr;
+  }
+
+  .deleteDialogFields {
+    grid-template-columns: 1fr;
+  }
+
+  .deleteDialogActions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+
+    button {
+      min-width: 0;
+    }
   }
 
   .reviewCardHead {

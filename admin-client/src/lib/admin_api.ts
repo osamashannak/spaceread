@@ -49,10 +49,54 @@ export type AdminSuspiciousReviewRatingPairListResponse = {
     offset: number;
 };
 
+export type AdminDeleteReviewRatingsResponse = {
+    success: boolean;
+    requested_count: number;
+    deleted_count: number;
+    affected_review_ids: string[];
+};
+
 export type AdminCourseFileListResponse = {
     files: AdminCourseFileSummary[];
     limit: number;
     offset: number;
+};
+
+export type AdminProfessorRequestStatus = "pending" | "approved" | "rejected" | "dismissed";
+
+export type AdminProfessorRequestStatusFilter = AdminProfessorRequestStatus | "all";
+
+export type AdminProfessorRequestStatusCounts = Record<AdminProfessorRequestStatusFilter, number>;
+
+export type AdminProfessorRequestListResponse = {
+    requests: AdminProfessorRequest[];
+    limit: number;
+    offset: number;
+    total: number;
+    status_counts: AdminProfessorRequestStatusCounts;
+};
+
+export type AdminProfessorRequestResponse = {
+    request: AdminProfessorRequest;
+};
+
+export type AdminProfessorRequestDecision = "approve" | "reject" | "dismiss" | "mark_duplicate";
+
+export type AdminProfessorRequestDecisionBody = {
+    decision: AdminProfessorRequestDecision;
+    professor_name?: string;
+    professor_email?: string;
+    university?: string;
+    college?: string;
+    resolved_professor_email?: string;
+    reason_code?: string;
+    note?: string;
+};
+
+export type AdminProfessorRequestDecisionResponse = {
+    success: boolean;
+    request: AdminProfessorRequest;
+    action: string;
 };
 
 export type AdminReviewFilters = {
@@ -574,6 +618,23 @@ export type AdminProfessorRequestSummary = {
     reviewer_user_id?: string;
     moderation_reason_code?: string;
     moderation_note?: string;
+    resolved_professor_email?: string;
+};
+
+export type AdminProfessorRequest = AdminProfessorRequestSummary & {
+    related_request_count: number;
+    matches: AdminProfessorMatch[];
+    signals: AdminModerationSignal[];
+    action_history: AdminModerationAction[];
+};
+
+export type AdminProfessorMatch = {
+    email: string;
+    name: string;
+    university: string;
+    college: string;
+    match_type: string;
+    name_similarity: number;
 };
 
 export type AdminCourseFileSummary = {
@@ -691,6 +752,19 @@ export async function listAdminSuspiciousReviewRatingPairs(signal?: AbortSignal,
     return adminFetch<AdminSuspiciousReviewRatingPairListResponse>(`/review-ratings/suspicious?${params.toString()}`, {signal});
 }
 
+export async function deleteAdminReviewRatings(
+    body: {
+        ratings: { review_id: string; session_id: string }[];
+        reason_code: string;
+        note?: string;
+    },
+) {
+    return adminFetch<AdminDeleteReviewRatingsResponse>("/review-ratings/delete", {
+        method: "POST",
+        body: JSON.stringify(body),
+    });
+}
+
 export async function listAdminCourseFiles(signal?: AbortSignal, filters?: AdminCourseFileFilters) {
     const params = new URLSearchParams({limit: "100"});
     if (filters) {
@@ -701,6 +775,36 @@ export async function listAdminCourseFiles(signal?: AbortSignal, filters?: Admin
         }
     }
     return adminFetch<AdminCourseFileListResponse>(`/course-files?${params.toString()}`, {signal});
+}
+
+export async function listAdminProfessorRequests(
+    signal?: AbortSignal,
+    options: {
+        status?: AdminProfessorRequestStatusFilter;
+        search?: string;
+        limit?: number;
+        offset?: number;
+    } = {},
+) {
+    const params = new URLSearchParams({
+        status: options.status || "pending",
+        limit: String(options.limit ?? 100),
+        offset: String(options.offset ?? 0),
+    });
+    const search = options.search?.trim();
+    if (search) params.set("search", search);
+    return adminFetch<AdminProfessorRequestListResponse>(`/professor-requests?${params.toString()}`, {signal});
+}
+
+export async function getAdminProfessorRequest(requestId: string, signal?: AbortSignal) {
+    return adminFetch<AdminProfessorRequestResponse>(`/professor-requests/${encodeURIComponent(requestId)}`, {signal});
+}
+
+export async function decideAdminProfessorRequest(requestId: string, body: AdminProfessorRequestDecisionBody) {
+    return adminFetch<AdminProfessorRequestDecisionResponse>(`/professor-requests/${encodeURIComponent(requestId)}/decision`, {
+        method: "POST",
+        body: JSON.stringify(body),
+    });
 }
 
 export async function getAdminReview(reviewId: string, signal?: AbortSignal) {

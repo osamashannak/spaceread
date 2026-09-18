@@ -61,10 +61,54 @@ type AdminSuspiciousReviewRatingPairListResponse struct {
 	Offset int                               `json:"offset"`
 }
 
+type AdminReviewRatingRef struct {
+	ReviewID  *int64 `json:"review_id,string" required:"true"`
+	SessionID *int64 `json:"session_id,string" required:"true"`
+}
+
+type AdminReviewRatingDeleteRequest struct {
+	Ratings    []AdminReviewRatingRef `json:"ratings"`
+	ReasonCode *string                `json:"reason_code" required:"true"`
+	Note       *string                `json:"note"`
+}
+
+type AdminReviewRatingDeleteResponse struct {
+	Success           bool     `json:"success"`
+	RequestedCount    int      `json:"requested_count"`
+	DeletedCount      int64    `json:"deleted_count"`
+	AffectedReviewIDs []string `json:"affected_review_ids"`
+}
+
 type AdminCourseFileListResponse struct {
 	Files  []AdminCourseFileSummary `json:"files"`
 	Limit  int                      `json:"limit"`
 	Offset int                      `json:"offset"`
+}
+
+type AdminProfessorRequestListResponse struct {
+	Requests     []AdminProfessorRequest           `json:"requests"`
+	Limit        int                               `json:"limit"`
+	Offset       int                               `json:"offset"`
+	Total        int64                             `json:"total"`
+	StatusCounts AdminProfessorRequestStatusCounts `json:"status_counts"`
+}
+
+type AdminProfessorRequestResponse struct {
+	Request AdminProfessorRequest `json:"request"`
+}
+
+type AdminProfessorRequestDecisionResponse struct {
+	Success bool                  `json:"success"`
+	Request AdminProfessorRequest `json:"request"`
+	Action  string                `json:"action"`
+}
+
+type AdminProfessorRequestStatusCounts struct {
+	Pending   int64 `json:"pending"`
+	Approved  int64 `json:"approved"`
+	Rejected  int64 `json:"rejected"`
+	Dismissed int64 `json:"dismissed"`
+	All       int64 `json:"all"`
 }
 
 type AdminReviewResponse struct {
@@ -524,19 +568,48 @@ type AdminReviewAttachmentSummary struct {
 }
 
 type AdminProfessorRequestSummary struct {
-	ID                   int64      `json:"id,string"`
-	ProfessorName        string     `json:"professor_name"`
-	ProfessorEmail       *string    `json:"professor_email,omitempty"`
-	University           string     `json:"university"`
-	College              *string    `json:"college,omitempty"`
-	Status               string     `json:"status"`
-	SessionID            int64      `json:"session_id,string"`
-	UserID               *int64     `json:"user_id,string,omitempty"`
-	CreatedAt            time.Time  `json:"created_at"`
-	ReviewedAt           *time.Time `json:"reviewed_at,omitempty"`
-	ReviewerUserID       *int64     `json:"reviewer_user_id,string,omitempty"`
-	ModerationReasonCode *string    `json:"moderation_reason_code,omitempty"`
-	ModerationNote       *string    `json:"moderation_note,omitempty"`
+	ID                     int64      `json:"id,string"`
+	ProfessorName          string     `json:"professor_name"`
+	ProfessorEmail         *string    `json:"professor_email,omitempty"`
+	University             string     `json:"university"`
+	College                *string    `json:"college,omitempty"`
+	Status                 string     `json:"status"`
+	SessionID              int64      `json:"session_id,string"`
+	UserID                 *int64     `json:"user_id,string,omitempty"`
+	CreatedAt              time.Time  `json:"created_at"`
+	ReviewedAt             *time.Time `json:"reviewed_at,omitempty"`
+	ReviewerUserID         *int64     `json:"reviewer_user_id,string,omitempty"`
+	ModerationReasonCode   *string    `json:"moderation_reason_code,omitempty"`
+	ModerationNote         *string    `json:"moderation_note,omitempty"`
+	ResolvedProfessorEmail *string    `json:"resolved_professor_email,omitempty"`
+}
+
+type AdminProfessorRequest struct {
+	AdminProfessorRequestSummary
+	RelatedRequestCount int                     `json:"related_request_count"`
+	Matches             []AdminProfessorMatch   `json:"matches"`
+	Signals             []AdminModerationSignal `json:"signals,omitempty"`
+	ActionHistory       []AdminModerationAction `json:"action_history,omitempty"`
+}
+
+type AdminProfessorMatch struct {
+	Email          string  `json:"email"`
+	Name           string  `json:"name"`
+	University     string  `json:"university"`
+	College        string  `json:"college"`
+	MatchType      string  `json:"match_type"`
+	NameSimilarity float64 `json:"name_similarity"`
+}
+
+type AdminProfessorRequestDecisionRequest struct {
+	Decision               *string `json:"decision" required:"true"`
+	ProfessorName          *string `json:"professor_name"`
+	ProfessorEmail         *string `json:"professor_email"`
+	University             *string `json:"university"`
+	College                *string `json:"college"`
+	ResolvedProfessorEmail *string `json:"resolved_professor_email"`
+	ReasonCode             *string `json:"reason_code"`
+	Note                   *string `json:"note"`
 }
 
 type AdminCourseFileSummary struct {

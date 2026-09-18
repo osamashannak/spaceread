@@ -1,4 +1,4 @@
-import {type FormEvent, type ReactNode, useCallback, useEffect, useMemo, useState} from "react";
+import {type FormEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState} from "react";
 import {createPortal} from "react-dom";
 import {
     AlertCircle,
@@ -17,6 +17,8 @@ import {
     ThumbsDown,
     ThumbsUp,
     Timer,
+    Trash2,
+    TriangleAlert,
     UserRound,
     Wifi,
     X,
@@ -26,12 +28,16 @@ import {EntityLink, useAdminEntityDrawer} from "@/components/admin/entity_drawer
 import {Badge} from "@/components/ui/badge";
 import {Button} from "@/components/ui/button";
 import {Input} from "@/components/ui/input";
+import {Textarea} from "@/components/ui/textarea";
 import {
     AdminApiError,
+    type AdminReason,
     type AdminReviewRating,
     type AdminSuspiciousReviewRatingFilters,
     type AdminSuspiciousReviewRatingPair,
     type AdminSuspiciousReviewRatingReview,
+    deleteAdminReviewRatings,
+    listAdminReasons,
     listAdminSuspiciousReviewRatingPairs,
 } from "@/lib/admin_api";
 import {cn} from "@/lib/utils";
@@ -92,7 +98,17 @@ export function SuspiciousReviewRatingsPage() {
     const [error, setError] = useState<string | null>(null);
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [groupSort, setGroupSort] = useState<GroupSort>("recency");
+    const [selectedRatingKeys, setSelectedRatingKeys] = useState<Set<string>>(new Set());
+    const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+    const [deletePending, setDeletePending] = useState(false);
+    const [deleteError, setDeleteError] = useState<string | null>(null);
+    const [reasons, setReasons] = useState<AdminReason[]>([]);
+    const [reasonLoadError, setReasonLoadError] = useState<string | null>(null);
+    const [deleteReason, setDeleteReason] = useState("");
+    const [deleteNote, setDeleteNote] = useState("");
+    const [actionMessage, setActionMessage] = useState<string | null>(null);
     const {openEntity, showSensitive, toggleSensitive} = useAdminEntityDrawer();
+    const overlayOpen = filtersOpen || deleteDialogOpen;
 
     const loadPairs = useCallback((mode: "initial" | "refresh" = "initial") => {
         const controller = new AbortController();
@@ -106,6 +122,8 @@ export function SuspiciousReviewRatingsPage() {
         listAdminSuspiciousReviewRatingPairs(controller.signal, filters)
             .then(response => {
                 setPairs(response.pairs);
+                const loadedKeys = new Set(uniqueReviewRatings(response.pairs).map(ratingKey));
+                setSelectedRatingKeys(current => new Set([...current].filter(key => loadedKeys.has(key))));
                 setLoadState("ready");
             })
             .catch((err: unknown) => {
@@ -121,7 +139,21 @@ export function SuspiciousReviewRatingsPage() {
     useEffect(() => loadPairs("initial"), [loadPairs]);
 
     useEffect(() => {
-        if (!filtersOpen) return;
+        const controller = new AbortController();
+        listAdminReasons(controller.signal)
+            .then(response => {
+                setReasons(response.reasons);
+                setReasonLoadError(null);
+            })
+            .catch((err: unknown) => {
+                if (controller.signal.aborted) return;
+                setReasonLoadError(err instanceof AdminApiError ? err.message : "Could not load moderation reasons.");
+            });
+        return () => controller.abort();
+    }, []);
+
+    useEffect(() => {
+        if (!overlayOpen) return;
 
         const previousBodyOverflow = document.body.style.overflow;
         const previousBodyOverscroll = document.body.style.overscrollBehavior;
@@ -142,7 +174,7 @@ export function SuspiciousReviewRatingsPage() {
             document.body.style.paddingRight = previousBodyPaddingRight;
             document.documentElement.style.overscrollBehavior = previousDocumentOverscroll;
         };
-    }, [filtersOpen]);
+    }, [overlayOpen]);
 
     function updateDraft<K extends keyof AdminSuspiciousReviewRatingFilters>(
         key: K,
@@ -157,6 +189,8 @@ export function SuspiciousReviewRatingsPage() {
         setDraftFilters(nextFilters);
         setFilters(nextFilters);
         setFiltersOpen(false);
+        setSelectedRatingKeys(new Set());
+        setActionMessage(null);
     }
 
     function openFilters() {
@@ -176,10 +210,20 @@ export function SuspiciousReviewRatingsPage() {
         setDraftFilters(defaultFilters);
         setFilters(defaultFilters);
         setFiltersOpen(false);
+        setSelectedRatingKeys(new Set());
+        setActionMessage(null);
     }
 
     const groupedRatings = useMemo(() => groupSuspiciousRatingPairs(pairs), [pairs]);
     const groups = useMemo(() => sortSuspiciousRatingGroups(groupedRatings, groupSort), [groupedRatings, groupSort]);
+    const loadedRatings = useMemo(() => uniqueReviewRatings(pairs), [pairs]);
+    const selectedRatings = useMemo(
+        () => loadedRatings.filter(rating => selectedRatingKeys.has(ratingKey(rating))),
+        [loadedRatings, selectedRatingKeys],
+    );
+    const allLoadedRatingsSelected = loadedRatings.length > 0 && selectedRatings.length === loadedRatings.length;
+    const selectedLikeCount = selectedRatings.filter(rating => rating.value === "like").length;
+    const selectedReviewCount = new Set(selectedRatings.map(rating => rating.review_id)).size;
     const totalSignals = useMemo(
         () => groups.reduce((sum, group) => sum + groupSignals(group, showSensitive).length, 0),
         [groups, showSensitive],
@@ -194,6 +238,85 @@ export function SuspiciousReviewRatingsPage() {
     const draftDirty = !filtersEqual(draftFilters, filters);
     const defaultFiltersSelected = filtersEqual(filters, defaultFilters);
     const defaultDraftSelected = filtersEqual(draftFilters, defaultFilters);
+    const reasonOptions = useMemo(() => activeReasonOptions(reasons), [reasons]);
+
+    useEffect(() => {
+        setDeleteReason(current => {
+            if (current && reasonOptions.some(reason => reason.code === current)) return current;
+            return reasonOptions.find(reason => reason.code === "spam_or_manipulation")?.code
+                || reasonOptions[0]?.code
+                || "";
+        });
+    }, [reasonOptions]);
+
+    function toggleRatingSelection(key: string, checked: boolean) {
+        setActionMessage(null);
+        setSelectedRatingKeys(current => {
+            const next = new Set(current);
+            if (checked) {
+                next.add(key);
+            } else {
+                next.delete(key);
+            }
+            return next;
+        });
+    }
+
+    function toggleAllRatings(checked: boolean) {
+        setActionMessage(null);
+        setSelectedRatingKeys(checked ? new Set(loadedRatings.map(ratingKey)) : new Set());
+    }
+
+    function openDeleteDialog() {
+        if (selectedRatings.length === 0) return;
+        setDeleteError(null);
+        setDeleteDialogOpen(true);
+    }
+
+    function closeDeleteDialog() {
+        if (deletePending) return;
+        setDeleteDialogOpen(false);
+        setDeleteError(null);
+    }
+
+    async function confirmDeleteRatings() {
+        if (deletePending || selectedRatings.length === 0) return;
+        if (!deleteReason) {
+            setDeleteError("Choose a moderation reason before permanently deleting ratings.");
+            return;
+        }
+
+        const targets = selectedRatings.map(rating => ({
+            review_id: rating.review_id,
+            session_id: rating.session_id,
+        }));
+        const targetKeys = new Set(selectedRatings.map(ratingKey));
+
+        setDeletePending(true);
+        setDeleteError(null);
+        setActionMessage(null);
+
+        try {
+            const response = await deleteAdminReviewRatings({
+                ratings: targets,
+                reason_code: deleteReason,
+                note: deleteNote.trim() || undefined,
+            });
+            setPairs(current => current.filter(pair => (
+                !targetKeys.has(ratingKey(pair.rating_1))
+                && !targetKeys.has(ratingKey(pair.rating_2))
+            )));
+            setSelectedRatingKeys(new Set());
+            setDeleteDialogOpen(false);
+            setDeleteNote("");
+            setActionMessage(deleteSuccessMessage(response.deleted_count, response.requested_count));
+            loadPairs("refresh");
+        } catch (err: unknown) {
+            setDeleteError(err instanceof AdminApiError ? err.message : "Could not delete the selected ratings.");
+        } finally {
+            setDeletePending(false);
+        }
+    }
 
     return (
         <div className={styles.page}>
@@ -409,6 +532,109 @@ export function SuspiciousReviewRatingsPage() {
                 ), document.body)}
             </section>
 
+            <section className={styles.ratingBulkBar} aria-label="Rating selection and deletion">
+                <SelectAllCheckbox
+                    checked={allLoadedRatingsSelected}
+                    disabled={loadedRatings.length === 0 || deletePending}
+                    indeterminate={selectedRatings.length > 0 && !allLoadedRatingsSelected}
+                    label={selectedRatings.length > 0
+                        ? `${selectedRatings.length} of ${loadedRatings.length} ratings selected`
+                        : `${loadedRatings.length} ratings loaded`}
+                    onChange={toggleAllRatings}
+                />
+                <div className={styles.ratingBulkActions}>
+                    {actionMessage && <span className={styles.selectionStatus} role="status">{actionMessage}</span>}
+                    {selectedRatings.length > 0 && (
+                        <Button disabled={deletePending} size="sm" type="button" variant="ghost" onClick={() => toggleAllRatings(false)}>
+                            Clear selection
+                        </Button>
+                    )}
+                    <Button
+                        disabled={selectedRatings.length === 0 || deletePending}
+                        size="sm"
+                        type="button"
+                        variant="destructive"
+                        onClick={openDeleteDialog}
+                    >
+                        <Trash2 size={15}/>
+                        Delete selected
+                    </Button>
+                </div>
+            </section>
+
+            {deleteDialogOpen && createPortal((
+                <div className={styles.filterSheetLayer}>
+                    <button aria-label="Cancel rating deletion" className={styles.filterSheetBackdrop} type="button" onClick={closeDeleteDialog}/>
+                    <section
+                        aria-describedby="delete-rating-description"
+                        aria-labelledby="delete-rating-title"
+                        aria-modal="true"
+                        className={styles.deleteDialog}
+                        role="alertdialog"
+                    >
+                        <header className={styles.deleteDialogHeader}>
+                            <span className={styles.deleteDialogIcon}><TriangleAlert size={20}/></span>
+                            <div>
+                                <h2 id="delete-rating-title">Permanently delete {selectedRatings.length} {selectedRatings.length === 1 ? "rating" : "ratings"}?</h2>
+                                <p id="delete-rating-description">
+                                    This drops the selected rating rows from the database. This action cannot be undone.
+                                </p>
+                            </div>
+                        </header>
+                        <div className={styles.deleteDialogStats}>
+                            <span><strong>{selectedLikeCount}</strong> {selectedLikeCount === 1 ? "like" : "likes"}</span>
+                            <span><strong>{selectedRatings.length - selectedLikeCount}</strong> {selectedRatings.length - selectedLikeCount === 1 ? "dislike" : "dislikes"}</span>
+                            <span><strong>{selectedReviewCount}</strong> {selectedReviewCount === 1 ? "review" : "reviews"} affected</span>
+                        </div>
+                        <div className={styles.deleteDialogFields}>
+                            <label className={styles.bulkField}>
+                                <span>Reason</span>
+                                <select
+                                    className={styles.selectInput}
+                                    disabled={deletePending || reasonOptions.length === 0}
+                                    required
+                                    value={deleteReason}
+                                    onChange={event => {
+                                        setDeleteReason(event.target.value);
+                                        setDeleteError(null);
+                                    }}
+                                >
+                                    {reasonOptions.length === 0 && <option value="">No active reasons available</option>}
+                                    {reasonOptions.map(reason => (
+                                        <option key={reason.code} value={reason.code}>{reason.label}</option>
+                                    ))}
+                                </select>
+                            </label>
+                            <label className={cn(styles.bulkField, styles.bulkNote)}>
+                                <span>Internal note · optional</span>
+                                <Textarea
+                                    disabled={deletePending}
+                                    maxLength={4000}
+                                    placeholder="Add context for the moderation audit log"
+                                    rows={3}
+                                    value={deleteNote}
+                                    onChange={event => setDeleteNote(event.target.value)}
+                                />
+                            </label>
+                        </div>
+                        <p className={styles.deleteWarning}>
+                            The affected reviews’ like and dislike totals will be updated after deletion.
+                        </p>
+                        {reasonLoadError && <p className={styles.actionError} role="alert">{reasonLoadError}</p>}
+                        {deleteError && <p className={styles.actionError} role="alert">{deleteError}</p>}
+                        <footer className={styles.deleteDialogActions}>
+                            <Button autoFocus disabled={deletePending} type="button" variant="ghost" onClick={closeDeleteDialog}>
+                                Cancel
+                            </Button>
+                            <Button disabled={deletePending || !deleteReason || reasonOptions.length === 0} type="button" variant="destructive" onClick={() => void confirmDeleteRatings()}>
+                                {deletePending ? <LoaderCircle className={styles.spin} size={16}/> : <Trash2 size={16}/>}
+                                {deletePending ? "Deleting…" : "Delete permanently"}
+                            </Button>
+                        </footer>
+                    </section>
+                </div>
+            ), document.body)}
+
             <section className={cn(styles.feed, isRefreshing && styles.refreshingFeed)}>
                 {loadState === "loading" && pairs.length === 0 && <SkeletonList/>}
                 {loadState === "error" && pairs.length === 0 && (
@@ -439,14 +665,51 @@ export function SuspiciousReviewRatingsPage() {
                             <SuspiciousRatingGroupRow
                                 key={group.key}
                                 group={group}
+                                selectedRatingKeys={selectedRatingKeys}
+                                selectionDisabled={deletePending}
                                 showSensitive={showSensitive}
                                 onOpenReview={() => openEntity({type: "review", id: group.review.id})}
+                                onToggleRating={toggleRatingSelection}
                             />
                         ))}
                     </div>
                 )}
             </section>
         </div>
+    );
+}
+
+function SelectAllCheckbox({
+    checked,
+    disabled,
+    indeterminate,
+    label,
+    onChange,
+}: {
+    checked: boolean;
+    disabled: boolean;
+    indeterminate: boolean;
+    label: string;
+    onChange: (checked: boolean) => void;
+}) {
+    const inputRef = useRef<HTMLInputElement>(null);
+
+    useEffect(() => {
+        if (inputRef.current) inputRef.current.indeterminate = indeterminate;
+    }, [indeterminate]);
+
+    return (
+        <label className={styles.selectionToggle}>
+            <input
+                ref={inputRef}
+                aria-label="Select all loaded ratings"
+                checked={checked}
+                disabled={disabled}
+                type="checkbox"
+                onChange={event => onChange(event.target.checked)}
+            />
+            <span>{label}</span>
+        </label>
     );
 }
 
@@ -473,20 +736,27 @@ function FilterGroup({title, children}: { title: string; children: ReactNode }) 
 
 function SuspiciousRatingGroupRow({
     group,
+    selectedRatingKeys,
+    selectionDisabled,
     showSensitive,
     onOpenReview,
+    onToggleRating,
 }: {
     group: SuspiciousRatingGroup;
+    selectedRatingKeys: Set<string>;
+    selectionDisabled: boolean;
     showSensitive: boolean;
     onOpenReview: () => void;
+    onToggleRating: (key: string, checked: boolean) => void;
 }) {
     const review = group.review;
     const signals = groupSignals(group, showSensitive);
     const likeCount = group.ratings.filter(rating => rating.value === "like").length;
     const dislikeCount = group.ratings.length - likeCount;
+    const selectedCount = group.ratings.filter(rating => selectedRatingKeys.has(ratingKey(rating))).length;
 
     return (
-        <article className={styles.pairRow}>
+        <article className={cn(styles.pairRow, selectedCount > 0 && styles.pairSelected)}>
             <header className={styles.pairHeader}>
                 <div className={styles.pairTitle}>
                     <Badge className={styles.scoreBadge} variant={scoreTone(group.suspicionScore)}>
@@ -502,6 +772,7 @@ function SuspiciousRatingGroupRow({
                     <Badge variant="success"><ThumbsUp size={12}/> {likeCount}</Badge>
                     <Badge variant={dislikeCount > 0 ? "warning" : "outline"}><ThumbsDown size={12}/> {dislikeCount}</Badge>
                     <Badge variant="outline">{formatDuration(group.createdSpanSeconds)} span</Badge>
+                    {selectedCount > 0 && <Badge variant="info">{selectedCount} selected</Badge>}
                 </div>
             </header>
 
@@ -549,7 +820,10 @@ function SuspiciousRatingGroupRow({
                         isLatest={index === 0}
                         label={index === 0 ? "Latest rating" : `Earlier rating ${index}`}
                         rating={rating}
+                        selected={selectedRatingKeys.has(ratingKey(rating))}
+                        selectionDisabled={selectionDisabled}
                         showSensitive={showSensitive}
+                        onToggle={checked => onToggleRating(ratingKey(rating), checked)}
                     />
                 ))}
             </div>
@@ -561,23 +835,41 @@ function RatingCard({
     isLatest,
     label,
     rating,
+    selected,
+    selectionDisabled,
     showSensitive,
+    onToggle,
 }: {
     isLatest: boolean;
     label: string;
     rating: AdminReviewRating;
+    selected: boolean;
+    selectionDisabled: boolean;
     showSensitive: boolean;
+    onToggle: (checked: boolean) => void;
 }) {
     const hasDeviceDetails = Boolean(rating.user_agent || rating.thumbmark_fingerprint || rating.creep_fingerprint);
 
     return (
-        <article className={styles.reviewCard}>
+        <article className={cn(styles.reviewCard, selected && styles.ratingCardSelected)}>
             <div className={styles.reviewCardHead}>
                 <div>
                     <span>{label}</span>
                     <strong>{rating.value === "like" ? "Like" : "Dislike"}</strong>
                 </div>
-                {rating.value === "like" ? <ThumbsUp size={18}/> : <ThumbsDown size={18}/>}
+                <div className={styles.reviewCardActions}>
+                    <label className={styles.ratingSelector}>
+                        <input
+                            aria-label={`Select ${rating.value} from session ${rating.session_id}`}
+                            checked={selected}
+                            disabled={selectionDisabled}
+                            type="checkbox"
+                            onChange={event => onToggle(event.target.checked)}
+                        />
+                        <span>{selected ? "Selected" : "Select"}</span>
+                    </label>
+                    {rating.value === "like" ? <ThumbsUp size={18}/> : <ThumbsDown size={18}/>}
+                </div>
             </div>
             <div className={styles.reviewBadges}>
                 {isLatest && <Badge variant="info">Latest</Badge>}
@@ -686,6 +978,28 @@ function groupSuspiciousRatingPairs(pairs: AdminSuspiciousReviewRatingPair[]): S
 
 function ratingKey(rating: AdminReviewRating) {
     return `${rating.review_id}:${rating.session_id}`;
+}
+
+function uniqueReviewRatings(pairs: AdminSuspiciousReviewRatingPair[]) {
+    const ratings = new Map<string, AdminReviewRating>();
+    for (const pair of pairs) {
+        ratings.set(ratingKey(pair.rating_1), pair.rating_1);
+        ratings.set(ratingKey(pair.rating_2), pair.rating_2);
+    }
+    return [...ratings.values()].sort(compareRatingsNewestFirst);
+}
+
+function deleteSuccessMessage(deletedCount: number, requestedCount: number) {
+    const deletedLabel = `${deletedCount} ${deletedCount === 1 ? "rating" : "ratings"} permanently deleted.`;
+    const alreadyAbsentCount = Math.max(0, requestedCount - deletedCount);
+    if (alreadyAbsentCount === 0) return deletedLabel;
+    return `${deletedLabel} ${alreadyAbsentCount} ${alreadyAbsentCount === 1 ? "rating was" : "ratings were"} already absent.`;
+}
+
+function activeReasonOptions(reasons: AdminReason[]) {
+    return reasons
+        .filter(reason => reason.active)
+        .sort((first, second) => first.sort_order - second.sort_order || first.code.localeCompare(second.code));
 }
 
 function compareRatingsNewestFirst(first?: AdminReviewRating, second?: AdminReviewRating) {

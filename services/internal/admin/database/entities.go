@@ -993,7 +993,8 @@ func (db *AdminDB) listProfessorRequestSummaries(ctx context.Context, where stri
 			pr.reviewed_at,
 			pr.reviewer_user_id,
 			pr.moderation_reason_code,
-			pr.moderation_note
+			pr.moderation_note,
+			pr.resolved_professor_email
 		FROM professor.professor_request pr
 		WHERE %s
 		ORDER BY pr.created_at DESC
@@ -1020,6 +1021,7 @@ func (db *AdminDB) listProfessorRequestSummaries(ctx context.Context, where stri
 			&request.ReviewerUserID,
 			&request.ModerationReasonCode,
 			&request.ModerationNote,
+			&request.ResolvedProfessorEmail,
 		); err != nil {
 			return nil, err
 		}

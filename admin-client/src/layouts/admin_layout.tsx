@@ -6,6 +6,7 @@ import {
     ShieldAlert,
     SlidersHorizontal,
     ThumbsUp,
+    UserRoundPlus,
 } from "lucide-react";
 import {AdminAccessGate} from "@/layouts/admin_access_gate";
 import {WorkspaceShell} from "@/components/admin/workspace_shell";
@@ -21,6 +22,12 @@ const navSections: NavSection[] = [
             {to: "/review-ratings/suspicious", label: "Suspicious ratings", icon: ThumbsUp},
             {to: "/course-files", label: "Course files", icon: FileText},
             {to: "/reasons", label: "Reasons", icon: SlidersHorizontal},
+        ],
+    },
+    {
+        label: "Requests",
+        items: [
+            {to: "/professor-requests", label: "Professor add requests", icon: UserRoundPlus},
         ],
     },
 ];

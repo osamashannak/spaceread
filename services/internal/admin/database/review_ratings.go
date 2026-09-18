@@ -4,8 +4,10 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	v1 "github.com/osamashannak/uaeu-space/services/internal/api/v1"
+	professordb "github.com/osamashannak/uaeu-space/services/internal/professor/database"
 )
 
 type ListSuspiciousReviewRatingPairOptions struct {
@@ -18,6 +20,68 @@ type ListSuspiciousReviewRatingPairOptions struct {
 	ReviewID       *int64
 	ProfessorEmail string
 }
+
+type ReviewRatingRef struct {
+	ReviewID  int64
+	SessionID int64
+}
+
+type DeleteReviewRatingsDecision struct {
+	Ratings     []ReviewRatingRef
+	ActorUserID int64
+	ReasonCode  string
+	Note        *string
+}
+
+type DeleteReviewRatingsResult struct {
+	DeletedCount      int64
+	AffectedReviewIDs []int64
+}
+
+const deleteReviewRatingsQuery = `
+	WITH targets AS (
+		SELECT review_id, session_id
+		FROM unnest($1::bigint[], $2::bigint[]) AS selected(review_id, session_id)
+	),
+	deleted AS (
+		DELETE FROM professor.review_rating rating
+		USING targets
+		WHERE rating.review_id = targets.review_id
+			AND rating.session_id = targets.session_id
+		RETURNING rating.review_id, rating.session_id, rating.value, rating.created_at
+	),
+	logged AS (
+		INSERT INTO moderation.action_log (
+			actor_user_id,
+			target_type,
+			target_id,
+			action,
+			reason_code,
+			note,
+			previous_state,
+			next_state
+		)
+		SELECT
+			$3,
+			'review_rating',
+			deleted.review_id::text || ':' || deleted.session_id::text,
+			'delete',
+			$4,
+			$5,
+			jsonb_build_object(
+				'review_id', deleted.review_id::text,
+				'session_id', deleted.session_id::text,
+				'value', CASE WHEN deleted.value THEN 'like' ELSE 'dislike' END,
+				'created_at', deleted.created_at
+			),
+			NULL
+		FROM deleted
+		RETURNING target_id
+	)
+	SELECT review_id, COUNT(*)
+	FROM deleted
+	GROUP BY review_id
+	ORDER BY review_id`
 
 const (
 	suspiciousReviewRatingCloseTimingSeconds  = int64(3600)
@@ -315,4 +379,68 @@ func (db *AdminDB) ListSuspiciousReviewRatingPairs(ctx context.Context, opts Lis
 	}
 
 	return pairs, rows.Err()
+}
+
+func (db *AdminDB) DeleteReviewRatings(ctx context.Context, decision DeleteReviewRatingsDecision) (*DeleteReviewRatingsResult, error) {
+	reviewIDs, sessionIDs := reviewRatingDeleteArrays(decision.Ratings)
+
+	tx, err := db.db.Pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+
+	rows, err := tx.Query(
+		ctx,
+		deleteReviewRatingsQuery,
+		reviewIDs,
+		sessionIDs,
+		decision.ActorUserID,
+		decision.ReasonCode,
+		decision.Note,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	result := &DeleteReviewRatingsResult{
+		AffectedReviewIDs: make([]int64, 0),
+	}
+	for rows.Next() {
+		var (
+			reviewID     int64
+			deletedCount int64
+		)
+		if err := rows.Scan(&reviewID, &deletedCount); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		result.AffectedReviewIDs = append(result.AffectedReviewIDs, reviewID)
+		result.DeletedCount += deletedCount
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, err
+	}
+	rows.Close()
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+
+	return result, nil
+}
+
+func reviewRatingDeleteArrays(ratings []ReviewRatingRef) ([]int64, []int64) {
+	reviewIDs := make([]int64, 0, len(ratings))
+	sessionIDs := make([]int64, 0, len(ratings))
+	for _, rating := range ratings {
+		reviewIDs = append(reviewIDs, rating.ReviewID)
+		sessionIDs = append(sessionIDs, rating.SessionID)
+	}
+	return reviewIDs, sessionIDs
+}
+
+func (db *AdminDB) RecomputeReviewRatingSortIndexes(ctx context.Context, reviewIDs []int64, now time.Time) (int, error) {
+	return professordb.New(db.db).RecomputeReviewSortIndexes(ctx, reviewIDs, now)
 }
