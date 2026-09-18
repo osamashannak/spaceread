@@ -371,7 +371,9 @@
 
 .replyAttachment {
   @extend .attachment;
-  width: 150px;
+  border-radius: 12px;
+  max-width: 112px;
+  width: 112px;
 }
 
 .translateText {
