@@ -137,7 +137,8 @@ export interface ReviewPolicyWarning {
 }
 
 export type ReviewPostResult =
-    | { kind: "review"; review: ReviewAPI };
+    | { kind: "review"; review: ReviewAPI }
+    | { kind: "error"; code?: string };
 
 export interface ProfessorHistory {
     name: string;

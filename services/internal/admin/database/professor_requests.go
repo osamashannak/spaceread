@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -15,45 +17,6 @@ import (
 
 const (
 	professorRequestMatchLimit   = 5
-	professorRequestGroupingCTEs = `
-		request_keys AS MATERIALIZED (
-			SELECT
-				pr.id,
-				CASE WHEN pr.professor_email IS NULL THEN NULL ELSE lower(pr.professor_email) END AS email_key,
-				lower(regexp_replace(btrim(pr.professor_name), '\s+', ' ', 'g')) AS name_key,
-				lower(regexp_replace(btrim(pr.university), '\s+', ' ', 'g')) AS university_key
-			FROM professor.professor_request pr
-		),
-		request_links AS MATERIALIZED (
-			SELECT id AS request_id, 'email'::text AS link_type, email_key AS key_one, ''::text AS key_two
-			FROM request_keys
-			WHERE email_key IS NOT NULL
-			UNION ALL
-			SELECT id, 'identity'::text, name_key, university_key
-			FROM request_keys
-		),
-		request_reach(root_id, request_id) AS (
-			SELECT id, id
-			FROM request_keys
-			UNION
-			SELECT reach.root_id, neighbor.request_id
-			FROM request_reach reach
-			JOIN request_links current_link ON current_link.request_id = reach.request_id
-			JOIN request_links neighbor
-			  ON neighbor.link_type = current_link.link_type
-			 AND neighbor.key_one = current_link.key_one
-			 AND neighbor.key_two = current_link.key_two
-		),
-		request_groups AS MATERIALIZED (
-			SELECT request_id, min(root_id) AS group_id
-			FROM request_reach
-			GROUP BY request_id
-		),
-		request_group_sizes AS MATERIALIZED (
-			SELECT group_id, count(*) AS request_count
-			FROM request_groups
-			GROUP BY group_id
-		)`
 	professorRequestMatchesQuery = `
 		SELECT
 			pr.id,
@@ -128,6 +91,47 @@ type ProfessorRequestListResult struct {
 	DuplicateCounts v1.AdminProfessorRequestDuplicateCounts
 }
 
+type professorRequestIndexRow struct {
+	ID            int64
+	Status        string
+	CreatedAt     time.Time
+	EmailKey      *string
+	NameKey       string
+	UniversityKey string
+	SearchMatch   bool
+}
+
+type professorRequestMetadata struct {
+	GroupID         int64
+	GroupSize       int
+	LikelyDuplicate bool
+}
+
+type professorRequestListPage struct {
+	IDs             []int64
+	Total           int64
+	GroupTotal      int64
+	StatusCounts    v1.AdminProfessorRequestStatusCounts
+	DuplicateCounts v1.AdminProfessorRequestDuplicateCounts
+}
+
+type professorRequestPageGroup struct {
+	ID              int64
+	LatestCreatedAt time.Time
+	LatestRequestID int64
+	Members         []professorRequestIndexRow
+}
+
+type professorRequestIdentityKey struct {
+	Name       string
+	University string
+}
+
+type professorRequestDisjointSet struct {
+	parent map[int64]int64
+	size   map[int64]int
+}
+
 type ProfessorRequestDecision struct {
 	RequestID              int64
 	Decision               string
@@ -147,46 +151,55 @@ type ProfessorRequestDecisionResult struct {
 }
 
 func (db *AdminDB) ListProfessorRequests(ctx context.Context, opts ListProfessorRequestOptions) (*ProfessorRequestListResult, error) {
-	query, args := buildProfessorRequestListQuery(opts)
-	var (
-		ids             []int64
-		total           int64
-		groupTotal      int64
-		statusCounts    v1.AdminProfessorRequestStatusCounts
-		duplicateCounts v1.AdminProfessorRequestDuplicateCounts
-	)
-	if err := db.db.Pool.QueryRow(ctx, query, args...).Scan(
-		&ids,
-		&total,
-		&groupTotal,
-		&statusCounts.Pending,
-		&statusCounts.Approved,
-		&statusCounts.Rejected,
-		&statusCounts.Dismissed,
-		&statusCounts.All,
-		&duplicateCounts.All,
-		&duplicateCounts.Likely,
-		&duplicateCounts.NotLikely,
-	); err != nil {
+	opts = normalizeProfessorRequestListOptions(opts)
+	indexRows, err := db.loadProfessorRequestIndex(ctx, opts.Search)
+	if err != nil {
 		return nil, err
 	}
+	metadata := buildProfessorRequestMetadata(indexRows)
 
-	requests, err := db.loadProfessorRequests(ctx, ids, false)
+	matchCandidateIDs := professorRequestExistingMatchCandidateIDs(indexRows, metadata, opts)
+	existingMatches, err := db.loadProfessorRequestExistingMatches(ctx, matchCandidateIDs)
+	if err != nil {
+		return nil, err
+	}
+	markProfessorRequestExistingMatches(metadata, existingMatches)
+	page := buildProfessorRequestListPage(indexRows, metadata, opts)
+
+	requests, err := db.loadProfessorRequests(ctx, page.IDs, false, metadata)
 	if err != nil {
 		return nil, err
 	}
 
 	return &ProfessorRequestListResult{
 		Requests:        requests,
-		Total:           total,
-		GroupTotal:      groupTotal,
-		StatusCounts:    statusCounts,
-		DuplicateCounts: duplicateCounts,
+		Total:           page.Total,
+		GroupTotal:      page.GroupTotal,
+		StatusCounts:    page.StatusCounts,
+		DuplicateCounts: page.DuplicateCounts,
 	}, nil
 }
 
 func (db *AdminDB) GetProfessorRequest(ctx context.Context, requestID int64) (*v1.AdminProfessorRequest, error) {
-	requests, err := db.loadProfessorRequests(ctx, []int64{requestID}, true)
+	requestMetadata, found, err := db.loadProfessorRequestMetadata(ctx, requestID)
+	if err != nil {
+		return nil, err
+	}
+	if !found {
+		return nil, nil
+	}
+	metadata := map[int64]professorRequestMetadata{requestID: requestMetadata}
+
+	existingMatches := map[int64]struct{}{}
+	if requestMetadata.GroupSize == 1 {
+		existingMatches, err = db.loadProfessorRequestExistingMatches(ctx, []int64{requestID})
+		if err != nil {
+			return nil, err
+		}
+	}
+	markProfessorRequestExistingMatches(metadata, existingMatches)
+
+	requests, err := db.loadProfessorRequests(ctx, []int64{requestID}, true, metadata)
 	if err != nil {
 		return nil, err
 	}
@@ -196,7 +209,7 @@ func (db *AdminDB) GetProfessorRequest(ctx context.Context, requestID int64) (*v
 	return &requests[0], nil
 }
 
-func buildProfessorRequestListQuery(opts ListProfessorRequestOptions) (string, []any) {
+func normalizeProfessorRequestListOptions(opts ListProfessorRequestOptions) ListProfessorRequestOptions {
 	if opts.Limit <= 0 {
 		opts.Limit = 50
 	}
@@ -209,114 +222,370 @@ func buildProfessorRequestListQuery(opts ListProfessorRequestOptions) (string, [
 	if opts.Duplicate != "likely" && opts.Duplicate != "not_likely" {
 		opts.Duplicate = "all"
 	}
+	opts.Search = strings.TrimSpace(opts.Search)
+	return opts
+}
 
-	args := []any{opts.Limit, opts.Offset}
-	statusCondition := "TRUE"
-	if opts.Status != "all" {
-		args = append(args, opts.Status)
-		statusCondition = fmt.Sprintf("pr.status = $%d", len(args))
-	}
-
+func buildProfessorRequestIndexQuery(search string) (string, []any) {
+	args := []any{}
 	searchCondition := "TRUE"
-	if search := strings.TrimSpace(opts.Search); search != "" {
+	if search = strings.TrimSpace(search); search != "" {
 		args = append(args, "%"+search+"%")
 		searchCondition = professorRequestSearchCondition("pr", len(args))
 	}
 
-	duplicateCondition := professorRequestDuplicateFilterCondition("pr", opts.Duplicate)
-
 	query := fmt.Sprintf(`
-		WITH RECURSIVE
-		%s,
-		classified AS MATERIALIZED (
-			SELECT
-				pr.*,
-				request_groups.group_id,
-				%s AS likely_duplicate
-			FROM professor.professor_request pr
-			JOIN request_groups ON request_groups.request_id = pr.id
-		),
-		search_filtered AS MATERIALIZED (
-			SELECT pr.*
-			FROM classified pr
-			WHERE %s
-		),
-		status_filtered AS MATERIALIZED (
-			SELECT pr.*
-			FROM search_filtered pr
-			WHERE %s
-		),
-		filtered AS MATERIALIZED (
-			SELECT pr.*
-			FROM status_filtered pr
-			WHERE %s
-		),
-		matching_groups AS MATERIALIZED (
-			SELECT DISTINCT ON (pr.group_id)
-				pr.group_id,
-				pr.created_at AS latest_created_at,
-				pr.id AS latest_request_id
-			FROM filtered pr
-			ORDER BY pr.group_id, pr.created_at DESC, pr.id DESC
-		),
-		page_groups AS MATERIALIZED (
-			SELECT
-				group_id,
-				row_number() OVER (ORDER BY latest_created_at DESC, latest_request_id DESC, group_id) AS page_order
-			FROM matching_groups
-			ORDER BY latest_created_at DESC, latest_request_id DESC, group_id
-			LIMIT $1 OFFSET $2
-		),
-		status_counts AS (
-			SELECT
-				count(*) FILTER (WHERE pr.status = 'pending') AS pending,
-				count(*) FILTER (WHERE pr.status = 'approved') AS approved,
-				count(*) FILTER (WHERE pr.status = 'rejected') AS rejected,
-				count(*) FILTER (WHERE pr.status = 'dismissed') AS dismissed,
-				count(*) AS all_count
-			FROM search_filtered pr
-			WHERE %s
-		),
-		duplicate_counts AS (
-			SELECT
-				count(*) AS all_count,
-				count(*) FILTER (WHERE pr.likely_duplicate) AS likely,
-				count(*) FILTER (WHERE NOT pr.likely_duplicate) AS not_likely
-			FROM status_filtered pr
-		)
 		SELECT
-			COALESCE(
-				(
-					SELECT array_agg(
-						pr.id
-						ORDER BY page_groups.page_order, (pr.status = 'pending') DESC, pr.created_at DESC, pr.id DESC
-					)
-					FROM filtered pr
-					JOIN page_groups ON page_groups.group_id = pr.group_id
-				),
-				ARRAY[]::bigint[]
-			),
-			(SELECT count(*) FROM filtered),
-			(SELECT count(*) FROM matching_groups),
-			status_counts.pending,
-			status_counts.approved,
-			status_counts.rejected,
-			status_counts.dismissed,
-			status_counts.all_count,
-			duplicate_counts.all_count,
-			duplicate_counts.likely,
-			duplicate_counts.not_likely
-		FROM status_counts
-		CROSS JOIN duplicate_counts`,
-		professorRequestGroupingCTEs,
-		professorRequestLikelyDuplicateCondition("pr"),
-		searchCondition,
-		statusCondition,
-		duplicateCondition,
-		duplicateCondition,
-	)
+			pr.id,
+			pr.status,
+			pr.created_at,
+			CASE WHEN pr.professor_email IS NULL THEN NULL ELSE lower(pr.professor_email) END AS email_key,
+			lower(regexp_replace(btrim(pr.professor_name), '\s+', ' ', 'g')) AS name_key,
+			lower(regexp_replace(btrim(pr.university), '\s+', ' ', 'g')) AS university_key,
+			%s AS search_match
+		FROM professor.professor_request pr`, searchCondition)
 
 	return query, args
+}
+
+func (db *AdminDB) loadProfessorRequestIndex(ctx context.Context, search string) ([]professorRequestIndexRow, error) {
+	query, args := buildProfessorRequestIndexQuery(search)
+	rows, err := db.db.Pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	indexRows := make([]professorRequestIndexRow, 0)
+	for rows.Next() {
+		var row professorRequestIndexRow
+		if err := rows.Scan(
+			&row.ID,
+			&row.Status,
+			&row.CreatedAt,
+			&row.EmailKey,
+			&row.NameKey,
+			&row.UniversityKey,
+			&row.SearchMatch,
+		); err != nil {
+			return nil, err
+		}
+		indexRows = append(indexRows, row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return indexRows, nil
+}
+
+func (db *AdminDB) loadProfessorRequestMetadata(
+	ctx context.Context,
+	requestID int64,
+) (professorRequestMetadata, bool, error) {
+	// Detail views only need the selected request's component. Seeding recursion
+	// with one request avoids the all-roots reachability expansion used by lists.
+	var (
+		groupID   *int64
+		groupSize int
+	)
+	err := db.db.Pool.QueryRow(ctx, `
+		WITH RECURSIVE component AS (
+			SELECT
+				pr.id,
+				CASE WHEN pr.professor_email IS NULL THEN NULL ELSE lower(pr.professor_email) END AS email_key,
+				lower(regexp_replace(btrim(pr.professor_name), '\s+', ' ', 'g')) AS name_key,
+				lower(regexp_replace(btrim(pr.university), '\s+', ' ', 'g')) AS university_key
+			FROM professor.professor_request pr
+			WHERE pr.id = $1
+
+			UNION
+
+			SELECT
+				neighbor.id,
+				CASE WHEN neighbor.professor_email IS NULL THEN NULL ELSE lower(neighbor.professor_email) END,
+				lower(regexp_replace(btrim(neighbor.professor_name), '\s+', ' ', 'g')),
+				lower(regexp_replace(btrim(neighbor.university), '\s+', ' ', 'g'))
+			FROM component current
+			JOIN professor.professor_request neighbor ON (
+				current.email_key IS NOT NULL
+				AND neighbor.professor_email IS NOT NULL
+				AND lower(neighbor.professor_email) = current.email_key
+			) OR (
+				lower(regexp_replace(btrim(neighbor.professor_name), '\s+', ' ', 'g')) = current.name_key
+				AND lower(regexp_replace(btrim(neighbor.university), '\s+', ' ', 'g')) = current.university_key
+			)
+		)
+		SELECT min(id), count(*)::int
+		FROM component`, requestID).Scan(&groupID, &groupSize)
+	if err != nil {
+		return professorRequestMetadata{}, false, err
+	}
+	if groupID == nil || groupSize == 0 {
+		return professorRequestMetadata{}, false, nil
+	}
+	return professorRequestMetadata{
+		GroupID:         *groupID,
+		GroupSize:       groupSize,
+		LikelyDuplicate: groupSize > 1,
+	}, true, nil
+}
+
+func buildProfessorRequestMetadata(rows []professorRequestIndexRow) map[int64]professorRequestMetadata {
+	groups := professorRequestDisjointSet{
+		parent: make(map[int64]int64, len(rows)),
+		size:   make(map[int64]int, len(rows)),
+	}
+	emailOwners := make(map[string]int64)
+	identityOwners := make(map[professorRequestIdentityKey]int64)
+
+	for _, row := range rows {
+		groups.add(row.ID)
+		if row.EmailKey != nil {
+			if ownerID, ok := emailOwners[*row.EmailKey]; ok {
+				groups.union(row.ID, ownerID)
+			} else {
+				emailOwners[*row.EmailKey] = row.ID
+			}
+		}
+
+		identity := professorRequestIdentityKey{Name: row.NameKey, University: row.UniversityKey}
+		if ownerID, ok := identityOwners[identity]; ok {
+			groups.union(row.ID, ownerID)
+		} else {
+			identityOwners[identity] = row.ID
+		}
+	}
+
+	metadata := make(map[int64]professorRequestMetadata, len(rows))
+	for _, row := range rows {
+		groupID := groups.find(row.ID)
+		groupSize := groups.size[groupID]
+		metadata[row.ID] = professorRequestMetadata{
+			GroupID:         groupID,
+			GroupSize:       groupSize,
+			LikelyDuplicate: groupSize > 1,
+		}
+	}
+	return metadata
+}
+
+func (groups *professorRequestDisjointSet) add(id int64) {
+	groups.parent[id] = id
+	groups.size[id] = 1
+}
+
+func (groups *professorRequestDisjointSet) find(id int64) int64 {
+	root := id
+	for groups.parent[root] != root {
+		root = groups.parent[root]
+	}
+	for groups.parent[id] != id {
+		parent := groups.parent[id]
+		groups.parent[id] = root
+		id = parent
+	}
+	return root
+}
+
+func (groups *professorRequestDisjointSet) union(leftID, rightID int64) {
+	leftRoot := groups.find(leftID)
+	rightRoot := groups.find(rightID)
+	if leftRoot == rightRoot {
+		return
+	}
+	if leftRoot > rightRoot {
+		leftRoot, rightRoot = rightRoot, leftRoot
+	}
+	groups.parent[rightRoot] = leftRoot
+	groups.size[leftRoot] += groups.size[rightRoot]
+	delete(groups.size, rightRoot)
+}
+
+func professorRequestExistingMatchCandidateIDs(
+	rows []professorRequestIndexRow,
+	metadata map[int64]professorRequestMetadata,
+	opts ListProfessorRequestOptions,
+) []int64 {
+	opts = normalizeProfessorRequestListOptions(opts)
+	ids := make([]int64, 0)
+	for _, row := range rows {
+		requestMetadata := metadata[row.ID]
+		if !row.SearchMatch || requestMetadata.GroupSize > 1 {
+			continue
+		}
+		// With no duplicate filter, existing-professor matches only affect the
+		// duplicate counts for the selected status. A duplicate filter also makes
+		// them necessary for status counts across every status.
+		if opts.Duplicate != "all" || professorRequestMatchesStatus(row.Status, opts.Status) {
+			ids = append(ids, row.ID)
+		}
+	}
+	return ids
+}
+
+func (db *AdminDB) loadProfessorRequestExistingMatches(ctx context.Context, ids []int64) (map[int64]struct{}, error) {
+	matches := make(map[int64]struct{})
+	if len(ids) == 0 {
+		return matches, nil
+	}
+
+	rows, err := db.db.Pool.Query(ctx, fmt.Sprintf(`
+		SELECT pr.id
+		FROM professor.professor_request pr
+		WHERE pr.id = ANY($1::bigint[])
+		  AND %s
+		ORDER BY pr.id`, professorRequestLikelyDuplicateCondition("pr")), ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		matches[id] = struct{}{}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return matches, nil
+}
+
+func markProfessorRequestExistingMatches(metadata map[int64]professorRequestMetadata, matches map[int64]struct{}) {
+	for id, requestMetadata := range metadata {
+		_, hasExistingMatch := matches[id]
+		requestMetadata.LikelyDuplicate = requestMetadata.GroupSize > 1 || hasExistingMatch
+		metadata[id] = requestMetadata
+	}
+}
+
+func buildProfessorRequestListPage(
+	rows []professorRequestIndexRow,
+	metadata map[int64]professorRequestMetadata,
+	opts ListProfessorRequestOptions,
+) professorRequestListPage {
+	opts = normalizeProfessorRequestListOptions(opts)
+	page := professorRequestListPage{IDs: []int64{}}
+	groupsByID := make(map[int64]*professorRequestPageGroup)
+
+	for _, row := range rows {
+		if !row.SearchMatch {
+			continue
+		}
+		requestMetadata, ok := metadata[row.ID]
+		if !ok {
+			requestMetadata = professorRequestMetadata{GroupID: row.ID, GroupSize: 1}
+		}
+
+		matchesStatus := professorRequestMatchesStatus(row.Status, opts.Status)
+		matchesDuplicate := professorRequestMatchesDuplicate(requestMetadata.LikelyDuplicate, opts.Duplicate)
+		if matchesDuplicate {
+			incrementProfessorRequestStatusCount(&page.StatusCounts, row.Status)
+		}
+		if matchesStatus {
+			page.DuplicateCounts.All++
+			if requestMetadata.LikelyDuplicate {
+				page.DuplicateCounts.Likely++
+			} else {
+				page.DuplicateCounts.NotLikely++
+			}
+		}
+		if !matchesStatus || !matchesDuplicate {
+			continue
+		}
+
+		page.Total++
+		group := groupsByID[requestMetadata.GroupID]
+		if group == nil {
+			group = &professorRequestPageGroup{
+				ID:              requestMetadata.GroupID,
+				LatestCreatedAt: row.CreatedAt,
+				LatestRequestID: row.ID,
+			}
+			groupsByID[requestMetadata.GroupID] = group
+		} else if row.CreatedAt.After(group.LatestCreatedAt) ||
+			(row.CreatedAt.Equal(group.LatestCreatedAt) && row.ID > group.LatestRequestID) {
+			group.LatestCreatedAt = row.CreatedAt
+			group.LatestRequestID = row.ID
+		}
+		group.Members = append(group.Members, row)
+	}
+
+	groups := make([]*professorRequestPageGroup, 0, len(groupsByID))
+	for _, group := range groupsByID {
+		sort.Slice(group.Members, func(i, j int) bool {
+			left := group.Members[i]
+			right := group.Members[j]
+			leftPending := left.Status == "pending"
+			rightPending := right.Status == "pending"
+			if leftPending != rightPending {
+				return leftPending
+			}
+			if !left.CreatedAt.Equal(right.CreatedAt) {
+				return left.CreatedAt.After(right.CreatedAt)
+			}
+			return left.ID > right.ID
+		})
+		groups = append(groups, group)
+	}
+	page.GroupTotal = int64(len(groups))
+	sort.Slice(groups, func(i, j int) bool {
+		left := groups[i]
+		right := groups[j]
+		if !left.LatestCreatedAt.Equal(right.LatestCreatedAt) {
+			return left.LatestCreatedAt.After(right.LatestCreatedAt)
+		}
+		if left.LatestRequestID != right.LatestRequestID {
+			return left.LatestRequestID > right.LatestRequestID
+		}
+		return left.ID < right.ID
+	})
+
+	start := opts.Offset
+	if start >= len(groups) {
+		return page
+	}
+	end := start + opts.Limit
+	if end > len(groups) {
+		end = len(groups)
+	}
+	for _, group := range groups[start:end] {
+		for _, member := range group.Members {
+			page.IDs = append(page.IDs, member.ID)
+		}
+	}
+	return page
+}
+
+func incrementProfessorRequestStatusCount(counts *v1.AdminProfessorRequestStatusCounts, status string) {
+	counts.All++
+	switch status {
+	case "pending":
+		counts.Pending++
+	case "approved":
+		counts.Approved++
+	case "rejected":
+		counts.Rejected++
+	case "dismissed":
+		counts.Dismissed++
+	}
+}
+
+func professorRequestMatchesStatus(status, selectedStatus string) bool {
+	return selectedStatus == "all" || status == selectedStatus
+}
+
+func professorRequestMatchesDuplicate(likelyDuplicate bool, selectedDuplicate string) bool {
+	switch selectedDuplicate {
+	case "likely":
+		return likelyDuplicate
+	case "not_likely":
+		return !likelyDuplicate
+	default:
+		return true
+	}
 }
 
 func professorRequestSearchCondition(alias string, argument int) string {
@@ -324,17 +593,6 @@ func professorRequestSearchCondition(alias string, argument int) string {
 		%s.id::text ILIKE $%[2]d
 		OR (%[1]s.professor_name || ' ' || COALESCE(%[1]s.professor_email, '') || ' ' || %[1]s.university || ' ' || COALESCE(%[1]s.college, '')) ILIKE $%[2]d
 	)`, alias, argument)
-}
-
-func professorRequestDuplicateFilterCondition(alias, duplicate string) string {
-	switch duplicate {
-	case "likely":
-		return alias + ".likely_duplicate"
-	case "not_likely":
-		return "NOT " + alias + ".likely_duplicate"
-	default:
-		return "TRUE"
-	}
 }
 
 func professorRequestLikelyDuplicateCondition(alias string) string {
@@ -351,14 +609,17 @@ func professorRequestLikelyDuplicateCondition(alias string) string {
 	)`, alias)
 }
 
-func (db *AdminDB) loadProfessorRequests(ctx context.Context, ids []int64, includeModerationContext bool) ([]v1.AdminProfessorRequest, error) {
+func (db *AdminDB) loadProfessorRequests(
+	ctx context.Context,
+	ids []int64,
+	includeModerationContext bool,
+	metadata map[int64]professorRequestMetadata,
+) ([]v1.AdminProfessorRequest, error) {
 	if len(ids) == 0 {
 		return []v1.AdminProfessorRequest{}, nil
 	}
 
-	rows, err := db.db.Pool.Query(ctx, fmt.Sprintf(`
-		WITH RECURSIVE
-		%s
+	rows, err := db.db.Pool.Query(ctx, `
 		SELECT
 			pr.id,
 			pr.professor_name,
@@ -373,17 +634,9 @@ func (db *AdminDB) loadProfessorRequests(ctx context.Context, ids []int64, inclu
 			pr.reviewer_user_id,
 			pr.moderation_reason_code,
 			pr.moderation_note,
-			pr.resolved_professor_email,
-			request_groups.group_id,
-			(request_group_sizes.request_count - 1)::int,
-			%s AS likely_duplicate
+			pr.resolved_professor_email
 		FROM professor.professor_request pr
-		JOIN request_groups ON request_groups.request_id = pr.id
-		JOIN request_group_sizes ON request_group_sizes.group_id = request_groups.group_id
-		WHERE pr.id = ANY($1::bigint[])`,
-		professorRequestGroupingCTEs,
-		professorRequestLikelyDuplicateCondition("pr"),
-	), ids)
+		WHERE pr.id = ANY($1::bigint[])`, ids)
 	if err != nil {
 		return nil, err
 	}
@@ -407,12 +660,16 @@ func (db *AdminDB) loadProfessorRequests(ctx context.Context, ids []int64, inclu
 			&request.ModerationReasonCode,
 			&request.ModerationNote,
 			&request.ResolvedProfessorEmail,
-			&request.RelatedGroupID,
-			&request.RelatedRequestCount,
-			&request.LikelyDuplicate,
 		); err != nil {
 			return nil, err
 		}
+		requestMetadata, ok := metadata[request.ID]
+		if !ok {
+			requestMetadata = professorRequestMetadata{GroupID: request.ID, GroupSize: 1}
+		}
+		request.RelatedGroupID = requestMetadata.GroupID
+		request.RelatedRequestCount = requestMetadata.GroupSize - 1
+		request.LikelyDuplicate = requestMetadata.LikelyDuplicate
 		request.Matches = []v1.AdminProfessorMatch{}
 		request.Signals = []v1.AdminModerationSignal{}
 		request.ActionHistory = []v1.AdminModerationAction{}

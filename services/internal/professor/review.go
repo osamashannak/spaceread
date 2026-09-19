@@ -8,6 +8,7 @@ import (
 	"github.com/osamashannak/uaeu-space/services/internal/professor/model"
 	"github.com/osamashannak/uaeu-space/services/internal/professor/policywarning"
 	"github.com/osamashannak/uaeu-space/services/internal/professor/ranking"
+	"github.com/osamashannak/uaeu-space/services/pkg/google/recaptcha"
 	"github.com/osamashannak/uaeu-space/services/pkg/jsonutil"
 	"github.com/osamashannak/uaeu-space/services/pkg/logging"
 	"github.com/osamashannak/uaeu-space/services/pkg/subnetchecker"
@@ -18,6 +19,8 @@ import (
 	"strings"
 	"time"
 )
+
+const recaptchaBrowserErrorCode = "recaptcha_browser_error"
 
 func (s *Server) PostReview() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -55,7 +58,35 @@ func (s *Server) PostReview() http.Handler {
 		assessment, err := s.recaptcha.Verify(ctx, *request.RecaptchaToken, utils.GetClientIP(r), r.UserAgent())
 
 		if err != nil {
-			logger.Errorf("recaptcha verification failed: %v", err)
+			var invalidTokenError *recaptcha.InvalidTokenError
+			if errors.As(err, &invalidTokenError) {
+				if invalidTokenError.Retryable() {
+					logger.Warnw("recaptcha browser verification failed",
+						"invalid_reason", invalidTokenError.Reason.String(),
+						"retryable", true,
+					)
+					errorResponse := v1.ErrorResponse{
+						Message: "recaptcha verification failed. please try again.",
+						Error:   http.StatusBadRequest,
+						Code:    recaptchaBrowserErrorCode,
+					}
+					jsonutil.MarshalResponse(w, http.StatusBadRequest, errorResponse)
+					return
+				}
+
+				logger.Infow("recaptcha token rejected",
+					"invalid_reason", invalidTokenError.Reason.String(),
+					"retryable", false,
+				)
+				errorResponse := v1.ErrorResponse{
+					Message: "an error has occurred. please try again later.",
+					Error:   http.StatusBadRequest,
+				}
+				jsonutil.MarshalResponse(w, http.StatusBadRequest, errorResponse)
+				return
+			}
+
+			logger.Errorw("recaptcha verification failed", "error", err)
 			errorResponse := v1.ErrorResponse{
 				Message: "an error has occurred. please try again later.",
 				Error:   http.StatusBadRequest,

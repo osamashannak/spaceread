@@ -1,6 +1,10 @@
 package professor
 
 import (
+	"context"
+	"net/http"
+	"time"
+
 	v1 "github.com/osamashannak/uaeu-space/services/internal/api/v1"
 	"github.com/osamashannak/uaeu-space/services/internal/middleware"
 	"github.com/osamashannak/uaeu-space/services/internal/professor/database"
@@ -13,14 +17,16 @@ import (
 	"github.com/osamashannak/uaeu-space/services/pkg/google/translate"
 	"github.com/osamashannak/uaeu-space/services/pkg/ses"
 	"github.com/osamashannak/uaeu-space/services/pkg/snowflake"
-	"net/http"
-	"time"
 )
+
+type recaptchaVerifier interface {
+	Verify(context.Context, string, string, string) (bool, error)
+}
 
 type Server struct {
 	db               *database.ProfessorDB
 	generator        *snowflake.Generator
-	recaptcha        *recaptcha.Recaptcha
+	recaptcha        recaptchaVerifier
 	perspective      *perspective.Perspective
 	vision           *vision.AzureVision
 	translate        *translate.Translate

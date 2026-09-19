@@ -36,6 +36,9 @@ func Setup(ctx context.Context) (*Config, error) {
 	if err := cfg.Gateway.Validate(); err != nil {
 		return nil, err
 	}
+	if err := cfg.Recaptcha.Validate(); err != nil {
+		return nil, err
+	}
 
 	logger.Infow("configuration loaded", "port", cfg.Port, "db_host", cfg.Database.Host, "db_name", cfg.Database.Name)
 

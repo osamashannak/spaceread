@@ -2,7 +2,12 @@ import {useCallback, useEffect, useRef, useState} from "react";
 import {useGoogleReCaptcha} from "react-google-recaptcha-v3";
 import styles from "../../styles/components/professor/review_form.module.scss";
 import {ReviewAPI, ReviewFormDraft} from "../../typed/professor.ts";
-import {deleteReview, postReview, uploadImageAttachment} from "../../api/professor.ts";
+import {
+    deleteReview,
+    postReview,
+    RECAPTCHA_BROWSER_ERROR_CODE,
+    uploadImageAttachment,
+} from "../../api/professor.ts";
 import {LexicalComposer} from "@lexical/react/LexicalComposer";
 import {ContentEditable} from "@lexical/react/LexicalContentEditable";
 import {HistoryPlugin} from "@lexical/react/LexicalHistoryPlugin";
@@ -19,7 +24,7 @@ import ReviewSubmittedNotice from "./review_submitted_notice.tsx";
 import ReviewSubmitProgress from "./review_submit_progress.tsx";
 import {useModal} from "../provider/modal.tsx";
 import FlaggedModal, {preloadFlaggedModalImage} from "../modal/flagged_modal.tsx";
-import {getRecaptchaToken} from "../../lib/recaptcha.ts";
+import {runWithRecaptchaRetry} from "../../lib/recaptcha.ts";
 import {useToast} from "../provider/toast.tsx";
 import {trackGifEvent} from "../../lib/klipy.ts";
 
@@ -31,7 +36,7 @@ export default function RestrictedReviewForm(props: { professorEmail: string; ca
         attachment: undefined
     });
 
-    const [submitting, setSubmitting] = useState<boolean | null | "error">(
+    const [submitting, setSubmitting] = useState<boolean | null>(
         !props.canReview ? null : false
     );
     const [submitProgressLabel, setSubmitProgressLabel] = useState("Posting review...");
@@ -118,7 +123,8 @@ export default function RestrictedReviewForm(props: { professorEmail: string; ca
         const review = reviewRef.current;
 
         if (!review) {
-            setSubmitting("error");
+            showToastError("There was an error submitting your review. Please try again.");
+            setSubmitting(false);
             return;
         }
 
@@ -185,30 +191,32 @@ export default function RestrictedReviewForm(props: { professorEmail: string; ca
             setSubmitProgressLabel("Posting review...");
         }
 
-        const token = await getRecaptchaToken(executeRecaptcha, "new_review");
+        const result = await runWithRecaptchaRetry(
+            executeRecaptcha,
+            "new_review",
+            token => postReview({
+                course_taken: "", grade_received: "",
+                text: details.comment!,
+                score: details.score!,
+                positive: details.positive!,
+                professor_email: props.professorEmail,
+                recaptcha_token: token,
+                attachment: details.attachment?.id, // guaranteed uploaded if present
+                gif: details.gif ? details.gif.url : undefined,
+            }),
+            response => response?.kind === "error" && response.code === RECAPTCHA_BROWSER_ERROR_CODE,
+        );
 
-        if (!token) {
+        if (!result || result.kind === "error") {
             // @ts-expect-error Clarity is not defined
             clarity("set", "ReviewFailed", "true");
-            setSubmitting("error");
-            return;
-        }
-
-        const result = await postReview({
-            course_taken: "", grade_received: "",
-            text: details.comment!,
-            score: details.score!,
-            positive: details.positive!,
-            professor_email: props.professorEmail,
-            recaptcha_token: token,
-            attachment: details.attachment?.id, // guaranteed uploaded if present
-            gif: details.gif ? details.gif.url : undefined,
-        });
-
-        if (!result) {
-            // @ts-expect-error Clarity is not defined
-            clarity("set", "ReviewFailed", "true");
-            setSubmitting("error");
+            const securityCheckFailed = !result || result.code === RECAPTCHA_BROWSER_ERROR_CODE;
+            showToastError(
+                securityCheckFailed
+                    ? "The security check couldn't be completed. Check your connection and try submitting again."
+                    : "There was an error submitting your review. Please try again.",
+            );
+            setSubmitting(false);
             return;
         }
 
@@ -235,13 +243,6 @@ export default function RestrictedReviewForm(props: { professorEmail: string; ca
 
     if (submitting === null) {
         return <ReviewSubmittedNotice justSubmitted={Boolean(reviewRef.current)}/>;
-    }
-
-    if (submitting === "error") {
-        return (
-            <section className={styles.form}>
-            </section>
-        );
     }
 
     let lengthStyle = styles.commentLength;

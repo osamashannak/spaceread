@@ -2,7 +2,12 @@ import {type KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState} f
 import {useGoogleReCaptcha} from "react-google-recaptcha-v3";
 import styles from "../../styles/components/professor/review_form.module.scss";
 import {ReviewAPI, ReviewFormDraft} from "../../typed/professor.ts";
-import {deleteReview, postReview, uploadImageAttachment} from "../../api/professor.ts";
+import {
+    deleteReview,
+    postReview,
+    RECAPTCHA_BROWSER_ERROR_CODE,
+    uploadImageAttachment,
+} from "../../api/professor.ts";
 import {LexicalComposer} from "@lexical/react/LexicalComposer";
 import {ContentEditable} from "@lexical/react/LexicalContentEditable";
 import {HistoryPlugin} from "@lexical/react/LexicalHistoryPlugin";
@@ -20,7 +25,7 @@ import ReviewSubmittedNotice from "./review_submitted_notice.tsx";
 import ReviewSubmitProgress from "./review_submit_progress.tsx";
 import {useModal} from "../provider/modal.tsx";
 import FlaggedModal, {preloadFlaggedModalImage} from "../modal/flagged_modal.tsx";
-import {getRecaptchaToken} from "../../lib/recaptcha.ts";
+import {runWithRecaptchaRetry} from "../../lib/recaptcha.ts";
 import {useToast} from "../provider/toast.tsx";
 import {getCoursesList} from "../../api/course.ts";
 import type {CourseItem} from "../../typed/searchbox.ts";
@@ -179,7 +184,7 @@ export default function ReviewForm(props: { courses: string[] | null, professorE
         grade_received: "",
     });
 
-    const [submitting, setSubmitting] = useState<boolean | null | "error">(
+    const [submitting, setSubmitting] = useState<boolean | null>(
         !props.canReview ? null : false
     );
     const [showCourseMenu, setShowCourseMenu] = useState(false);
@@ -391,7 +396,8 @@ export default function ReviewForm(props: { courses: string[] | null, professorE
     function finalizeSubmission() {
         const review = reviewRef.current;
         if (!review) {
-            setSubmitting("error");
+            showToastError("There was an error submitting your review. Please try again.");
+            setSubmitting(false);
             return;
         }
         trackGifEvent(details.gif, "onsent");
@@ -492,34 +498,36 @@ export default function ReviewForm(props: { courses: string[] | null, professorE
             setSubmitProgressLabel("Posting review...");
         }
 
-        const token = await getRecaptchaToken(executeRecaptcha, "new_review");
-
-        if (!token) {
-            // @ts-expect-error Clarity is not defined
-            clarity("set", "ReviewFailed", "true");
-            setSubmitting("error");
-            return;
-        }
-
         const clientFingerprint = await fingerprintPromise.catch(() => undefined);
 
-        const result = await postReview({
-            text: details.comment!,
-            score: details.score!,
-            positive: details.positive!,
-            professor_email: props.professorEmail,
-            recaptcha_token: token,
-            client_fingerprint: clientFingerprint,
-            attachment: finalAttachmentId,
-            gif: details.gif ? details.gif.url : undefined,
-            course_taken: details.course_taken,
-            grade_received: details.grade_received,
-        });
+        const result = await runWithRecaptchaRetry(
+            executeRecaptcha,
+            "new_review",
+            token => postReview({
+                text: details.comment!,
+                score: details.score!,
+                positive: details.positive!,
+                professor_email: props.professorEmail,
+                recaptcha_token: token,
+                client_fingerprint: clientFingerprint,
+                attachment: finalAttachmentId,
+                gif: details.gif ? details.gif.url : undefined,
+                course_taken: details.course_taken,
+                grade_received: details.grade_received,
+            }),
+            response => response?.kind === "error" && response.code === RECAPTCHA_BROWSER_ERROR_CODE,
+        );
 
-        if (!result) {
+        if (!result || result.kind === "error") {
             // @ts-expect-error Clarity is not defined
             clarity("set", "ReviewFailed", "true");
-            setSubmitting("error");
+            const securityCheckFailed = !result || result.code === RECAPTCHA_BROWSER_ERROR_CODE;
+            showToastError(
+                securityCheckFailed
+                    ? "The security check couldn't be completed. Check your connection and try submitting again."
+                    : "There was an error submitting your review. Please try again.",
+            );
+            setSubmitting(false);
             return;
         }
 
@@ -545,14 +553,6 @@ export default function ReviewForm(props: { courses: string[] | null, professorE
 
     if (submitting === null) {
         return <ReviewSubmittedNotice justSubmitted={Boolean(reviewRef.current)}/>;
-    }
-
-    if (submitting === "error") {
-        return (
-            <section className={styles.form}>
-                <span>There was an error submitting your review. Please try again later.</span>
-            </section>
-        );
     }
 
     let lengthStyle = styles.commentLength;

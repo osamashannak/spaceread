@@ -14,6 +14,8 @@ import {getUserFacingError} from "./errors.ts";
 
 const HOST = import.meta.env.VITE_PROFESSOR_ENDPOINT;
 
+export const RECAPTCHA_BROWSER_ERROR_CODE = "recaptcha_browser_error";
+
 export const getProfessorsList = async (university: string) => {
     let response;
 
@@ -245,7 +247,7 @@ export const removeLikeReply = async (replyId: string) => {
     return response.success as boolean;
 }
 
-export const postReview = async (options: ReviewFormAPI): Promise<ReviewPostResult | undefined> => {
+export const postReview = async (options: ReviewFormAPI): Promise<ReviewPostResult> => {
     let response;
 
     try {
@@ -259,12 +261,15 @@ export const postReview = async (options: ReviewFormAPI): Promise<ReviewPostResu
             credentials: "include"
         });
         response = await request.json();
-    } catch (error) {
-        return undefined;
+    } catch {
+        return {kind: "error"};
     }
 
     if (response.error) {
-        return  undefined;
+        return {
+            kind: "error",
+            code: typeof response.code === "string" ? response.code : undefined,
+        };
     }
 
     return {kind: "review", review: response as ReviewAPI};
