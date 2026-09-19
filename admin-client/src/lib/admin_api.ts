@@ -105,6 +105,10 @@ export type AdminProfessorRequestDecisionResponse = {
     action: string;
 };
 
+export type AdminProfessorRequestGroupDecisionResponse = AdminProfessorRequestDecisionResponse & {
+    affected_count: number;
+};
+
 export type AdminReviewFilters = {
     sort: "newest" | "oldest" | "most_reports" | "new_reports" | "most_signals" | "random";
     needs_attention: boolean;
@@ -630,6 +634,7 @@ export type AdminProfessorRequestSummary = {
 export type AdminProfessorRequest = AdminProfessorRequestSummary & {
     related_group_id: string;
     related_request_count: number;
+    related_pending_request_count?: number;
     likely_duplicate: boolean;
     matches: AdminProfessorMatch[];
     signals: AdminModerationSignal[];
@@ -813,6 +818,13 @@ export async function getAdminProfessorRequest(requestId: string, signal?: Abort
 
 export async function decideAdminProfessorRequest(requestId: string, body: AdminProfessorRequestDecisionBody) {
     return adminFetch<AdminProfessorRequestDecisionResponse>(`/professor-requests/${encodeURIComponent(requestId)}/decision`, {
+        method: "POST",
+        body: JSON.stringify(body),
+    });
+}
+
+export async function decideAdminProfessorRequestGroup(requestId: string, body: AdminProfessorRequestDecisionBody) {
+    return adminFetch<AdminProfessorRequestGroupDecisionResponse>(`/professor-requests/${encodeURIComponent(requestId)}/group-decision`, {
         method: "POST",
         body: JSON.stringify(body),
     });

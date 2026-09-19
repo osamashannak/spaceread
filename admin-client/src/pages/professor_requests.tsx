@@ -41,6 +41,7 @@ import {
     type AdminProfessorRequestStatusFilter,
     type AdminReason,
     decideAdminProfessorRequest,
+    decideAdminProfessorRequestGroup,
     getAdminProfessorRequest,
     listAdminProfessorRequests,
 } from "@/lib/admin_api";
@@ -276,6 +277,13 @@ export function ProfessorRequestsPage() {
     }
 
     const requestGroups = useMemo(() => groupProfessorRequests(requests), [requests]);
+    const selectedVisibleGroupPendingCount = useMemo(() => {
+        if (!selectedRequest) return 0;
+        const groupID = selectedRequest.related_group_id || selectedRequest.id;
+        const group = requestGroups.find(candidate => candidate.id === groupID);
+        return group?.requests.filter(request => request.status === "pending").length
+            ?? (selectedRequest.status === "pending" ? 1 : 0);
+    }, [requestGroups, selectedRequest]);
     const hasPrevious = offset > 0;
     const hasNext = offset + requestGroups.length < groupTotal;
     const pageStart = groupTotal === 0 ? 0 : offset + 1;
@@ -438,6 +446,7 @@ export function ProfessorRequestsPage() {
                                 key={selectedRequest.id}
                                 reasons={activeReasons}
                                 request={selectedRequest}
+                                visibleGroupPendingCount={selectedVisibleGroupPendingCount}
                                 onUpdated={handleRequestUpdated}
                             />
                         )}
@@ -469,12 +478,16 @@ function RelatedRequestGroup({
     }
 
     const shown = group.requests.length;
+    const hasPendingRequest = group.requests.some(request => request.status === "pending");
     return (
         <section className={styles.relatedGroup} aria-label={`${group.total} related professor requests`}>
             <header className={styles.relatedGroupHeader}>
                 <div>
                     <strong>Related requests</strong>
-                    <span>Grouped by matching email or professor name and university.</span>
+                    <span>
+                        Grouped by matching email or professor name and university.
+                        {hasPendingRequest && " Open a pending request to apply one decision to the group."}
+                    </span>
                 </div>
                 <Badge variant="info">
                     {shown < group.total ? `${shown} shown of ${group.total} requests` : `${group.total} requests`}
@@ -547,10 +560,12 @@ function RequestCard({
 function RequestReviewForm({
     request,
     reasons,
+    visibleGroupPendingCount,
     onUpdated,
 }: {
     request: AdminProfessorRequest;
     reasons: AdminReason[];
+    visibleGroupPendingCount: number;
     onUpdated: (request: AdminProfessorRequest) => void;
 }) {
     const [professorName, setProfessorName] = useState(request.professor_name || "");
@@ -560,6 +575,7 @@ function RequestReviewForm({
     const [resolvedProfessorEmail, setResolvedProfessorEmail] = useState(request.resolved_professor_email || "");
     const [reason, setReason] = useState(request.moderation_reason_code || "");
     const [note, setNote] = useState(request.moderation_note || "");
+    const [applyToGroup, setApplyToGroup] = useState(false);
     const [pendingDecision, setPendingDecision] = useState<AdminProfessorRequestDecision | null>(null);
     const [error, setError] = useState("");
     const [message, setMessage] = useState("");
@@ -574,6 +590,15 @@ function RequestReviewForm({
     const completeness = completenessFor(draftRequest);
     const recommendation = recommendationFor(draftRequest);
     const requestPending = request.status === "pending";
+    const relatedPendingCount = Math.max(
+        requestPending ? 1 : 0,
+        request.related_pending_request_count ?? visibleGroupPendingCount,
+    );
+    const canApplyToGroup = requestPending && relatedPendingCount > 1;
+
+    useEffect(() => {
+        if (!canApplyToGroup) setApplyToGroup(false);
+    }, [canApplyToGroup]);
 
     async function submitDecision(decision: AdminProfessorRequestDecision) {
         setError("");
@@ -611,7 +636,7 @@ function RequestReviewForm({
 
         setPendingDecision(decision);
         try {
-            const response = await decideAdminProfessorRequest(request.id, {
+            const body = {
                 decision,
                 professor_name: cleaned.professor_name || undefined,
                 professor_email: cleaned.professor_email || undefined,
@@ -620,11 +645,21 @@ function RequestReviewForm({
                 resolved_professor_email: decision === "mark_duplicate" ? cleaned.resolved_professor_email : undefined,
                 reason_code: reason || undefined,
                 note: note.trim() || undefined,
-            });
-            onUpdated(response.request);
-            setMessage(decisionSuccessMessage(decision, response.action));
+            };
+            if (applyToGroup) {
+                const response = await decideAdminProfessorRequestGroup(request.id, body);
+                onUpdated(response.request);
+                setApplyToGroup(false);
+                setMessage(groupDecisionSuccessMessage(decision, response.affected_count));
+            } else {
+                const response = await decideAdminProfessorRequest(request.id, body);
+                onUpdated(response.request);
+                setMessage(decisionSuccessMessage(decision, response.action));
+            }
         } catch (err) {
-            setError(err instanceof AdminApiError ? err.message : "The decision could not be saved.");
+            setError(err instanceof AdminApiError
+                ? err.message
+                : applyToGroup ? "The group decision could not be saved." : "The decision could not be saved.");
         } finally {
             setPendingDecision(null);
         }
@@ -755,7 +790,38 @@ function RequestReviewForm({
                 </PanelSection>
             )}
 
-            <PanelSection title="Decision record" subtitle="Reason and note are stored with the moderation action.">
+            {canApplyToGroup && (
+                <section className={cn(styles.groupScope, applyToGroup && styles.groupScopeSelected)}>
+                    <label>
+                        <input
+                            checked={applyToGroup}
+                            disabled={Boolean(pendingDecision)}
+                            type="checkbox"
+                            onChange={event => {
+                                setApplyToGroup(event.target.checked);
+                                setError("");
+                                setMessage("");
+                            }}
+                        />
+                        <span>
+                            <strong>Apply one decision to all {relatedPendingCount} pending requests in this group</strong>
+                            <small>Already decided requests are not changed.</small>
+                        </span>
+                    </label>
+                    {applyToGroup && (
+                        <p>
+                            Approval creates one professor from the final details above, approves this request, and marks the other pending requests as duplicates. Other decisions apply the same status to every pending request.
+                        </p>
+                    )}
+                </section>
+            )}
+
+            <PanelSection
+                title="Decision record"
+                subtitle={applyToGroup
+                    ? "Reason and note are stored with every affected request."
+                    : "Reason and note are stored with the moderation action."}
+            >
                 <div className={styles.decisionFields}>
                     <label className={styles.field}>
                         <span>Reason <small>optional</small></span>
@@ -784,7 +850,7 @@ function RequestReviewForm({
                     onClick={() => void submitDecision("approve")}
                 >
                     {pendingDecision === "approve" ? <LoaderCircle className={styles.spin} size={16}/> : <CheckCircle2 size={16}/>}
-                    Approve &amp; add
+                    {applyToGroup ? "Approve group & add" : "Approve & add"}
                 </Button>
                 <Button
                     disabled={!requestPending || Boolean(pendingDecision)}
@@ -793,7 +859,7 @@ function RequestReviewForm({
                     onClick={() => void submitDecision("mark_duplicate")}
                 >
                     {pendingDecision === "mark_duplicate" ? <LoaderCircle className={styles.spin} size={16}/> : <CopyCheck size={16}/>}
-                    Mark duplicate
+                    {applyToGroup ? "Mark group duplicate" : "Mark duplicate"}
                 </Button>
                 <Button
                     disabled={!requestPending || Boolean(pendingDecision)}
@@ -802,7 +868,7 @@ function RequestReviewForm({
                     onClick={() => void submitDecision("dismiss")}
                 >
                     {pendingDecision === "dismiss" ? <LoaderCircle className={styles.spin} size={16}/> : <X size={16}/>}
-                    Dismiss
+                    {applyToGroup ? "Dismiss group" : "Dismiss"}
                 </Button>
                 <Button
                     disabled={!requestPending || Boolean(pendingDecision)}
@@ -811,7 +877,7 @@ function RequestReviewForm({
                     onClick={() => void submitDecision("reject")}
                 >
                     {pendingDecision === "reject" ? <LoaderCircle className={styles.spin} size={16}/> : <XCircle size={16}/>}
-                    Reject
+                    {applyToGroup ? "Reject group" : "Reject"}
                 </Button>
             </footer>
         </div>
@@ -1051,4 +1117,17 @@ function decisionSuccessMessage(decision: AdminProfessorRequestDecision, action:
     if (decision === "reject") return "Request rejected.";
     if (decision === "dismiss") return "Request dismissed.";
     return `${statusLabel(action)} saved.`;
+}
+
+function groupDecisionSuccessMessage(decision: AdminProfessorRequestDecision, affectedCount: number) {
+    const requests = `${affectedCount} ${affectedCount === 1 ? "request" : "requests"}`;
+    if (decision === "approve") {
+        return `Professor added; ${requests} resolved across the group.`;
+    }
+    if (decision === "mark_duplicate") {
+        return `${requests} linked to the existing professor and marked as duplicates.`;
+    }
+    if (decision === "reject") return `${requests} rejected.`;
+    if (decision === "dismiss") return `${requests} dismissed.`;
+    return `Group decision saved for ${requests}.`;
 }

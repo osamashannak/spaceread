@@ -38,6 +38,7 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("GET /professor-requests", s.gateway.RequireAdmin(s.ListProfessorRequests()))
 	mux.Handle("GET /professor-requests/{requestID}", s.gateway.RequireAdmin(s.GetProfessorRequest()))
 	mux.Handle("POST /professor-requests/{requestID}/decision", s.gateway.RequireAdmin(s.gateway.RequireCSRF(s.DecideProfessorRequest())))
+	mux.Handle("POST /professor-requests/{requestID}/group-decision", s.gateway.RequireAdmin(s.gateway.RequireCSRF(s.DecideProfessorRequestGroup())))
 	mux.Handle("GET /reviews/{reviewID}", s.gateway.RequireAdmin(s.GetReview()))
 	mux.Handle("GET /course-files", s.gateway.RequireAdmin(s.ListCourseFiles()))
 	mux.Handle("GET /course-files/{fileID}", s.gateway.RequireAdmin(s.GetCourseFile()))

@@ -105,6 +105,13 @@ type AdminProfessorRequestDecisionResponse struct {
 	Action  string                `json:"action"`
 }
 
+type AdminProfessorRequestGroupDecisionResponse struct {
+	Success       bool                  `json:"success"`
+	Request       AdminProfessorRequest `json:"request"`
+	Action        string                `json:"action"`
+	AffectedCount int                   `json:"affected_count"`
+}
+
 type AdminProfessorRequestStatusCounts struct {
 	Pending   int64 `json:"pending"`
 	Approved  int64 `json:"approved"`
@@ -594,12 +601,13 @@ type AdminProfessorRequestSummary struct {
 
 type AdminProfessorRequest struct {
 	AdminProfessorRequestSummary
-	RelatedGroupID      int64                   `json:"related_group_id,string"`
-	RelatedRequestCount int                     `json:"related_request_count"`
-	LikelyDuplicate     bool                    `json:"likely_duplicate"`
-	Matches             []AdminProfessorMatch   `json:"matches"`
-	Signals             []AdminModerationSignal `json:"signals,omitempty"`
-	ActionHistory       []AdminModerationAction `json:"action_history,omitempty"`
+	RelatedGroupID             int64                   `json:"related_group_id,string"`
+	RelatedRequestCount        int                     `json:"related_request_count"`
+	RelatedPendingRequestCount int                     `json:"related_pending_request_count"`
+	LikelyDuplicate            bool                    `json:"likely_duplicate"`
+	Matches                    []AdminProfessorMatch   `json:"matches"`
+	Signals                    []AdminModerationSignal `json:"signals,omitempty"`
+	ActionHistory              []AdminModerationAction `json:"action_history,omitempty"`
 }
 
 type AdminProfessorMatch struct {

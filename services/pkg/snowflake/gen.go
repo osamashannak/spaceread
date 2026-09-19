@@ -19,13 +19,18 @@ const (
 )
 
 type Generator struct {
-	state   uint64
-	machine uint64
+	// state contains only the timestamp and sequence portions of an ID. The
+	// machine portion is added after a successful state transition, so a
+	// sequence rollover can never carry into it.
+	state     uint64
+	machine   uint64
+	nowMillis func() int64
+	lease     *WorkerLease
 }
 
 func New(machineID int) *Generator {
 	if machineID < 0 || machineID > serverMax {
-		panic(fmt.Errorf("invalid machine id; must be 0 ≤ id < %d", serverMax))
+		panic(fmt.Errorf("invalid machine id; must be 0 ≤ id ≤ %d", serverMax))
 	}
 	return &Generator{
 		state:   0,
@@ -33,59 +38,65 @@ func New(machineID int) *Generator {
 	}
 }
 
+// NewLeasedGenerator returns a generator which fails closed when lease is lost
+// or closed. Callers should use this constructor for every production
+// generator backed by a dynamically allocated worker ID.
+func NewLeasedGenerator(lease *WorkerLease) *Generator {
+	if lease == nil {
+		panic("snowflake: worker lease is nil")
+	}
+	lease.assertHealthy()
+	generator := New(lease.WorkerID())
+	generator.lease = lease
+	return generator
+}
+
 func (g *Generator) MachineID() int {
 	return int(g.machine >> serverShift)
 }
 
 func (g *Generator) Next() uint64 {
-	var state uint64
+	for {
+		if g.lease != nil {
+			g.lease.assertHealthy()
+		}
 
-	// we attempt 100 times to update the millisecond part of the state
-	// and increment the sequence atomically. each attempt is approx ~30ns
-	// so we spend around ~3µs total.
-	for i := 0; i < 100; i++ {
-		t := (now() - epoch) & timeMask
+		t := g.now()
 		current := atomic.LoadUint64(&g.state)
 		currentTime := current >> timeShift & timeMask
 		currentSeq := current & sequenceMask
-
-		// this sequence of conditionals ensures a monotonically increasing
-		// state.
+		var next uint64
 
 		switch {
-		// if our time is in the future, use that with a zero sequence number.
+		// The wall clock has advanced, so start its sequence at zero.
 		case t > currentTime:
-			state = t << timeShift
+			next = t << timeShift
 
-		// we now know that our time is at or before the current time.
-		// if we're at the maximum sequence, bump to the next millisecond
+		// When a millisecond's sequence is exhausted, advance the logical
+		// clock. This also keeps IDs monotonic if the wall clock moves
+		// backwards.
 		case currentSeq == sequenceMask:
-			state = (currentTime + 1) << timeShift
+			if currentTime == timeMask {
+				panic("snowflake: timestamp range exhausted")
+			}
+			next = (currentTime + 1) << timeShift
 
-		// otherwise, increment the sequence.
+		// Reconstruct the state rather than incrementing the packed integer.
+		// In particular, the reserved machine-bit region remains zero.
 		default:
-			state = current + 1
+			next = currentTime<<timeShift | currentSeq + 1
 		}
 
-		if atomic.CompareAndSwapUint64(&g.state, current, state) {
-			break
+		if atomic.CompareAndSwapUint64(&g.state, current, next) {
+			// Recheck after claiming the state transition. If lease shutdown or
+			// loss raced with allocation, consume the state but never expose the
+			// resulting ID.
+			if g.lease != nil {
+				g.lease.assertHealthy()
+			}
+			return next | g.machine
 		}
-
-		state = 0
 	}
-
-	// since we failed 100 times, there's high contention. bail out of the
-	// loop to bound the time we'll spend in this method, and just add
-	// one to the counter. this can cause millisecond drift, but hopefully
-	// some CAS eventually succeeds and fixes the milliseconds. additionally,
-	// if the sequence is already at the maximum, adding 1 here can cause
-	// it to roll over into the machine id. giving the CAS 100 attempts
-	// helps to avoid these problems.
-	if state == 0 {
-		state = atomic.AddUint64(&g.state, 1)
-	}
-
-	return state | g.machine
 }
 
 func (g *Generator) NextString() string {
@@ -98,7 +109,24 @@ func (g *Generator) AppendNext(s *[11]byte) {
 	encode(s, g.Next())
 }
 
-func now() uint64 { return uint64(time.Now().UnixNano() / 1e6) }
+func (g *Generator) now() uint64 {
+	nowMillis := time.Now().UnixMilli()
+	if g.nowMillis != nil {
+		nowMillis = g.nowMillis()
+	}
+
+	// Before the custom epoch, use the first representable millisecond. This
+	// avoids unsigned underflow if the clock is badly misconfigured.
+	if nowMillis <= epoch {
+		return 0
+	}
+
+	elapsed := uint64(nowMillis - epoch)
+	if elapsed > timeMask {
+		panic("snowflake: current time exceeds timestamp range")
+	}
+	return elapsed
+}
 
 var digits = [...]byte{
 	'0', '1', '2', '3', '4', '5', '6', '7', '8', '9',

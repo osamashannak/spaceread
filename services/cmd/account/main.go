@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/osamashannak/uaeu-space/services/internal/account"
 	accountDB "github.com/osamashannak/uaeu-space/services/internal/account/database"
@@ -54,15 +56,45 @@ func realMain(ctx context.Context) error {
 	}
 	defer db.Close(ctx)
 
-	logger.Info("setting up snowflake generator")
+	logger.Info("acquiring snowflake worker lease")
 
-	sfGenerator := snowflake.New(1)
+	workerLease, err := snowflake.AcquireWorkerLease(ctx, db.Pool, snowflake.WorkerLeaseConfig{
+		Owner: "account",
+	})
+	if err != nil {
+		return fmt.Errorf("acquire snowflake worker lease: %w", err)
+	}
+	defer func() {
+		closeCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := workerLease.Close(closeCtx); err != nil {
+			logger.Errorw("failed to close snowflake worker lease", "worker_id", workerLease.WorkerID(), "error", err)
+		}
+	}()
+
+	serviceCtx, cancelService := context.WithCancelCause(ctx)
+	defer cancelService(nil)
+	go func() {
+		select {
+		case <-workerLease.Lost():
+			leaseErr := workerLease.Err()
+			if leaseErr == nil {
+				leaseErr = snowflake.ErrWorkerLeaseLost
+			}
+			logger.Errorw("snowflake worker lease lost", "worker_id", workerLease.WorkerID(), "error", leaseErr)
+			cancelService(leaseErr)
+		case <-serviceCtx.Done():
+		}
+	}()
+
+	sfGenerator := snowflake.NewLeasedGenerator(workerLease)
+	logger.Infow("snowflake worker lease acquired", "worker_id", workerLease.WorkerID(), "owner", workerLease.Owner())
 	accountStore := accountDB.New(db)
 	authSessionStore := authsessionstore.New(db)
 
 	logger.Info("setting up account server")
 
-	gatewayClient := gateway.New(authSessionStore, *sfGenerator, cfg.Gateway, authSessionStore)
+	gatewayClient := gateway.New(authSessionStore, sfGenerator, cfg.Gateway, authSessionStore)
 
 	accountServer, err := account.NewServer(accountStore, sfGenerator, gatewayClient, *cfg)
 	if err != nil {
@@ -76,5 +108,9 @@ func realMain(ctx context.Context) error {
 
 	logger.Infow("server listening", "port", cfg.Port)
 
-	return srv.ServeHTTP(ctx, accountServer.Routes())
+	serveErr := srv.ServeHTTP(serviceCtx, accountServer.Routes())
+	if cause := context.Cause(serviceCtx); errors.Is(cause, snowflake.ErrWorkerLeaseLost) {
+		return errors.Join(serveErr, cause)
+	}
+	return serveErr
 }

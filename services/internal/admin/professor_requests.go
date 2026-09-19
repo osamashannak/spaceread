@@ -119,6 +119,48 @@ func (s *Server) DecideProfessorRequest() http.Handler {
 	})
 }
 
+// DecideProfessorRequestGroup applies one moderation decision to every pending
+// request related to requestID. The selected request remains the representative:
+// on approval its edited professor fields create the canonical professor, while
+// the other pending requests are resolved as duplicates of that professor.
+func (s *Server) DecideProfessorRequestGroup() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestID, ok := parsePathID(w, r, "requestID")
+		if !ok {
+			return
+		}
+
+		var request v1.AdminProfessorRequestDecisionRequest
+		code, err := jsonutil.Unmarshal(w, r, &request)
+		if err != nil {
+			jsonutil.MarshalResponse(w, code, v1.ErrorResponse{Error: code, Message: err.Error()})
+			return
+		}
+
+		decision, err := normalizeProfessorRequestDecision(requestID, s.actorUserID(r.Context()), request)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		if !s.validReason(w, r, decision.ReasonCode) {
+			return
+		}
+
+		result, err := s.db.DecideProfessorRequestGroup(r.Context(), decision)
+		if err != nil {
+			s.writeProfessorRequestDecisionError(w, r, err)
+			return
+		}
+
+		jsonutil.MarshalResponse(w, http.StatusOK, v1.AdminProfessorRequestGroupDecisionResponse{
+			Success:       true,
+			Request:       *result.Request,
+			Action:        result.Action,
+			AffectedCount: result.AffectedCount,
+		})
+	})
+}
+
 func normalizeProfessorRequestDecision(requestID int64, actorUserID *int64, request v1.AdminProfessorRequestDecisionRequest) (admindb.ProfessorRequestDecision, error) {
 	if request.Decision == nil {
 		return admindb.ProfessorRequestDecision{}, errInvalidProfessorRequestDecision

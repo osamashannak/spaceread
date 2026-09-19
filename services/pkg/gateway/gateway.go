@@ -22,13 +22,13 @@ import (
 type Gateway struct {
 	sessionStore      authsession.SessionStore
 	authResolver      authsession.Resolver
-	gen               snowflake.Generator
+	gen               *snowflake.Generator
 	config            Config
 	profileContextKey contextKey
 	recoveredDevSIDs  sync.Map
 }
 
-func New(sessionStore authsession.SessionStore, gen snowflake.Generator, cfg Config, authResolver authsession.Resolver) *Gateway {
+func New(sessionStore authsession.SessionStore, gen *snowflake.Generator, cfg Config, authResolver authsession.Resolver) *Gateway {
 	return &Gateway{
 		sessionStore:      sessionStore,
 		authResolver:      authResolver,
@@ -300,30 +300,39 @@ func (g *Gateway) verifyJWT(tokenString string) (*SessionClaims, error) {
 }
 
 func (g *Gateway) createSession(w http.ResponseWriter, ip, userAgent string) (*int64, error) {
-	sessionId := int64(g.gen.Next())
+	const maxAttempts = 5
 
-	tokenString, err := g.generateJWT(sessionId)
-	if err != nil {
-		return nil, err
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		sessionId := int64(g.gen.Next())
+
+		tokenString, err := g.generateJWT(sessionId)
+		if err != nil {
+			return nil, err
+		}
+
+		err = g.sessionStore.CreateSession(context.Background(), sessionId, tokenString, userAgent, ip)
+		if err != nil {
+			if errors.Is(err, authsession.ErrSessionIDConflict) && attempt < maxAttempts {
+				continue
+			}
+			return nil, err
+		}
+
+		http.SetCookie(w, &http.Cookie{
+			Name:     g.config.SessionCookieName,
+			Value:    tokenString,
+			Domain:   g.config.CookieDomain,
+			MaxAge:   g.config.CookieMaxAgeSeconds(),
+			Secure:   g.config.CookieSecure,
+			HttpOnly: true,
+			Path:     "/",
+		})
+		g.setCSRFCookie(w, sessionId, g.config.CookieMaxAgeSeconds())
+
+		return &sessionId, nil
 	}
 
-	err = g.sessionStore.CreateSession(context.Background(), sessionId, tokenString, userAgent, ip)
-	if err != nil {
-		return nil, err
-	}
-
-	http.SetCookie(w, &http.Cookie{
-		Name:     g.config.SessionCookieName,
-		Value:    tokenString,
-		Domain:   g.config.CookieDomain,
-		MaxAge:   g.config.CookieMaxAgeSeconds(),
-		Secure:   g.config.CookieSecure,
-		HttpOnly: true,
-		Path:     "/",
-	})
-	g.setCSRFCookie(w, sessionId, g.config.CookieMaxAgeSeconds())
-
-	return &sessionId, nil
+	return nil, errors.New("failed to create session")
 }
 
 func (g *Gateway) upgradeToJWT(w http.ResponseWriter, sid int64) {

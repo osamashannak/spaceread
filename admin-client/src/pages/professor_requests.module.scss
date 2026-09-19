@@ -809,6 +809,61 @@
   color: #166534;
 }
 
+.groupScope {
+  background: hsl(var(--secondary) / 0.55);
+  border: 1px solid hsl(var(--border));
+  border-radius: 10px;
+  display: grid;
+  gap: 9px;
+  padding: 13px 14px;
+  transition: background-color 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
+
+  label {
+    align-items: flex-start;
+    cursor: pointer;
+    display: flex;
+    gap: 10px;
+  }
+
+  input {
+    accent-color: hsl(var(--spaceread-blue));
+    flex: 0 0 auto;
+    height: 16px;
+    margin: 1px 0 0;
+    width: 16px;
+  }
+
+  label > span {
+    display: grid;
+    gap: 3px;
+  }
+
+  strong {
+    color: hsl(var(--foreground));
+    font-size: 12px;
+    line-height: 1.45;
+  }
+
+  small,
+  p {
+    color: hsl(var(--muted-foreground));
+    font-size: 10px;
+    line-height: 1.55;
+  }
+
+  p {
+    border-top: 1px solid hsl(var(--border));
+    margin: 0;
+    padding: 9px 0 0 26px;
+  }
+}
+
+.groupScopeSelected {
+  background: #eff8ff;
+  border-color: hsl(var(--ring) / 0.7);
+  box-shadow: 0 0 0 3px hsl(var(--ring) / 0.08);
+}
+
 .panelActions {
   align-items: center;
   background: #fff;

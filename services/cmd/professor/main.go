@@ -1,9 +1,15 @@
 package main
 
 import (
+	"context"
+	"errors"
+	"fmt"
+	"os/signal"
+	"syscall"
+	"time"
+
 	recaptcha2 "cloud.google.com/go/recaptchaenterprise/v2/apiv1"
 	translate2 "cloud.google.com/go/translate"
-	"context"
 	"github.com/joho/godotenv"
 	"github.com/osamashannak/uaeu-space/services/internal/professor"
 	profDB "github.com/osamashannak/uaeu-space/services/internal/professor/database"
@@ -19,10 +25,6 @@ import (
 	"github.com/osamashannak/uaeu-space/services/pkg/server"
 	"github.com/osamashannak/uaeu-space/services/pkg/ses"
 	"github.com/osamashannak/uaeu-space/services/pkg/snowflake"
-
-	"fmt"
-	"os/signal"
-	"syscall"
 )
 
 func main() {
@@ -66,11 +68,41 @@ func realMain(ctx context.Context) error {
 	}
 	defer db.Close(ctx)
 
+	logger.Info("acquiring snowflake worker lease")
+
+	workerLease, err := snowflake.AcquireWorkerLease(ctx, db.Pool, snowflake.WorkerLeaseConfig{
+		Owner: "professor",
+	})
+	if err != nil {
+		return fmt.Errorf("acquire snowflake worker lease: %w", err)
+	}
+	defer func() {
+		closeCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := workerLease.Close(closeCtx); err != nil {
+			logger.Errorw("failed to close snowflake worker lease", "worker_id", workerLease.WorkerID(), "error", err)
+		}
+	}()
+
+	serviceCtx, cancelService := context.WithCancelCause(ctx)
+	defer cancelService(nil)
+	go func() {
+		select {
+		case <-workerLease.Lost():
+			leaseErr := workerLease.Err()
+			if leaseErr == nil {
+				leaseErr = snowflake.ErrWorkerLeaseLost
+			}
+			logger.Errorw("snowflake worker lease lost", "worker_id", workerLease.WorkerID(), "error", leaseErr)
+			cancelService(leaseErr)
+		case <-serviceCtx.Done():
+		}
+	}()
+
+	sfGenerator := snowflake.NewLeasedGenerator(workerLease)
+	logger.Infow("snowflake worker lease acquired", "worker_id", workerLease.WorkerID(), "owner", workerLease.Owner())
+
 	authSessionStore := authsessionstore.New(db)
-
-	logger.Info("setting up snowflake generator")
-
-	sfGenerator := snowflake.New(1)
 
 	logger.Info("setting up recaptcha client")
 
@@ -119,7 +151,7 @@ func realMain(ctx context.Context) error {
 		return blobStorage.FormatSASURL(blobName, "")
 	}))
 
-	gatewayClient := gateway.New(authSessionStore, *sfGenerator, cfg.Gateway, authSessionStore)
+	gatewayClient := gateway.New(authSessionStore, sfGenerator, cfg.Gateway, authSessionStore)
 
 	sesClient, err := ses.New(ctx, &cfg.AWS, "SpaceRead <noreply@auth.spaceread.net>")
 
@@ -141,5 +173,9 @@ func realMain(ctx context.Context) error {
 
 	logger.Infow("server listening", "port", cfg.Port)
 
-	return srv.ServeHTTP(ctx, professorServer.Routes())
+	serveErr := srv.ServeHTTP(serviceCtx, professorServer.Routes())
+	if cause := context.Cause(serviceCtx); errors.Is(cause, snowflake.ErrWorkerLeaseLost) {
+		return errors.Join(serveErr, cause)
+	}
+	return serveErr
 }

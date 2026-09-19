@@ -104,6 +104,7 @@ type professorRequestIndexRow struct {
 type professorRequestMetadata struct {
 	GroupID         int64
 	GroupSize       int
+	PendingCount    int
 	LikelyDuplicate bool
 }
 
@@ -285,13 +286,15 @@ func (db *AdminDB) loadProfessorRequestMetadata(
 	// Detail views only need the selected request's component. Seeding recursion
 	// with one request avoids the all-roots reachability expansion used by lists.
 	var (
-		groupID   *int64
-		groupSize int
+		groupID      *int64
+		groupSize    int
+		pendingCount int
 	)
 	err := db.db.Pool.QueryRow(ctx, `
 		WITH RECURSIVE component AS (
 			SELECT
 				pr.id,
+				pr.status,
 				CASE WHEN pr.professor_email IS NULL THEN NULL ELSE lower(pr.professor_email) END AS email_key,
 				lower(regexp_replace(btrim(pr.professor_name), '\s+', ' ', 'g')) AS name_key,
 				lower(regexp_replace(btrim(pr.university), '\s+', ' ', 'g')) AS university_key
@@ -302,6 +305,7 @@ func (db *AdminDB) loadProfessorRequestMetadata(
 
 			SELECT
 				neighbor.id,
+				neighbor.status,
 				CASE WHEN neighbor.professor_email IS NULL THEN NULL ELSE lower(neighbor.professor_email) END,
 				lower(regexp_replace(btrim(neighbor.professor_name), '\s+', ' ', 'g')),
 				lower(regexp_replace(btrim(neighbor.university), '\s+', ' ', 'g'))
@@ -315,8 +319,11 @@ func (db *AdminDB) loadProfessorRequestMetadata(
 				AND lower(regexp_replace(btrim(neighbor.university), '\s+', ' ', 'g')) = current.university_key
 			)
 		)
-		SELECT min(id), count(*)::int
-		FROM component`, requestID).Scan(&groupID, &groupSize)
+		SELECT
+			min(id),
+			count(*)::int,
+			count(*) FILTER (WHERE status = 'pending')::int
+		FROM component`, requestID).Scan(&groupID, &groupSize, &pendingCount)
 	if err != nil {
 		return professorRequestMetadata{}, false, err
 	}
@@ -326,6 +333,7 @@ func (db *AdminDB) loadProfessorRequestMetadata(
 	return professorRequestMetadata{
 		GroupID:         *groupID,
 		GroupSize:       groupSize,
+		PendingCount:    pendingCount,
 		LikelyDuplicate: groupSize > 1,
 	}, true, nil
 }
@@ -356,6 +364,13 @@ func buildProfessorRequestMetadata(rows []professorRequestIndexRow) map[int64]pr
 		}
 	}
 
+	pendingCounts := make(map[int64]int)
+	for _, row := range rows {
+		if row.Status == "pending" {
+			pendingCounts[groups.find(row.ID)]++
+		}
+	}
+
 	metadata := make(map[int64]professorRequestMetadata, len(rows))
 	for _, row := range rows {
 		groupID := groups.find(row.ID)
@@ -363,6 +378,7 @@ func buildProfessorRequestMetadata(rows []professorRequestIndexRow) map[int64]pr
 		metadata[row.ID] = professorRequestMetadata{
 			GroupID:         groupID,
 			GroupSize:       groupSize,
+			PendingCount:    pendingCounts[groupID],
 			LikelyDuplicate: groupSize > 1,
 		}
 	}
@@ -476,7 +492,11 @@ func buildProfessorRequestListPage(
 		}
 		requestMetadata, ok := metadata[row.ID]
 		if !ok {
-			requestMetadata = professorRequestMetadata{GroupID: row.ID, GroupSize: 1}
+			pendingCount := 0
+			if row.Status == "pending" {
+				pendingCount = 1
+			}
+			requestMetadata = professorRequestMetadata{GroupID: row.ID, GroupSize: 1, PendingCount: pendingCount}
 		}
 
 		matchesStatus := professorRequestMatchesStatus(row.Status, opts.Status)
@@ -665,10 +685,15 @@ func (db *AdminDB) loadProfessorRequests(
 		}
 		requestMetadata, ok := metadata[request.ID]
 		if !ok {
-			requestMetadata = professorRequestMetadata{GroupID: request.ID, GroupSize: 1}
+			pendingCount := 0
+			if request.Status == "pending" {
+				pendingCount = 1
+			}
+			requestMetadata = professorRequestMetadata{GroupID: request.ID, GroupSize: 1, PendingCount: pendingCount}
 		}
 		request.RelatedGroupID = requestMetadata.GroupID
 		request.RelatedRequestCount = requestMetadata.GroupSize - 1
+		request.RelatedPendingRequestCount = requestMetadata.PendingCount
 		request.LikelyDuplicate = requestMetadata.LikelyDuplicate
 		request.Matches = []v1.AdminProfessorMatch{}
 		request.Signals = []v1.AdminModerationSignal{}

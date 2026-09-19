@@ -2,8 +2,11 @@ package authsession
 
 import (
 	"context"
+	"errors"
 	"time"
 )
+
+var ErrSessionIDConflict = errors.New("session id conflict")
 
 type User struct {
 	LoginSessionID int64

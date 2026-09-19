@@ -3,8 +3,10 @@ package postgres
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/osamashannak/uaeu-space/services/pkg/authsession"
 	pkgdb "github.com/osamashannak/uaeu-space/services/pkg/database"
 )
@@ -39,6 +41,19 @@ func (s *Store) CreateSession(ctx context.Context, id int64, token, userAgent, i
 		`INSERT INTO account.session (token, user_agent, ip_address, id)
 		 VALUES ($1, $2, COALESCE(NULLIF($3, ''), '0.0.0.0')::inet, $4)`,
 		token, userAgent, ipAddress, id)
+
+	return classifyCreateSessionError(err)
+}
+
+func classifyCreateSessionError(err error) error {
+	if err == nil {
+		return nil
+	}
+
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == "session_pk" {
+		return fmt.Errorf("%w: %w", authsession.ErrSessionIDConflict, err)
+	}
 
 	return err
 }
