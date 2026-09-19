@@ -21,8 +21,10 @@ const (
 type Generator struct {
 	// state contains only the timestamp and sequence portions of an ID. The
 	// machine portion is added after a successful state transition, so a
-	// sequence rollover can never carry into it.
-	state     uint64
+	// sequence rollover can never carry into it. atomic.Uint64 also makes a
+	// live Generator non-copyable, which prevents independent sequence streams
+	// from accidentally being created for the same worker inside one process.
+	state     atomic.Uint64
 	machine   uint64
 	nowMillis func() int64
 	lease     *WorkerLease
@@ -33,7 +35,6 @@ func New(machineID int) *Generator {
 		panic(fmt.Errorf("invalid machine id; must be 0 ≤ id ≤ %d", serverMax))
 	}
 	return &Generator{
-		state:   0,
 		machine: uint64(machineID << serverShift),
 	}
 }
@@ -62,7 +63,7 @@ func (g *Generator) Next() uint64 {
 		}
 
 		t := g.now()
-		current := atomic.LoadUint64(&g.state)
+		current := g.state.Load()
 		currentTime := current >> timeShift & timeMask
 		currentSeq := current & sequenceMask
 		var next uint64
@@ -87,7 +88,7 @@ func (g *Generator) Next() uint64 {
 			next = currentTime<<timeShift | currentSeq + 1
 		}
 
-		if atomic.CompareAndSwapUint64(&g.state, current, next) {
+		if g.state.CompareAndSwap(current, next) {
 			// Recheck after claiming the state transition. If lease shutdown or
 			// loss raced with allocation, consume the state but never expose the
 			// resulting ID.

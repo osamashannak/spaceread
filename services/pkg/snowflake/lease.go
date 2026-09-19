@@ -47,12 +47,12 @@ var (
 //
 // ReuseCooldown is the period a newly acquired worker remains idle before it
 // can be used. It must be greater than HealthCheckInterval +
-// HealthCheckTimeout. A lease-bound generator refuses to emit IDs when its
-// last successful heartbeat is older than that sum. The extra cooldown gives
-// a previous holder time to observe a lost database session and fail closed
-// before the worker is reused. It should also exceed the maximum expected
-// cross-host clock skew. The defaults are one-second health checks, a
-// two-second check timeout, and a five-second reuse cooldown.
+// HealthCheckTimeout. A lease-bound generator synchronously revalidates a
+// heartbeat older than that sum before emitting another ID. The extra
+// cooldown gives a previous holder time to observe a lost database session
+// and fail closed before the worker is reused. It should also exceed the
+// maximum expected cross-host clock skew. The defaults are one-second health
+// checks, a two-second check timeout, and a five-second reuse cooldown.
 //
 // Session advisory locks require a direct or session-pooled PostgreSQL
 // connection. Transaction-pooled proxies are not supported.
@@ -117,9 +117,9 @@ func (cfg WorkerLeaseConfig) normalize() (normalizedWorkerLeaseConfig, error) {
 }
 
 type workerLeaseConnection interface {
-	tryAdvisoryLock(context.Context, int32, int) (bool, error)
+	tryAdvisoryLock(context.Context, int32, int) (bool, int32, error)
 	advisoryUnlock(context.Context, int32, int) (bool, error)
-	heartbeat(context.Context) error
+	heartbeat(context.Context, int32) error
 	release()
 	destroy(context.Context) error
 }
@@ -128,15 +128,16 @@ type pgxWorkerLeaseConnection struct {
 	conn *pgxpool.Conn
 }
 
-func (c *pgxWorkerLeaseConnection) tryAdvisoryLock(ctx context.Context, namespace int32, workerID int) (bool, error) {
+func (c *pgxWorkerLeaseConnection) tryAdvisoryLock(ctx context.Context, namespace int32, workerID int) (bool, int32, error) {
 	var locked bool
+	var backendPID int32
 	err := c.conn.QueryRow(
 		ctx,
-		`SELECT pg_try_advisory_lock($1::integer, $2::integer)`,
+		`SELECT pg_try_advisory_lock($1::integer, $2::integer), pg_backend_pid()`,
 		namespace,
 		workerID,
-	).Scan(&locked)
-	return locked, err
+	).Scan(&locked, &backendPID)
+	return locked, backendPID, err
 }
 
 func (c *pgxWorkerLeaseConnection) advisoryUnlock(ctx context.Context, namespace int32, workerID int) (bool, error) {
@@ -150,9 +151,19 @@ func (c *pgxWorkerLeaseConnection) advisoryUnlock(ctx context.Context, namespace
 	return unlocked, err
 }
 
-func (c *pgxWorkerLeaseConnection) heartbeat(ctx context.Context) error {
-	var one int
-	return c.conn.QueryRow(ctx, `SELECT 1`).Scan(&one)
+func (c *pgxWorkerLeaseConnection) heartbeat(ctx context.Context, expectedBackendPID int32) error {
+	var backendPID int32
+	if err := c.conn.QueryRow(ctx, `SELECT pg_backend_pid()`).Scan(&backendPID); err != nil {
+		return err
+	}
+	if backendPID != expectedBackendPID {
+		return fmt.Errorf(
+			"PostgreSQL backend changed from %d to %d; session advisory locks require a direct or session-pooled connection",
+			expectedBackendPID,
+			backendPID,
+		)
+	}
+	return nil
 }
 
 func (c *pgxWorkerLeaseConnection) release() {
@@ -181,10 +192,12 @@ const (
 // not close Lost; it changes Healthy to false and makes Err return
 // ErrWorkerLeaseClosed.
 type WorkerLease struct {
-	workerID  int
-	namespace int32
-	owner     string
-	conn      workerLeaseConnection
+	workerID     int
+	namespace    int32
+	owner        string
+	backendPID   int32
+	conn         workerLeaseConnection
+	connectionMu sync.Mutex
 
 	monitorCancel context.CancelFunc
 	monitorDone   chan struct{}
@@ -195,6 +208,7 @@ type WorkerLease struct {
 	heartbeatMu             sync.RWMutex
 	lastSuccessfulHeartbeat time.Time
 	maximumHeartbeatAge     time.Duration
+	healthCheckTimeout      time.Duration
 
 	errMu sync.RWMutex
 	err   error
@@ -274,7 +288,7 @@ func acquireWorkerLease(
 	}
 
 	for _, workerID := range candidates {
-		locked, lockErr := conn.tryAdvisoryLock(ctx, normalized.namespace, workerID)
+		locked, backendPID, lockErr := conn.tryAdvisoryLock(ctx, normalized.namespace, workerID)
 		if lockErr != nil {
 			// The result of a failed round trip is ambiguous: PostgreSQL may have
 			// granted the lock before the client observed the error. Destroy the
@@ -295,7 +309,7 @@ func acquireWorkerLease(
 		}
 
 		heartbeatCtx, heartbeatCancel := context.WithTimeout(ctx, normalized.healthCheckTimeout)
-		heartbeatErr := conn.heartbeat(heartbeatCtx)
+		heartbeatErr := conn.heartbeat(heartbeatCtx, backendPID)
 		heartbeatCancel()
 		if heartbeatErr != nil {
 			destroyErr := destroyLeaseConnection(conn)
@@ -309,11 +323,13 @@ func acquireWorkerLease(
 			workerID:            workerID,
 			namespace:           normalized.namespace,
 			owner:               normalized.owner,
+			backendPID:          backendPID,
 			conn:                conn,
 			monitorDone:         make(chan struct{}),
 			lost:                make(chan struct{}),
 			closeDone:           make(chan struct{}),
 			maximumHeartbeatAge: normalized.healthCheckInterval + normalized.healthCheckTimeout,
+			healthCheckTimeout:  normalized.healthCheckTimeout,
 		}
 		lease.recordSuccessfulHeartbeat(time.Now())
 		lease.state.Store(uint32(workerLeaseHealthy))
@@ -404,7 +420,9 @@ func (l *WorkerLease) monitor(ctx context.Context, interval, timeout time.Durati
 			return
 		case <-ticker.C:
 			heartbeatCtx, heartbeatCancel := context.WithTimeout(ctx, timeout)
-			err := l.conn.heartbeat(heartbeatCtx)
+			l.connectionMu.Lock()
+			err := l.conn.heartbeat(heartbeatCtx, l.backendPID)
+			l.connectionMu.Unlock()
 			heartbeatCancel()
 			if err == nil {
 				switch workerLeaseState(l.state.Load()) {
@@ -456,16 +474,48 @@ func (l *WorkerLease) assertHealthy() {
 		if l.heartbeatIsFresh(time.Now()) {
 			return
 		}
-		l.markLost(fmt.Errorf(
-			"%w: last successful PostgreSQL heartbeat is older than %s",
-			ErrWorkerLeaseLost,
-			l.maximumHeartbeatAge,
-		))
+		l.refreshStaleHeartbeat()
+		if workerLeaseState(l.state.Load()) == workerLeaseHealthy && l.heartbeatIsFresh(time.Now()) {
+			return
+		}
 	}
 	if err := l.Err(); err != nil {
 		panic(fmt.Errorf("snowflake: refusing to generate an ID without a healthy worker lease: %w", err))
 	}
 	panic(ErrWorkerLeaseLost)
+}
+
+// refreshStaleHeartbeat handles runtimes which suspend background work while
+// an instance is idle. It serializes with the monitor and cleanup so the first
+// ID-generating request can revalidate the exact PostgreSQL session before it
+// either proceeds or fails closed.
+func (l *WorkerLease) refreshStaleHeartbeat() {
+	l.connectionMu.Lock()
+
+	if workerLeaseState(l.state.Load()) != workerLeaseHealthy || l.heartbeatIsFresh(time.Now()) {
+		l.connectionMu.Unlock()
+		return
+	}
+
+	heartbeatCtx, heartbeatCancel := context.WithTimeout(context.Background(), l.healthCheckTimeout)
+	err := l.conn.heartbeat(heartbeatCtx, l.backendPID)
+	heartbeatCancel()
+	if err == nil && workerLeaseState(l.state.Load()) == workerLeaseHealthy {
+		l.recordSuccessfulHeartbeat(time.Now())
+		l.connectionMu.Unlock()
+		return
+	}
+
+	if err != nil {
+		l.markLost(fmt.Errorf("%w: synchronous PostgreSQL lease heartbeat failed: %w", ErrWorkerLeaseLost, err))
+	}
+	l.connectionMu.Unlock()
+
+	if err != nil {
+		if destroyErr := l.destroyPinnedConnection(); destroyErr != nil {
+			l.appendError(destroyErr)
+		}
+	}
 }
 
 func (l *WorkerLease) recordSuccessfulHeartbeat(at time.Time) {
@@ -556,7 +606,9 @@ func (l *WorkerLease) Close(ctx context.Context) error {
 		}
 
 		unlockCtx, unlockCancel := context.WithTimeout(ctx, connectionCloseTimeout)
+		l.connectionMu.Lock()
 		unlocked, err := l.conn.advisoryUnlock(unlockCtx, l.namespace, l.workerID)
+		l.connectionMu.Unlock()
 		unlockCancel()
 		if err != nil || !unlocked {
 			unlockErr := err
@@ -582,6 +634,8 @@ func (l *WorkerLease) Close(ctx context.Context) error {
 
 func (l *WorkerLease) destroyPinnedConnection() error {
 	l.connectionCleanupOnce.Do(func() {
+		l.connectionMu.Lock()
+		defer l.connectionMu.Unlock()
 		l.connectionCleanupErr = destroyLeaseConnection(l.conn)
 	})
 	return l.connectionCleanupErr
@@ -589,6 +643,8 @@ func (l *WorkerLease) destroyPinnedConnection() error {
 
 func (l *WorkerLease) releasePinnedConnection() {
 	l.connectionCleanupOnce.Do(func() {
+		l.connectionMu.Lock()
+		defer l.connectionMu.Unlock()
 		l.conn.release()
 	})
 }
