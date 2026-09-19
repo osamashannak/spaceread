@@ -1,11 +1,9 @@
 package snowflake
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
-	"crypto/sha256"
-	"encoding/binary"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -13,21 +11,18 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 const (
-	// DefaultAdvisoryLockNamespace isolates Snowflake worker locks from other
-	// advisory-lock users in the same PostgreSQL database. It is the ASCII
-	// representation of "UAEU" interpreted as a signed 32-bit integer.
-	DefaultAdvisoryLockNamespace int32 = 0x55414555
-
-	defaultHealthCheckInterval = time.Second
-	defaultHealthCheckTimeout  = 2 * time.Second
-	defaultReuseCooldown       = 5 * time.Second
-	connectionCloseTimeout     = 5 * time.Second
-	maxDuration                = time.Duration(1<<63 - 1)
+	defaultLeaseDuration       = 15 * time.Second
+	defaultRenewInterval       = 5 * time.Second
+	defaultOperationTimeout    = 2 * time.Second
+	defaultReservationDuration = 30 * time.Second
+	workerLeaseTokenBytes      = 32
 )
 
 var (
@@ -38,140 +33,297 @@ var (
 	ErrInvalidLeaseConfig = errors.New("invalid Snowflake worker lease configuration")
 )
 
-// WorkerLeaseConfig controls allocation and monitoring of a Snowflake worker
-// ID. Zero duration values select the safe defaults documented below.
+// WorkerLeaseConfig controls a transaction-pooler-safe PostgreSQL row lease.
+// Zero durations use a 15-second lease, five-second renewal interval,
+// two-second statement timeout, and timestamp ranges reserved 30 seconds at a
+// time.
 //
-// Worker 1 is reserved by default so that a leasing deployment can safely run
-// alongside an older deployment which is still hard-coded to worker 1. Set
-// AllowLegacyWorkerOne only after every such deployment has drained.
-//
-// ReuseCooldown is the period a newly acquired worker remains idle before it
-// can be used. It must be greater than HealthCheckInterval +
-// HealthCheckTimeout. A lease-bound generator synchronously revalidates a
-// heartbeat older than that sum before emitting another ID. The extra
-// cooldown gives a previous holder time to observe a lost database session
-// and fail closed before the worker is reused. It should also exceed the
-// maximum expected cross-host clock skew. The defaults are one-second health
-// checks, a two-second check timeout, and a five-second reuse cooldown.
-//
-// Session advisory locks require a direct or session-pooled PostgreSQL
-// connection. Transaction-pooled proxies are not supported.
+// Worker 1 is always excluded so new instances can coexist with an older
+// revision hard-coded to worker 1. The lease uses only short statements; it
+// does not pin a connection and supports pool_max_conns=1 and transaction
+// pooling proxies.
 type WorkerLeaseConfig struct {
-	Owner                 string
-	AdvisoryLockNamespace int32
-	AllowLegacyWorkerOne  bool
-	HealthCheckInterval   time.Duration
-	HealthCheckTimeout    time.Duration
-	ReuseCooldown         time.Duration
+	Owner               string
+	LeaseDuration       time.Duration
+	RenewInterval       time.Duration
+	OperationTimeout    time.Duration
+	ReservationDuration time.Duration
 }
 
 type normalizedWorkerLeaseConfig struct {
-	owner                string
-	namespace            int32
-	allowLegacyWorkerOne bool
-	healthCheckInterval  time.Duration
-	healthCheckTimeout   time.Duration
-	reuseCooldown        time.Duration
+	owner               string
+	leaseDuration       time.Duration
+	renewInterval       time.Duration
+	operationTimeout    time.Duration
+	reservationDuration time.Duration
+	leaseMillis         int64
+	renewMillis         int64
+	reservationMillis   int64
 }
 
 func (cfg WorkerLeaseConfig) normalize() (normalizedWorkerLeaseConfig, error) {
-	if cfg.HealthCheckInterval < 0 || cfg.HealthCheckTimeout < 0 || cfg.ReuseCooldown < 0 {
+	if cfg.LeaseDuration < 0 || cfg.RenewInterval < 0 || cfg.OperationTimeout < 0 || cfg.ReservationDuration < 0 {
 		return normalizedWorkerLeaseConfig{}, fmt.Errorf("%w: durations cannot be negative", ErrInvalidLeaseConfig)
 	}
 
 	normalized := normalizedWorkerLeaseConfig{
-		owner:                cfg.Owner,
-		namespace:            cfg.AdvisoryLockNamespace,
-		allowLegacyWorkerOne: cfg.AllowLegacyWorkerOne,
-		healthCheckInterval:  cfg.HealthCheckInterval,
-		healthCheckTimeout:   cfg.HealthCheckTimeout,
-		reuseCooldown:        cfg.ReuseCooldown,
+		owner:               cfg.Owner,
+		leaseDuration:       cfg.LeaseDuration,
+		renewInterval:       cfg.RenewInterval,
+		operationTimeout:    cfg.OperationTimeout,
+		reservationDuration: cfg.ReservationDuration,
 	}
-	if normalized.namespace == 0 {
-		normalized.namespace = DefaultAdvisoryLockNamespace
+	if normalized.leaseDuration == 0 {
+		normalized.leaseDuration = defaultLeaseDuration
 	}
-	if normalized.healthCheckInterval == 0 {
-		normalized.healthCheckInterval = defaultHealthCheckInterval
+	if normalized.renewInterval == 0 {
+		normalized.renewInterval = defaultRenewInterval
 	}
-	if normalized.healthCheckTimeout == 0 {
-		normalized.healthCheckTimeout = defaultHealthCheckTimeout
+	if normalized.operationTimeout == 0 {
+		normalized.operationTimeout = defaultOperationTimeout
 	}
-	if normalized.reuseCooldown == 0 {
-		normalized.reuseCooldown = defaultReuseCooldown
+	if normalized.reservationDuration == 0 {
+		normalized.reservationDuration = defaultReservationDuration
 	}
 
-	if normalized.healthCheckInterval > maxDuration-normalized.healthCheckTimeout {
-		return normalizedWorkerLeaseConfig{}, fmt.Errorf("%w: health interval plus timeout overflows time.Duration", ErrInvalidLeaseConfig)
-	}
-	maximumHeartbeatStaleness := normalized.healthCheckInterval + normalized.healthCheckTimeout
-	if normalized.reuseCooldown <= maximumHeartbeatStaleness {
+	if normalized.renewInterval >= normalized.leaseDuration {
 		return normalizedWorkerLeaseConfig{}, fmt.Errorf(
-			"%w: reuse cooldown %s must be greater than health interval plus timeout (%s)",
+			"%w: renew interval %s must be shorter than lease duration %s",
 			ErrInvalidLeaseConfig,
-			normalized.reuseCooldown,
-			maximumHeartbeatStaleness,
+			normalized.renewInterval,
+			normalized.leaseDuration,
+		)
+	}
+	if normalized.operationTimeout >= normalized.leaseDuration {
+		return normalizedWorkerLeaseConfig{}, fmt.Errorf(
+			"%w: operation timeout %s must be shorter than lease duration %s",
+			ErrInvalidLeaseConfig,
+			normalized.operationTimeout,
+			normalized.leaseDuration,
 		)
 	}
 
+	normalized.leaseMillis = normalized.leaseDuration.Milliseconds()
+	normalized.renewMillis = normalized.renewInterval.Milliseconds()
+	normalized.reservationMillis = normalized.reservationDuration.Milliseconds()
+	if normalized.leaseMillis < 1 || normalized.renewMillis < 1 || normalized.reservationMillis < 1 || normalized.operationTimeout < time.Millisecond {
+		return normalizedWorkerLeaseConfig{}, fmt.Errorf("%w: every duration must be at least one millisecond", ErrInvalidLeaseConfig)
+	}
 	return normalized, nil
 }
 
-type workerLeaseConnection interface {
-	tryAdvisoryLock(context.Context, int32, int) (bool, int32, error)
-	advisoryUnlock(context.Context, int32, int) (bool, error)
-	heartbeat(context.Context, int32) error
-	release()
-	destroy(context.Context) error
+// leaseRecord contains elapsed milliseconds since the Snowflake epoch. The
+// database supplies its clock value and the durable inclusive reservation.
+type leaseRecord struct {
+	workerID        int
+	holderToken     []byte
+	fencingToken    int64
+	databaseNow     int64
+	leaseMillis     int64
+	rangeStart      int64
+	reservedThrough int64
 }
 
-type pgxWorkerLeaseConnection struct {
-	conn *pgxpool.Conn
+type workerLeaseStore interface {
+	acquire(context.Context, []byte, string, int64, int64) (leaseRecord, error)
+	lookup(context.Context, []byte, int64) (leaseRecord, error)
+	renew(context.Context, int, []byte, int64, int64, int64, int64) (leaseRecord, error)
+	release(context.Context, int, []byte, int64) (bool, error)
 }
 
-func (c *pgxWorkerLeaseConnection) tryAdvisoryLock(ctx context.Context, namespace int32, workerID int) (bool, int32, error) {
-	var locked bool
-	var backendPID int32
-	err := c.conn.QueryRow(
+type pgxWorkerLeaseStore struct {
+	pool *pgxpool.Pool
+}
+
+// Acquisition takes the database time once, locks one expired row without
+// waiting, fences its previous holder, and publishes a non-overlapping
+// inclusive timestamp range in one statement. The range is rejected before
+// UPDATE if it would exceed the 42-bit Snowflake timestamp field.
+const acquireWorkerLeaseSQL = `
+WITH timing AS MATERIALIZED (
+	SELECT clock.db_now,
+		floor(extract(epoch FROM (clock.db_now - timestamptz '2017-04-09 00:00:00+00')) * 1000)::bigint AS db_elapsed
+	FROM (SELECT clock_timestamp() AS db_now) AS clock
+), candidate AS MATERIALIZED (
+	SELECT lease.worker_id,
+		greatest(lease.reserved_through + 1, timing.db_elapsed) AS range_start
+	FROM snowflake_internal.snowflake_worker_lease AS lease
+	CROSS JOIN timing
+	WHERE lease.worker_id <> 1
+	  AND (lease.lease_expires_at IS NULL OR lease.lease_expires_at <= timing.db_now)
+	  AND lease.fencing_token < 9223372036854775807
+	  AND greatest(lease.reserved_through + 1, timing.db_elapsed) <= 4398046511103 - ($4::bigint - 1)
+	ORDER BY range_start, lease.worker_id
+	FOR UPDATE OF lease SKIP LOCKED
+	LIMIT 1
+), claimed AS (
+	UPDATE snowflake_internal.snowflake_worker_lease AS lease
+	SET holder_token = $1::bytea,
+		owner = $2,
+		fencing_token = lease.fencing_token + 1,
+		lease_expires_at = timing.db_now + $3::bigint * interval '1 millisecond',
+		heartbeat_at = timing.db_now,
+		reserved_through = candidate.range_start + $4::bigint - 1
+	FROM candidate
+	CROSS JOIN timing
+	WHERE lease.worker_id = candidate.worker_id
+	RETURNING lease.worker_id,
+		lease.holder_token,
+		lease.fencing_token,
+		candidate.range_start,
+		lease.reserved_through
+)
+SELECT claimed.worker_id,
+	claimed.holder_token,
+	claimed.fencing_token,
+	timing.db_elapsed,
+	$3::bigint,
+	claimed.range_start,
+	claimed.reserved_through
+FROM claimed
+CROSS JOIN timing`
+
+func (s *pgxWorkerLeaseStore) acquire(
+	ctx context.Context,
+	holderToken []byte,
+	owner string,
+	leaseMillis int64,
+	reservationMillis int64,
+) (leaseRecord, error) {
+	return scanLeaseRecord(s.pool.QueryRow(
 		ctx,
-		`SELECT pg_try_advisory_lock($1::integer, $2::integer), pg_backend_pid()`,
-		namespace,
-		workerID,
-	).Scan(&locked, &backendPID)
-	return locked, backendPID, err
+		acquireWorkerLeaseSQL,
+		holderToken,
+		owner,
+		leaseMillis,
+		reservationMillis,
+	), ErrNoWorkerAvailable)
 }
 
-func (c *pgxWorkerLeaseConnection) advisoryUnlock(ctx context.Context, namespace int32, workerID int) (bool, error) {
-	var unlocked bool
-	err := c.conn.QueryRow(
-		ctx,
-		`SELECT pg_advisory_unlock($1::integer, $2::integer)`,
-		namespace,
-		workerID,
-	).Scan(&unlocked)
-	return unlocked, err
+// A unique holder token lets a caller recover an acquisition whose success
+// was ambiguous because the response was lost after PostgreSQL committed it.
+const lookupWorkerLeaseSQL = `
+WITH timing AS MATERIALIZED (
+	SELECT clock.db_now,
+		floor(extract(epoch FROM (clock.db_now - timestamptz '2017-04-09 00:00:00+00')) * 1000)::bigint AS db_elapsed
+	FROM (SELECT clock_timestamp() AS db_now) AS clock
+)
+SELECT lease.worker_id,
+	lease.holder_token,
+	lease.fencing_token,
+	timing.db_elapsed,
+	floor(extract(epoch FROM (lease.lease_expires_at - timing.db_now)) * 1000)::bigint,
+	lease.reserved_through - $2::bigint + 1,
+	lease.reserved_through
+FROM snowflake_internal.snowflake_worker_lease AS lease
+CROSS JOIN timing
+WHERE lease.holder_token = $1::bytea
+  AND lease.lease_expires_at > timing.db_now`
+
+func (s *pgxWorkerLeaseStore) lookup(ctx context.Context, holderToken []byte, reservationMillis int64) (leaseRecord, error) {
+	return scanLeaseRecord(s.pool.QueryRow(ctx, lookupWorkerLeaseSQL, holderToken, reservationMillis), ErrNoWorkerAvailable)
 }
 
-func (c *pgxWorkerLeaseConnection) heartbeat(ctx context.Context, expectedBackendPID int32) error {
-	var backendPID int32
-	if err := c.conn.QueryRow(ctx, `SELECT pg_backend_pid()`).Scan(&backendPID); err != nil {
-		return err
-	}
-	if backendPID != expectedBackendPID {
-		return fmt.Errorf(
-			"PostgreSQL backend changed from %d to %d; session advisory locks require a direct or session-pooled connection",
-			expectedBackendPID,
-			backendPID,
+// Renewal is conditional on worker, holder token, and fencing token. It may
+// renew an expired same-token row: PostgreSQL serializes its row update with a
+// competing acquisition, so either renewal extends the lease first or the
+// acquirer changes token/fence first and renewal returns no row.
+const renewWorkerLeaseSQL = `
+WITH timing AS MATERIALIZED (
+	SELECT clock.db_now,
+		floor(extract(epoch FROM (clock.db_now - timestamptz '2017-04-09 00:00:00+00')) * 1000)::bigint AS db_elapsed
+	FROM (SELECT clock_timestamp() AS db_now) AS clock
+), renewed AS (
+	UPDATE snowflake_internal.snowflake_worker_lease AS lease
+	SET lease_expires_at = timing.db_now + $4::bigint * interval '1 millisecond',
+		heartbeat_at = timing.db_now,
+		reserved_through = greatest(
+			lease.reserved_through,
+			greatest(timing.db_elapsed, $6::bigint) + $5::bigint - 1
 		)
+	FROM timing
+	WHERE lease.worker_id = $1
+	  AND lease.holder_token = $2::bytea
+	  AND lease.fencing_token = $3
+	  AND greatest(
+		lease.reserved_through,
+		greatest(timing.db_elapsed, $6::bigint) + $5::bigint - 1
+	  ) <= 4398046511103
+	RETURNING lease.worker_id,
+		lease.holder_token,
+		lease.fencing_token,
+		lease.reserved_through
+)
+SELECT renewed.worker_id,
+	renewed.holder_token,
+	renewed.fencing_token,
+	timing.db_elapsed,
+	$4::bigint,
+	0::bigint,
+	renewed.reserved_through
+FROM renewed
+CROSS JOIN timing`
+
+func (s *pgxWorkerLeaseStore) renew(
+	ctx context.Context,
+	workerID int,
+	holderToken []byte,
+	fencingToken int64,
+	leaseMillis int64,
+	reservationMillis int64,
+	minimumThrough int64,
+) (leaseRecord, error) {
+	return scanLeaseRecord(s.pool.QueryRow(
+		ctx,
+		renewWorkerLeaseSQL,
+		workerID,
+		holderToken,
+		fencingToken,
+		leaseMillis,
+		reservationMillis,
+		minimumThrough,
+	), ErrWorkerLeaseLost)
+}
+
+const releaseWorkerLeaseSQL = `
+UPDATE snowflake_internal.snowflake_worker_lease
+SET holder_token = NULL,
+	owner = NULL,
+	lease_expires_at = NULL,
+	heartbeat_at = NULL
+WHERE worker_id = $1
+  AND holder_token = $2::bytea
+  AND fencing_token = $3
+RETURNING true`
+
+func (s *pgxWorkerLeaseStore) release(ctx context.Context, workerID int, holderToken []byte, fencingToken int64) (bool, error) {
+	var released bool
+	err := s.pool.QueryRow(ctx, releaseWorkerLeaseSQL, workerID, holderToken, fencingToken).Scan(&released)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
 	}
-	return nil
+	return released, err
 }
 
-func (c *pgxWorkerLeaseConnection) release() {
-	c.conn.Release()
+type rowScanner interface {
+	Scan(...any) error
 }
 
-func (c *pgxWorkerLeaseConnection) destroy(ctx context.Context) error {
-	return c.conn.Hijack().Close(ctx)
+func scanLeaseRecord(row rowScanner, noRowsError error) (leaseRecord, error) {
+	var record leaseRecord
+	err := row.Scan(
+		&record.workerID,
+		&record.holderToken,
+		&record.fencingToken,
+		&record.databaseNow,
+		&record.leaseMillis,
+		&record.rangeStart,
+		&record.reservedThrough,
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return leaseRecord{}, noRowsError
+	}
+	return record, err
 }
 
 type workerLeaseState uint32
@@ -184,31 +336,33 @@ const (
 	workerLeaseClosed
 )
 
-// WorkerLease owns one PostgreSQL session-level advisory lock. The pinned
-// connection and lock are never transferred or silently reacquired.
-//
-// A closed Lost channel means the lease is permanently unsafe. Callers must
-// immediately stop generating IDs and shut down the process. Clean Close does
-// not close Lost; it changes Healthy to false and makes Err return
-// ErrWorkerLeaseClosed.
+// WorkerLease owns one fenced database row and an inclusive range of
+// Snowflake timestamp values. The persisted high-water mark means a new
+// holder always starts beyond every timestamp the previous holder could emit.
 type WorkerLease struct {
 	workerID     int
-	namespace    int32
 	owner        string
-	backendPID   int32
-	conn         workerLeaseConnection
-	connectionMu sync.Mutex
+	holderToken  []byte
+	fencingToken int64
+	store        workerLeaseStore
+	config       normalizedWorkerLeaseConfig
+
+	state atomic.Uint32
+	lost  chan struct{}
+
+	metadataMu      sync.RWMutex
+	databaseAnchor  int64
+	localAnchor     time.Time
+	leaseDeadline   time.Time
+	rangeStart      int64
+	reservedThrough int64
+
+	operationMu    sync.Mutex
+	now            func() time.Time
+	generatorState atomic.Pointer[atomic.Uint64]
 
 	monitorCancel context.CancelFunc
 	monitorDone   chan struct{}
-	lost          chan struct{}
-
-	state atomic.Uint32
-
-	heartbeatMu             sync.RWMutex
-	lastSuccessfulHeartbeat time.Time
-	maximumHeartbeatAge     time.Duration
-	healthCheckTimeout      time.Duration
 
 	errMu sync.RWMutex
 	err   error
@@ -216,131 +370,119 @@ type WorkerLease struct {
 	closeOnce sync.Once
 	closeDone chan struct{}
 	closeErr  error
-
-	connectionCleanupOnce sync.Once
-	connectionCleanupErr  error
 }
 
-// AcquireWorkerLease pins a connection from pool, probes all eligible worker
-// IDs, and holds the first advisory lock it obtains for the lease lifetime.
-// It returns only after the reuse cooldown and a successful heartbeat.
+// AcquireWorkerLease immediately claims an expired row. It does not sleep or
+// retain a database connection.
 func AcquireWorkerLease(ctx context.Context, pool *pgxpool.Pool, cfg WorkerLeaseConfig) (*WorkerLease, error) {
 	if pool == nil {
 		return nil, fmt.Errorf("%w: PostgreSQL pool is nil", ErrInvalidLeaseConfig)
 	}
-	if err := validateWorkerLeasePoolCapacity(pool.Config().MaxConns); err != nil {
-		return nil, err
-	}
-
-	return acquireWorkerLease(
-		ctx,
-		cfg,
-		func(ctx context.Context) (workerLeaseConnection, error) {
-			conn, err := pool.Acquire(ctx)
-			if err != nil {
-				return nil, err
-			}
-			return &pgxWorkerLeaseConnection{conn: conn}, nil
-		},
-		waitForCooldown,
-	)
+	return acquireWorkerLease(ctx, &pgxWorkerLeaseStore{pool: pool}, cfg, newHolderToken)
 }
 
-func validateWorkerLeasePoolCapacity(maxConnections int32) error {
-	if maxConnections < 2 {
-		return fmt.Errorf(
-			"%w: PostgreSQL pool_max_conns must be at least 2 because the Snowflake worker lease pins one connection (got %d)",
-			ErrInvalidLeaseConfig,
-			maxConnections,
-		)
-	}
-	return nil
-}
+type holderTokenFunc func() ([]byte, error)
 
-type workerLeaseAcquireFunc func(context.Context) (workerLeaseConnection, error)
-type workerLeaseWaitFunc func(context.Context, time.Duration) error
-
-func acquireWorkerLease(
-	ctx context.Context,
-	cfg WorkerLeaseConfig,
-	acquire workerLeaseAcquireFunc,
-	wait workerLeaseWaitFunc,
-) (*WorkerLease, error) {
+func acquireWorkerLease(ctx context.Context, store workerLeaseStore, cfg WorkerLeaseConfig, makeToken holderTokenFunc) (*WorkerLease, error) {
 	normalized, err := cfg.normalize()
 	if err != nil {
 		return nil, err
 	}
-
 	normalized.owner, err = resolveWorkerLeaseOwner(normalized.owner)
 	if err != nil {
 		return nil, fmt.Errorf("build Snowflake worker lease owner identity: %w", err)
 	}
 
-	conn, err := acquire(ctx)
+	token, err := makeToken()
 	if err != nil {
-		return nil, fmt.Errorf("acquire dedicated PostgreSQL connection for Snowflake worker lease owner %q: %w", normalized.owner, err)
+		return nil, fmt.Errorf("generate Snowflake worker holder token: %w", err)
+	}
+	if len(token) != workerLeaseTokenBytes {
+		return nil, fmt.Errorf("generate Snowflake worker holder token: got %d bytes, want %d", len(token), workerLeaseTokenBytes)
+	}
+	token = bytes.Clone(token)
+
+	queryStarted := time.Now()
+	operationCtx, cancel := context.WithTimeout(ctx, normalized.operationTimeout)
+	record, acquireErr := store.acquire(
+		operationCtx,
+		token,
+		normalized.owner,
+		normalized.leaseMillis,
+		normalized.reservationMillis,
+	)
+	cancel()
+	if acquireErr != nil && !errors.Is(acquireErr, ErrNoWorkerAvailable) && ctx.Err() == nil {
+		// The acquisition statement may have committed before its response was
+		// lost. Recover only this unique token; never issue another claim.
+		lookupStarted := time.Now()
+		lookupCtx, lookupCancel := context.WithTimeout(ctx, normalized.operationTimeout)
+		lookedUp, lookupErr := store.lookup(lookupCtx, token, normalized.reservationMillis)
+		lookupCancel()
+		if lookupErr == nil {
+			record = lookedUp
+			queryStarted = lookupStarted
+			acquireErr = nil
+		}
+	}
+	if acquireErr != nil {
+		return nil, fmt.Errorf("acquire Snowflake worker lease for owner %q: %w", normalized.owner, acquireErr)
+	}
+	if err := validateLeaseRecord(record, token, true); err != nil {
+		releaseCtx, releaseCancel := context.WithTimeout(context.Background(), normalized.operationTimeout)
+		_, releaseErr := store.release(releaseCtx, record.workerID, token, record.fencingToken)
+		releaseCancel()
+		return nil, errors.Join(err, releaseErr)
 	}
 
-	candidates, err := workerProbeOrder(normalized.owner, normalized.allowLegacyWorkerOne)
-	if err != nil {
-		conn.release()
-		return nil, fmt.Errorf("choose Snowflake worker probe order: %w", err)
+	lease := &WorkerLease{
+		workerID:     record.workerID,
+		owner:        normalized.owner,
+		holderToken:  token,
+		fencingToken: record.fencingToken,
+		store:        store,
+		config:       normalized,
+		lost:         make(chan struct{}),
+		now:          time.Now,
+		monitorDone:  make(chan struct{}),
+		closeDone:    make(chan struct{}),
 	}
+	// Initialize this before returning the lease so even an accidental
+	// pre-construction value copy still points at the same sequence stream.
+	lease.generatorState.Store(&atomic.Uint64{})
+	lease.applyRecord(record, queryStarted, true)
+	lease.state.Store(uint32(workerLeaseHealthy))
+	monitorCtx, monitorCancel := context.WithCancel(context.Background())
+	lease.monitorCancel = monitorCancel
+	go lease.monitor(monitorCtx)
+	return lease, nil
+}
 
-	for _, workerID := range candidates {
-		locked, backendPID, lockErr := conn.tryAdvisoryLock(ctx, normalized.namespace, workerID)
-		if lockErr != nil {
-			// The result of a failed round trip is ambiguous: PostgreSQL may have
-			// granted the lock before the client observed the error. Destroy the
-			// physical session rather than returning it to the pool.
-			destroyErr := destroyLeaseConnection(conn)
-			return nil, errors.Join(
-				fmt.Errorf("probe Snowflake worker %d: %w", workerID, lockErr),
-				destroyErr,
-			)
-		}
-		if !locked {
-			continue
-		}
-
-		if err := wait(ctx, normalized.reuseCooldown); err != nil {
-			cleanupErr := unlockOrDestroyLeaseConnection(conn, normalized.namespace, workerID)
-			return nil, errors.Join(fmt.Errorf("wait for Snowflake worker %d reuse cooldown: %w", workerID, err), cleanupErr)
-		}
-
-		heartbeatCtx, heartbeatCancel := context.WithTimeout(ctx, normalized.healthCheckTimeout)
-		heartbeatErr := conn.heartbeat(heartbeatCtx, backendPID)
-		heartbeatCancel()
-		if heartbeatErr != nil {
-			destroyErr := destroyLeaseConnection(conn)
-			return nil, errors.Join(
-				fmt.Errorf("verify Snowflake worker %d lease after cooldown: %w", workerID, heartbeatErr),
-				destroyErr,
-			)
-		}
-
-		lease := &WorkerLease{
-			workerID:            workerID,
-			namespace:           normalized.namespace,
-			owner:               normalized.owner,
-			backendPID:          backendPID,
-			conn:                conn,
-			monitorDone:         make(chan struct{}),
-			lost:                make(chan struct{}),
-			closeDone:           make(chan struct{}),
-			maximumHeartbeatAge: normalized.healthCheckInterval + normalized.healthCheckTimeout,
-			healthCheckTimeout:  normalized.healthCheckTimeout,
-		}
-		lease.recordSuccessfulHeartbeat(time.Now())
-		lease.state.Store(uint32(workerLeaseHealthy))
-		monitorCtx, monitorCancel := context.WithCancel(context.Background())
-		lease.monitorCancel = monitorCancel
-		go lease.monitor(monitorCtx, normalized.healthCheckInterval, normalized.healthCheckTimeout)
-		return lease, nil
+func validateLeaseRecord(record leaseRecord, token []byte, acquisition bool) error {
+	if record.workerID < 0 || record.workerID > serverMax || record.workerID == 1 {
+		return fmt.Errorf("%w: database returned reserved or invalid worker ID %d", ErrWorkerLeaseLost, record.workerID)
 	}
+	if !bytes.Equal(record.holderToken, token) || record.fencingToken <= 0 {
+		return fmt.Errorf("%w: database returned a mismatched holder token or fencing token", ErrWorkerLeaseLost)
+	}
+	if record.databaseNow < 0 || record.leaseMillis < 1 {
+		return fmt.Errorf("%w: database returned an invalid clock or lease lifetime", ErrWorkerLeaseLost)
+	}
+	if record.reservedThrough < record.databaseNow || record.reservedThrough > int64(timeMask) {
+		return fmt.Errorf("%w: database returned an invalid timestamp reservation", ErrWorkerLeaseLost)
+	}
+	if acquisition && (record.rangeStart < 0 || record.rangeStart > record.reservedThrough) {
+		return fmt.Errorf("%w: database returned an invalid timestamp range", ErrWorkerLeaseLost)
+	}
+	return nil
+}
 
-	conn.release()
-	return nil, fmt.Errorf("%w for owner %q", ErrNoWorkerAvailable, normalized.owner)
+func newHolderToken() ([]byte, error) {
+	token := make([]byte, workerLeaseTokenBytes)
+	if _, err := rand.Read(token); err != nil {
+		return nil, err
+	}
+	return token, nil
 }
 
 func resolveWorkerLeaseOwner(configured string) (string, error) {
@@ -351,142 +493,160 @@ func resolveWorkerLeaseOwner(configured string) (string, error) {
 			parts = append(parts, label+"="+value)
 		}
 	}
-
 	appendPart("name", configured)
 	appendPart("service", os.Getenv("K_SERVICE"))
 	appendPart("revision", os.Getenv("K_REVISION"))
 	if hostname, err := os.Hostname(); err == nil {
 		appendPart("host", hostname)
 	}
-	if len(parts) != 0 {
-		return strings.Join(parts, ","), nil
-	}
-
-	var nonce [8]byte
-	if _, err := rand.Read(nonce[:]); err != nil {
-		return "", fmt.Errorf("generate fallback owner nonce: %w", err)
-	}
-	return "nonce=" + hex.EncodeToString(nonce[:]), nil
-}
-
-func workerProbeOrder(owner string, allowLegacyWorkerOne bool) ([]int, error) {
-	candidates := make([]int, 0, serverMax+1)
-	for workerID := 0; workerID <= serverMax; workerID++ {
-		if workerID == 1 && !allowLegacyWorkerOne {
-			continue
+	if len(parts) == 0 {
+		token, err := newHolderToken()
+		if err != nil {
+			return "", err
 		}
-		candidates = append(candidates, workerID)
+		parts = append(parts, fmt.Sprintf("nonce=%x", token[:8]))
 	}
-
-	var seed uint64
-	if owner == "" {
-		var randomSeed [8]byte
-		if _, err := rand.Read(randomSeed[:]); err != nil {
-			return nil, err
-		}
-		seed = binary.BigEndian.Uint64(randomSeed[:])
-	} else {
-		digest := sha256.Sum256([]byte(owner))
-		seed = binary.BigEndian.Uint64(digest[:8])
+	owner := strings.Join(parts, ",")
+	for utf8.RuneCountInString(owner) > 255 {
+		_, size := utf8.DecodeLastRuneInString(owner)
+		owner = owner[:len(owner)-size]
 	}
-
-	start := int(seed % uint64(len(candidates)))
-	ordered := make([]int, 0, len(candidates))
-	ordered = append(ordered, candidates[start:]...)
-	ordered = append(ordered, candidates[:start]...)
-	return ordered, nil
+	return owner, nil
 }
 
-func waitForCooldown(ctx context.Context, cooldown time.Duration) error {
-	timer := time.NewTimer(cooldown)
-	defer timer.Stop()
-	select {
-	case <-ctx.Done():
-		return context.Cause(ctx)
-	case <-timer.C:
-		return nil
+func (l *WorkerLease) localNow() time.Time {
+	if l.now != nil {
+		return l.now()
 	}
+	return time.Now()
 }
 
-func (l *WorkerLease) monitor(ctx context.Context, interval, timeout time.Duration) {
+// queryStarted is deliberately used instead of response time. The database
+// creates the deadline after queryStarted, so queryStarted+TTL is a
+// conservative local deadline even when the response is slow.
+func (l *WorkerLease) applyRecord(record leaseRecord, queryStarted time.Time, acquisition bool) {
+	l.metadataMu.Lock()
+	defer l.metadataMu.Unlock()
+	l.databaseAnchor = record.databaseNow
+	l.localAnchor = queryStarted
+	l.leaseDeadline = queryStarted.Add(time.Duration(record.leaseMillis) * time.Millisecond)
+	if acquisition {
+		l.rangeStart = record.rangeStart
+	}
+	l.reservedThrough = record.reservedThrough
+}
+
+func (l *WorkerLease) estimatedDatabaseNow() int64 {
+	l.metadataMu.RLock()
+	anchor := l.databaseAnchor
+	localAnchor := l.localAnchor
+	l.metadataMu.RUnlock()
+	if localAnchor.IsZero() {
+		return 0
+	}
+	elapsed := l.localNow().Sub(localAnchor).Milliseconds()
+	if elapsed < 0 {
+		elapsed = 0
+	}
+	return anchor + elapsed
+}
+
+func (l *WorkerLease) renewalDue() bool {
+	l.metadataMu.RLock()
+	anchor := l.databaseAnchor
+	l.metadataMu.RUnlock()
+	return l.estimatedDatabaseNow() >= anchor+l.config.renewMillis
+}
+
+func (l *WorkerLease) leaseDeadlineValid() bool {
+	l.metadataMu.RLock()
+	deadline := l.leaseDeadline
+	l.metadataMu.RUnlock()
+	return !deadline.IsZero() && l.localNow().Before(deadline)
+}
+
+func (l *WorkerLease) monitor(ctx context.Context) {
 	defer close(l.monitorDone)
-
-	ticker := time.NewTicker(interval)
+	ticker := time.NewTicker(l.config.renewInterval)
 	defer ticker.Stop()
-
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			heartbeatCtx, heartbeatCancel := context.WithTimeout(ctx, timeout)
-			l.connectionMu.Lock()
-			state := workerLeaseState(l.state.Load())
-			if state != workerLeaseHealthy {
-				l.connectionMu.Unlock()
-				heartbeatCancel()
-				if state == workerLeaseLost {
-					if destroyErr := l.destroyPinnedConnection(); destroyErr != nil {
-						l.appendError(destroyErr)
-					}
-				}
+			if err := l.renew(0, true); err != nil {
 				return
 			}
-			err := l.conn.heartbeat(heartbeatCtx, l.backendPID)
-			l.connectionMu.Unlock()
-			heartbeatCancel()
-			if err == nil {
-				switch workerLeaseState(l.state.Load()) {
-				case workerLeaseHealthy:
-					l.recordSuccessfulHeartbeat(time.Now())
-					continue
-				case workerLeaseLost:
-					if destroyErr := l.destroyPinnedConnection(); destroyErr != nil {
-						l.appendError(destroyErr)
-					}
-					return
-				default:
-					return
-				}
-			}
-			if ctx.Err() != nil {
-				return
-			}
-
-			l.markLost(fmt.Errorf("%w: PostgreSQL lease heartbeat failed: %w", ErrWorkerLeaseLost, err))
-			if destroyErr := l.destroyPinnedConnection(); destroyErr != nil {
-				l.appendError(destroyErr)
-			}
-			return
 		}
 	}
 }
 
-// WorkerID returns the leased Snowflake worker ID. The value remains available
-// after loss or Close for diagnostics. Production callers must use
-// NewLeasedGenerator rather than passing this value to New, otherwise lease
-// loss cannot stop ID generation.
+func (l *WorkerLease) renew(minimumThrough int64, force bool) error {
+	l.operationMu.Lock()
+	defer l.operationMu.Unlock()
+	if workerLeaseState(l.state.Load()) != workerLeaseHealthy {
+		return l.Err()
+	}
+	if !force && minimumThrough == 0 && !l.renewalDue() && l.leaseDeadlineValid() {
+		return nil
+	}
+
+	queryStarted := l.localNow()
+	ctx, cancel := context.WithTimeout(context.Background(), l.config.operationTimeout)
+	record, err := l.store.renew(
+		ctx,
+		l.workerID,
+		l.holderToken,
+		l.fencingToken,
+		l.config.leaseMillis,
+		l.config.reservationMillis,
+		minimumThrough,
+	)
+	cancel()
+	if err != nil {
+		l.markLost(fmt.Errorf("%w: renew worker %d fence %d: %w", ErrWorkerLeaseLost, l.workerID, l.fencingToken, err))
+		return l.Err()
+	}
+	if err := validateLeaseRecord(record, l.holderToken, false); err != nil || record.workerID != l.workerID || record.fencingToken != l.fencingToken {
+		if err == nil {
+			err = fmt.Errorf("%w: renewal returned a different worker or fence", ErrWorkerLeaseLost)
+		}
+		l.markLost(err)
+		return l.Err()
+	}
+	l.applyRecord(record, queryStarted, false)
+	return nil
+}
+
+// WorkerID returns the leased worker ID for diagnostics.
 func (l *WorkerLease) WorkerID() int {
+	if l == nil {
+		return 0
+	}
 	return l.workerID
 }
 
-// Owner returns the diagnostic identity used to distribute worker-ID probes.
+// Owner returns the diagnostic owner string stored in PostgreSQL.
 func (l *WorkerLease) Owner() string {
+	if l == nil {
+		return ""
+	}
 	return l.owner
 }
 
-// Healthy reports whether the lease may currently be used for ID generation.
+// Healthy reports whether the lease is locally known to be usable. A
+// generation attempt can synchronously renew an expired same-token row if no
+// replacement acquired it.
 func (l *WorkerLease) Healthy() bool {
-	return workerLeaseState(l.state.Load()) == workerLeaseHealthy && l.heartbeatIsFresh(time.Now())
+	return l != nil && workerLeaseState(l.state.Load()) == workerLeaseHealthy && l.leaseDeadlineValid()
 }
 
 func (l *WorkerLease) assertHealthy() {
+	if l == nil {
+		panic(ErrWorkerLeaseInvalid)
+	}
 	if workerLeaseState(l.state.Load()) == workerLeaseHealthy {
-		if l.heartbeatIsFresh(time.Now()) {
-			return
-		}
-		l.refreshStaleHeartbeat()
-		if workerLeaseState(l.state.Load()) == workerLeaseHealthy && l.heartbeatIsFresh(time.Now()) {
+		if err := l.renew(0, false); err == nil && l.leaseDeadlineValid() {
 			return
 		}
 	}
@@ -496,62 +656,74 @@ func (l *WorkerLease) assertHealthy() {
 	panic(ErrWorkerLeaseLost)
 }
 
-// refreshStaleHeartbeat handles runtimes which suspend background work while
-// an instance is idle. It serializes with the monitor and cleanup so the first
-// ID-generating request can revalidate the exact PostgreSQL session before it
-// either proceeds or fails closed.
-func (l *WorkerLease) refreshStaleHeartbeat() {
-	l.connectionMu.Lock()
+func (l *WorkerLease) nowElapsed() uint64 {
+	l.assertHealthy()
+	now := l.estimatedDatabaseNow()
+	l.metadataMu.RLock()
+	if now < l.rangeStart {
+		now = l.rangeStart
+	}
+	l.metadataMu.RUnlock()
+	if now < 0 {
+		return 0
+	}
+	if now > int64(timeMask) {
+		panic("snowflake: database time exceeds timestamp range")
+	}
+	return uint64(now)
+}
 
-	if workerLeaseState(l.state.Load()) != workerLeaseHealthy || l.heartbeatIsFresh(time.Now()) {
-		l.connectionMu.Unlock()
+// authorizeTimestamp runs before Generator publishes a state transition. If
+// sequence rollover moves the logical clock beyond the current reservation,
+// it extends the durable high-water mark synchronously first.
+func (l *WorkerLease) authorizeTimestamp(elapsed uint64) {
+	if elapsed > uint64(timeMask) {
+		panic("snowflake: timestamp range exhausted")
+	}
+	l.metadataMu.RLock()
+	reservedThrough := l.reservedThrough
+	l.metadataMu.RUnlock()
+	if int64(elapsed) <= reservedThrough {
 		return
 	}
-
-	heartbeatCtx, heartbeatCancel := context.WithTimeout(context.Background(), l.healthCheckTimeout)
-	err := l.conn.heartbeat(heartbeatCtx, l.backendPID)
-	heartbeatCancel()
-	if err == nil && workerLeaseState(l.state.Load()) == workerLeaseHealthy {
-		l.recordSuccessfulHeartbeat(time.Now())
-		l.connectionMu.Unlock()
-		return
+	if err := l.renew(int64(elapsed), true); err != nil {
+		l.assertHealthy()
 	}
-
-	if err != nil {
-		l.markLost(fmt.Errorf("%w: synchronous PostgreSQL lease heartbeat failed: %w", ErrWorkerLeaseLost, err))
-	}
-	l.connectionMu.Unlock()
-
-	if err != nil {
-		if destroyErr := l.destroyPinnedConnection(); destroyErr != nil {
-			l.appendError(destroyErr)
-		}
+	l.metadataMu.RLock()
+	reservedThrough = l.reservedThrough
+	l.metadataMu.RUnlock()
+	if int64(elapsed) > reservedThrough {
+		l.markLost(fmt.Errorf("%w: PostgreSQL did not reserve timestamp %d", ErrWorkerLeaseLost, elapsed))
+		l.assertHealthy()
 	}
 }
 
-func (l *WorkerLease) recordSuccessfulHeartbeat(at time.Time) {
-	l.heartbeatMu.Lock()
-	l.lastSuccessfulHeartbeat = at
-	l.heartbeatMu.Unlock()
+func (l *WorkerLease) sharedGeneratorState() *atomic.Uint64 {
+	if state := l.generatorState.Load(); state != nil {
+		return state
+	}
+	state := &atomic.Uint64{}
+	if l.generatorState.CompareAndSwap(nil, state) {
+		return state
+	}
+	return l.generatorState.Load()
 }
 
-func (l *WorkerLease) heartbeatIsFresh(now time.Time) bool {
-	l.heartbeatMu.RLock()
-	lastSuccessfulHeartbeat := l.lastSuccessfulHeartbeat
-	maximumHeartbeatAge := l.maximumHeartbeatAge
-	l.heartbeatMu.RUnlock()
-	return !lastSuccessfulHeartbeat.IsZero() && maximumHeartbeatAge > 0 && now.Sub(lastSuccessfulHeartbeat) <= maximumHeartbeatAge
-}
-
-// Lost is closed exactly once when the lease becomes unsafe. It is not closed
-// by a clean Close.
+// Lost closes exactly once when ownership becomes unsafe. Clean Close does
+// not close it.
 func (l *WorkerLease) Lost() <-chan struct{} {
+	if l == nil {
+		return nil
+	}
 	return l.lost
 }
 
-// Err returns nil for a healthy lease, ErrWorkerLeaseClosed after a clean
-// Close, or a wrapped ErrWorkerLeaseLost after an unsafe loss.
+// Err returns nil while healthy, ErrWorkerLeaseClosed after clean Close, or a
+// wrapped ErrWorkerLeaseLost after unsafe loss.
 func (l *WorkerLease) Err() error {
+	if l == nil {
+		return ErrWorkerLeaseInvalid
+	}
 	l.errMu.RLock()
 	err := l.err
 	l.errMu.RUnlock()
@@ -567,10 +739,9 @@ func (l *WorkerLease) Err() error {
 func (l *WorkerLease) markLost(err error) {
 	l.errMu.Lock()
 	defer l.errMu.Unlock()
-
 	for {
 		state := workerLeaseState(l.state.Load())
-		if state == workerLeaseInvalid || state == workerLeaseLost || state == workerLeaseClosed {
+		if state != workerLeaseHealthy {
 			return
 		}
 		if l.state.CompareAndSwap(uint32(state), uint32(workerLeaseLost)) {
@@ -581,15 +752,8 @@ func (l *WorkerLease) markLost(err error) {
 	}
 }
 
-func (l *WorkerLease) appendError(err error) {
-	l.errMu.Lock()
-	l.err = errors.Join(l.err, err)
-	l.errMu.Unlock()
-}
-
-// Close stops monitoring, explicitly unlocks the worker, and returns the
-// pinned connection to the pool. If unlock is ambiguous, it destroys the
-// physical connection so PostgreSQL releases every session lock.
+// Close conditionally releases this token/fence while preserving the durable
+// timestamp high-water mark.
 func (l *WorkerLease) Close(ctx context.Context) error {
 	if l == nil || workerLeaseState(l.state.Load()) == workerLeaseInvalid {
 		return ErrWorkerLeaseInvalid
@@ -599,90 +763,55 @@ func (l *WorkerLease) Close(ctx context.Context) error {
 	}
 	l.closeOnce.Do(func() {
 		defer close(l.closeDone)
-		l.errMu.Lock()
-		if l.state.CompareAndSwap(uint32(workerLeaseHealthy), uint32(workerLeaseClosing)) {
-			l.err = ErrWorkerLeaseClosed
+		wasLost := false
+		for {
+			state := workerLeaseState(l.state.Load())
+			switch state {
+			case workerLeaseHealthy:
+				if !l.state.CompareAndSwap(uint32(state), uint32(workerLeaseClosing)) {
+					continue
+				}
+			case workerLeaseLost:
+				wasLost = true
+			case workerLeaseClosed:
+				return
+			}
+			break
 		}
-		l.errMu.Unlock()
 
 		l.monitorCancel()
 		<-l.monitorDone
 
-		if workerLeaseState(l.state.Load()) == workerLeaseLost {
-			if destroyErr := l.destroyPinnedConnection(); destroyErr != nil {
-				l.appendError(destroyErr)
+		l.operationMu.Lock()
+		releaseCtx, cancel := context.WithTimeout(ctx, l.config.operationTimeout)
+		released, releaseErr := l.store.release(releaseCtx, l.workerID, l.holderToken, l.fencingToken)
+		cancel()
+		l.operationMu.Unlock()
+		if releaseErr != nil || !released {
+			if releaseErr == nil {
+				releaseErr = errors.New("lease row no longer has this holder token and fence")
 			}
+			releaseErr = fmt.Errorf("release worker %d fence %d: %w", l.workerID, l.fencingToken, releaseErr)
+			if wasLost {
+				l.closeErr = errors.Join(l.Err(), releaseErr)
+				return
+			}
+			l.errMu.Lock()
+			l.err = errors.Join(ErrWorkerLeaseClosed, releaseErr)
+			l.errMu.Unlock()
+			l.state.Store(uint32(workerLeaseClosed))
+			l.closeErr = releaseErr
+			return
+		}
+		if wasLost {
 			l.closeErr = l.Err()
 			return
 		}
-
-		unlockCtx, unlockCancel := context.WithTimeout(ctx, connectionCloseTimeout)
-		l.connectionMu.Lock()
-		unlocked, err := l.conn.advisoryUnlock(unlockCtx, l.namespace, l.workerID)
-		l.connectionMu.Unlock()
-		unlockCancel()
-		if err != nil || !unlocked {
-			unlockErr := err
-			if unlockErr == nil {
-				unlockErr = errors.New("PostgreSQL reported that the advisory lock was not held")
-			}
-			l.markLost(fmt.Errorf("%w: release worker %d: %w", ErrWorkerLeaseLost, l.workerID, unlockErr))
-			destroyErr := l.destroyPinnedConnection()
-			if destroyErr != nil {
-				l.appendError(destroyErr)
-			}
-			l.closeErr = l.Err()
-			return
-		}
-
-		l.releasePinnedConnection()
+		l.errMu.Lock()
+		l.err = ErrWorkerLeaseClosed
+		l.errMu.Unlock()
 		l.state.Store(uint32(workerLeaseClosed))
 	})
-
 	<-l.closeDone
 	return l.closeErr
-}
-
-func (l *WorkerLease) destroyPinnedConnection() error {
-	l.connectionCleanupOnce.Do(func() {
-		l.connectionMu.Lock()
-		defer l.connectionMu.Unlock()
-		l.connectionCleanupErr = destroyLeaseConnection(l.conn)
-	})
-	return l.connectionCleanupErr
-}
-
-func (l *WorkerLease) releasePinnedConnection() {
-	l.connectionCleanupOnce.Do(func() {
-		l.connectionMu.Lock()
-		defer l.connectionMu.Unlock()
-		l.conn.release()
-	})
-}
-
-func unlockOrDestroyLeaseConnection(conn workerLeaseConnection, namespace int32, workerID int) error {
-	cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), connectionCloseTimeout)
-	defer cleanupCancel()
-
-	unlocked, err := conn.advisoryUnlock(cleanupCtx, namespace, workerID)
-	if err == nil && unlocked {
-		conn.release()
-		return nil
-	}
-	if err == nil {
-		err = errors.New("PostgreSQL reported that the advisory lock was not held")
-	}
-	return errors.Join(
-		fmt.Errorf("release Snowflake worker %d after failed acquisition: %w", workerID, err),
-		destroyLeaseConnection(conn),
-	)
-}
-
-func destroyLeaseConnection(conn workerLeaseConnection) error {
-	closeCtx, closeCancel := context.WithTimeout(context.Background(), connectionCloseTimeout)
-	defer closeCancel()
-	if err := conn.destroy(closeCtx); err != nil {
-		return fmt.Errorf("destroy Snowflake worker lease connection: %w", err)
-	}
-	return nil
 }

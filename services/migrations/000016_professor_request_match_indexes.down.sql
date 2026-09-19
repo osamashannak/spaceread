@@ -1,0 +1,6 @@
+DROP INDEX IF EXISTS professor.professor_normalized_university_name_v2_index;
+DROP INDEX IF EXISTS professor.professor_lower_email_v2_index;
+DROP INDEX IF EXISTS professor.professor_university_name_gist_v2_index;
+DROP INDEX IF EXISTS professor.professor_lower_name_gist_v2_index;
+DROP INDEX IF EXISTS professor.professor_request_normalized_university_name_v2_index;
+DROP INDEX IF EXISTS professor.professor_request_lower_email_v2_index;

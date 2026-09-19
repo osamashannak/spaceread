@@ -86,13 +86,15 @@ type AdminCourseFileListResponse struct {
 }
 
 type AdminProfessorRequestListResponse struct {
-	Requests        []AdminProfessorRequest              `json:"requests"`
-	Limit           int                                  `json:"limit"`
-	Offset          int                                  `json:"offset"`
-	Total           int64                                `json:"total"`
-	GroupTotal      int64                                `json:"group_total"`
-	StatusCounts    AdminProfessorRequestStatusCounts    `json:"status_counts"`
-	DuplicateCounts AdminProfessorRequestDuplicateCounts `json:"duplicate_counts"`
+	Requests             []AdminProfessorRequest              `json:"requests"`
+	Limit                int                                  `json:"limit"`
+	Offset               int                                  `json:"offset"`
+	Total                int64                                `json:"total"`
+	GroupTotal           int64                                `json:"group_total"`
+	StatusCounts         AdminProfessorRequestStatusCounts    `json:"status_counts"`
+	StatusGroupCounts    AdminProfessorRequestStatusCounts    `json:"status_group_counts"`
+	DuplicateCounts      AdminProfessorRequestDuplicateCounts `json:"duplicate_counts"`
+	DuplicateGroupCounts AdminProfessorRequestDuplicateCounts `json:"duplicate_group_counts"`
 }
 
 type AdminProfessorRequestResponse struct {

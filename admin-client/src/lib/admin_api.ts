@@ -79,7 +79,9 @@ export type AdminProfessorRequestListResponse = {
     total: number;
     group_total: number;
     status_counts: AdminProfessorRequestStatusCounts;
+    status_group_counts?: AdminProfessorRequestStatusCounts;
     duplicate_counts: AdminProfessorRequestDuplicateCounts;
+    duplicate_group_counts?: AdminProfessorRequestDuplicateCounts;
 };
 
 export type AdminProfessorRequestResponse = {

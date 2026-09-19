@@ -137,8 +137,8 @@ export function ProfessorRequestsPage() {
         })
             .then(response => {
                 setRequests((response.requests || []).map(normalizeRequest));
-                setCounts({...emptyCounts, ...response.status_counts});
-                setDuplicateCounts({...emptyDuplicateCounts, ...response.duplicate_counts});
+                setCounts({...emptyCounts, ...(response.status_group_counts ?? response.status_counts)});
+                setDuplicateCounts({...emptyDuplicateCounts, ...(response.duplicate_group_counts ?? response.duplicate_counts)});
                 setTotal(response.total);
                 setGroupTotal(response.group_total ?? response.total);
                 setOffset(response.offset);
@@ -161,6 +161,14 @@ export function ProfessorRequestsPage() {
         loadRequests("initial", 0);
         return () => listControllerRef.current?.abort();
     }, [loadRequests]);
+
+    useEffect(() => {
+        if (loadState !== "ready" || requests.length > 0 || groupTotal === 0 || offset === 0) return;
+
+        const lastPageOffset = Math.floor((groupTotal - 1) / pageSize) * pageSize;
+        if (lastPageOffset === offset) return;
+        loadRequests("initial", lastPageOffset);
+    }, [groupTotal, loadRequests, loadState, offset, requests.length]);
 
     const closePanel = useCallback(() => {
         detailControllerRef.current?.abort();
@@ -309,26 +317,26 @@ export function ProfessorRequestsPage() {
             <section className={styles.controls} aria-label="Professor request filters">
                 <div className={styles.filterControls}>
                     <div className={styles.filterSet}>
-                        <span className={styles.filterLabel}>Status</span>
+                        <span className={styles.filterLabel}>Status (groups)</span>
                         <Tabs value={status} onValueChange={value => setStatus(value as AdminProfessorRequestStatusFilter)}>
                             <TabsList className={styles.statusTabs} aria-label="Filter by request status">
                                 {statusTabs.map(tab => (
                                     <TabsTrigger className={styles.statusTab} key={tab.value} value={tab.value}>
                                         <span>{tab.label}</span>
-                                        <span className={styles.tabCount}>{counts[tab.value]}</span>
+                                        <span className={styles.tabCount} title={`${counts[tab.value]} groups`}>{counts[tab.value]}</span>
                                     </TabsTrigger>
                                 ))}
                             </TabsList>
                         </Tabs>
                     </div>
                     <div className={styles.filterSet}>
-                        <span className={styles.filterLabel}>Duplicate likelihood</span>
+                        <span className={styles.filterLabel}>Duplicate likelihood (groups)</span>
                         <Tabs value={duplicate} onValueChange={value => setDuplicate(value as AdminProfessorRequestDuplicateFilter)}>
                             <TabsList className={styles.duplicateTabs} aria-label="Filter by duplicate likelihood">
                                 {duplicateTabs.map(tab => (
                                     <TabsTrigger className={styles.statusTab} key={tab.value} value={tab.value}>
                                         <span>{tab.label}</span>
-                                        <span className={styles.tabCount}>{duplicateCounts[tab.value]}</span>
+                                        <span className={styles.tabCount} title={`${duplicateCounts[tab.value]} groups`}>{duplicateCounts[tab.value]}</span>
                                     </TabsTrigger>
                                 ))}
                             </TabsList>

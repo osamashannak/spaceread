@@ -29,6 +29,42 @@ const (
 			candidate.name_similarity
 		FROM professor.professor_request pr
 		CROSS JOIN LATERAL (
+			WITH candidate_emails AS MATERIALIZED (
+				SELECT p.email
+				FROM professor.professor p
+				WHERE pr.professor_email IS NOT NULL
+				  AND lower(p.email) = lower(pr.professor_email)
+
+				UNION
+
+				SELECT p.email
+				FROM professor.professor p
+				WHERE lower(regexp_replace(btrim(p.university), '\s+', ' ', 'g')) = lower(regexp_replace(btrim(pr.university), '\s+', ' ', 'g'))
+				  AND lower(regexp_replace(btrim(p.name), '\s+', ' ', 'g')) = lower(regexp_replace(btrim(pr.professor_name), '\s+', ' ', 'g'))
+
+				UNION
+
+				SELECT same_university.email
+				FROM LATERAL (
+					SELECT p.email
+					FROM professor.professor p
+					WHERE lower(regexp_replace(btrim(p.university), '\s+', ' ', 'g')) = lower(regexp_replace(btrim(pr.university), '\s+', ' ', 'g'))
+					-- A secondary sort key disables the GiST nearest-neighbor scan.
+					ORDER BY lower(p.name) <-> lower(pr.professor_name)
+					LIMIT $2
+				) same_university
+
+				UNION
+
+				SELECT nearest.email
+				FROM LATERAL (
+					SELECT p.email
+					FROM professor.professor p
+					-- A secondary sort key disables the GiST nearest-neighbor scan.
+					ORDER BY lower(p.name) <-> lower(pr.professor_name)
+					LIMIT $2
+				) nearest
+			)
 			SELECT
 				p.email,
 				p.name,
@@ -50,7 +86,8 @@ const (
 					ELSE 4
 				END AS match_priority,
 				similarity(lower(p.name), lower(pr.professor_name))::double precision AS name_similarity
-			FROM professor.professor p
+			FROM candidate_emails possible
+			JOIN professor.professor p ON p.email = possible.email
 			WHERE (
 				pr.professor_email IS NOT NULL
 				AND lower(p.email) = lower(pr.professor_email)
@@ -84,11 +121,14 @@ type ListProfessorRequestOptions struct {
 }
 
 type ProfessorRequestListResult struct {
-	Requests        []v1.AdminProfessorRequest
-	Total           int64
-	GroupTotal      int64
-	StatusCounts    v1.AdminProfessorRequestStatusCounts
-	DuplicateCounts v1.AdminProfessorRequestDuplicateCounts
+	Requests             []v1.AdminProfessorRequest
+	Offset               int
+	Total                int64
+	GroupTotal           int64
+	StatusCounts         v1.AdminProfessorRequestStatusCounts
+	StatusGroupCounts    v1.AdminProfessorRequestStatusCounts
+	DuplicateCounts      v1.AdminProfessorRequestDuplicateCounts
+	DuplicateGroupCounts v1.AdminProfessorRequestDuplicateCounts
 }
 
 type professorRequestIndexRow struct {
@@ -109,11 +149,14 @@ type professorRequestMetadata struct {
 }
 
 type professorRequestListPage struct {
-	IDs             []int64
-	Total           int64
-	GroupTotal      int64
-	StatusCounts    v1.AdminProfessorRequestStatusCounts
-	DuplicateCounts v1.AdminProfessorRequestDuplicateCounts
+	IDs                  []int64
+	Offset               int
+	Total                int64
+	GroupTotal           int64
+	StatusCounts         v1.AdminProfessorRequestStatusCounts
+	StatusGroupCounts    v1.AdminProfessorRequestStatusCounts
+	DuplicateCounts      v1.AdminProfessorRequestDuplicateCounts
+	DuplicateGroupCounts v1.AdminProfessorRequestDuplicateCounts
 }
 
 type professorRequestPageGroup struct {
@@ -173,11 +216,14 @@ func (db *AdminDB) ListProfessorRequests(ctx context.Context, opts ListProfessor
 	}
 
 	return &ProfessorRequestListResult{
-		Requests:        requests,
-		Total:           page.Total,
-		GroupTotal:      page.GroupTotal,
-		StatusCounts:    page.StatusCounts,
-		DuplicateCounts: page.DuplicateCounts,
+		Requests:             requests,
+		Offset:               page.Offset,
+		Total:                page.Total,
+		GroupTotal:           page.GroupTotal,
+		StatusCounts:         page.StatusCounts,
+		StatusGroupCounts:    page.StatusGroupCounts,
+		DuplicateCounts:      page.DuplicateCounts,
+		DuplicateGroupCounts: page.DuplicateGroupCounts,
 	}, nil
 }
 
@@ -483,8 +529,20 @@ func buildProfessorRequestListPage(
 	opts ListProfessorRequestOptions,
 ) professorRequestListPage {
 	opts = normalizeProfessorRequestListOptions(opts)
-	page := professorRequestListPage{IDs: []int64{}}
+	page := professorRequestListPage{IDs: []int64{}, Offset: opts.Offset}
 	groupsByID := make(map[int64]*professorRequestPageGroup)
+	statusGroupIDs := map[string]map[int64]struct{}{
+		"all":       {},
+		"pending":   {},
+		"approved":  {},
+		"rejected":  {},
+		"dismissed": {},
+	}
+	duplicateGroupIDs := map[string]map[int64]struct{}{
+		"all":        {},
+		"likely":     {},
+		"not_likely": {},
+	}
 
 	for _, row := range rows {
 		if !row.SearchMatch {
@@ -503,13 +561,18 @@ func buildProfessorRequestListPage(
 		matchesDuplicate := professorRequestMatchesDuplicate(requestMetadata.LikelyDuplicate, opts.Duplicate)
 		if matchesDuplicate {
 			incrementProfessorRequestStatusCount(&page.StatusCounts, row.Status)
+			statusGroupIDs["all"][requestMetadata.GroupID] = struct{}{}
+			statusGroupIDs[row.Status][requestMetadata.GroupID] = struct{}{}
 		}
 		if matchesStatus {
 			page.DuplicateCounts.All++
+			duplicateGroupIDs["all"][requestMetadata.GroupID] = struct{}{}
 			if requestMetadata.LikelyDuplicate {
 				page.DuplicateCounts.Likely++
+				duplicateGroupIDs["likely"][requestMetadata.GroupID] = struct{}{}
 			} else {
 				page.DuplicateCounts.NotLikely++
+				duplicateGroupIDs["not_likely"][requestMetadata.GroupID] = struct{}{}
 			}
 		}
 		if !matchesStatus || !matchesDuplicate {
@@ -531,6 +594,18 @@ func buildProfessorRequestListPage(
 			group.LatestRequestID = row.ID
 		}
 		group.Members = append(group.Members, row)
+	}
+	page.StatusGroupCounts = v1.AdminProfessorRequestStatusCounts{
+		Pending:   int64(len(statusGroupIDs["pending"])),
+		Approved:  int64(len(statusGroupIDs["approved"])),
+		Rejected:  int64(len(statusGroupIDs["rejected"])),
+		Dismissed: int64(len(statusGroupIDs["dismissed"])),
+		All:       int64(len(statusGroupIDs["all"])),
+	}
+	page.DuplicateGroupCounts = v1.AdminProfessorRequestDuplicateCounts{
+		All:       int64(len(duplicateGroupIDs["all"])),
+		Likely:    int64(len(duplicateGroupIDs["likely"])),
+		NotLikely: int64(len(duplicateGroupIDs["not_likely"])),
 	}
 
 	groups := make([]*professorRequestPageGroup, 0, len(groupsByID))
@@ -563,10 +638,15 @@ func buildProfessorRequestListPage(
 		return left.ID < right.ID
 	})
 
-	start := opts.Offset
-	if start >= len(groups) {
+	if len(groups) == 0 {
+		page.Offset = 0
 		return page
 	}
+	start := opts.Offset
+	if start >= len(groups) {
+		start = ((len(groups) - 1) / opts.Limit) * opts.Limit
+	}
+	page.Offset = start
 	end := start + opts.Limit
 	if end > len(groups) {
 		end = len(groups)
@@ -616,16 +696,27 @@ func professorRequestSearchCondition(alias string, argument int) string {
 }
 
 func professorRequestLikelyDuplicateCondition(alias string) string {
-	return fmt.Sprintf(`EXISTS (
-		SELECT 1
-		FROM professor.professor candidate
-		WHERE (
+	return fmt.Sprintf(`(
+		(
 			%[1]s.professor_email IS NOT NULL
-			AND lower(candidate.email) = lower(%[1]s.professor_email)
-		) OR (
-			lower(regexp_replace(btrim(candidate.name), '\s+', ' ', 'g')) = lower(regexp_replace(btrim(%[1]s.professor_name), '\s+', ' ', 'g'))
-			AND lower(regexp_replace(btrim(candidate.university), '\s+', ' ', 'g')) = lower(regexp_replace(btrim(%[1]s.university), '\s+', ' ', 'g'))
-		) OR similarity(lower(candidate.name), lower(%[1]s.professor_name)) >= 0.85
+			AND EXISTS (
+				SELECT 1
+				FROM professor.professor candidate
+				WHERE lower(candidate.email) = lower(%[1]s.professor_email)
+			)
+		)
+		OR EXISTS (
+			SELECT 1
+			FROM professor.professor candidate
+			WHERE lower(regexp_replace(btrim(candidate.university), '\s+', ' ', 'g')) = lower(regexp_replace(btrim(%[1]s.university), '\s+', ' ', 'g'))
+			  AND lower(regexp_replace(btrim(candidate.name), '\s+', ' ', 'g')) = lower(regexp_replace(btrim(%[1]s.professor_name), '\s+', ' ', 'g'))
+		)
+		OR COALESCE((
+			SELECT similarity(lower(candidate.name), lower(%[1]s.professor_name))
+			FROM professor.professor candidate
+			ORDER BY lower(candidate.name) <-> lower(%[1]s.professor_name)
+			LIMIT 1
+		), 0) >= 0.85
 	)`, alias)
 }
 

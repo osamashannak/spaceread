@@ -21,10 +21,9 @@ const (
 type Generator struct {
 	// state contains only the timestamp and sequence portions of an ID. The
 	// machine portion is added after a successful state transition, so a
-	// sequence rollover can never carry into it. atomic.Uint64 also makes a
-	// live Generator non-copyable, which prevents independent sequence streams
-	// from accidentally being created for the same worker inside one process.
-	state     atomic.Uint64
+	// sequence rollover can never carry into it. Keeping the atomic behind a
+	// pointer makes Generator value copies share one sequence stream.
+	state     *atomic.Uint64
 	machine   uint64
 	nowMillis func() int64
 	lease     *WorkerLease
@@ -36,6 +35,7 @@ func New(machineID int) *Generator {
 	}
 	return &Generator{
 		machine: uint64(machineID << serverShift),
+		state:   &atomic.Uint64{},
 	}
 }
 
@@ -49,6 +49,10 @@ func NewLeasedGenerator(lease *WorkerLease) *Generator {
 	lease.assertHealthy()
 	generator := New(lease.WorkerID())
 	generator.lease = lease
+	// A lease owns one sequence stream. Multiple constructors and accidental
+	// Generator value copies all share this atomic state rather than restarting
+	// the sequence at zero for the same worker and timestamp range.
+	generator.state = lease.sharedGeneratorState()
 	return generator
 }
 
@@ -87,6 +91,9 @@ func (g *Generator) Next() uint64 {
 		default:
 			next = currentTime<<timeShift | currentSeq + 1
 		}
+		if g.lease != nil {
+			g.lease.authorizeTimestamp(next >> timeShift & timeMask)
+		}
 
 		if g.state.CompareAndSwap(current, next) {
 			// Recheck after claiming the state transition. If lease shutdown or
@@ -111,6 +118,9 @@ func (g *Generator) AppendNext(s *[11]byte) {
 }
 
 func (g *Generator) now() uint64 {
+	if g.lease != nil {
+		return g.lease.nowElapsed()
+	}
 	nowMillis := time.Now().UnixMilli()
 	if g.nowMillis != nil {
 		nowMillis = g.nowMillis()

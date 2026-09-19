@@ -49,13 +49,15 @@ func (s *Server) ListProfessorRequests() http.Handler {
 		}
 
 		jsonutil.MarshalResponse(w, http.StatusOK, v1.AdminProfessorRequestListResponse{
-			Requests:        result.Requests,
-			Limit:           limit,
-			Offset:          offset,
-			Total:           result.Total,
-			GroupTotal:      result.GroupTotal,
-			StatusCounts:    result.StatusCounts,
-			DuplicateCounts: result.DuplicateCounts,
+			Requests:             result.Requests,
+			Limit:                limit,
+			Offset:               result.Offset,
+			Total:                result.Total,
+			GroupTotal:           result.GroupTotal,
+			StatusCounts:         result.StatusCounts,
+			StatusGroupCounts:    result.StatusGroupCounts,
+			DuplicateCounts:      result.DuplicateCounts,
+			DuplicateGroupCounts: result.DuplicateGroupCounts,
 		})
 	})
 }
