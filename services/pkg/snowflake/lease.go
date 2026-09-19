@@ -421,6 +421,17 @@ func (l *WorkerLease) monitor(ctx context.Context, interval, timeout time.Durati
 		case <-ticker.C:
 			heartbeatCtx, heartbeatCancel := context.WithTimeout(ctx, timeout)
 			l.connectionMu.Lock()
+			state := workerLeaseState(l.state.Load())
+			if state != workerLeaseHealthy {
+				l.connectionMu.Unlock()
+				heartbeatCancel()
+				if state == workerLeaseLost {
+					if destroyErr := l.destroyPinnedConnection(); destroyErr != nil {
+						l.appendError(destroyErr)
+					}
+				}
+				return
+			}
 			err := l.conn.heartbeat(heartbeatCtx, l.backendPID)
 			l.connectionMu.Unlock()
 			heartbeatCancel()
