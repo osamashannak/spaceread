@@ -157,7 +157,7 @@ export const getReviewReplies = async (reviewId: string, current: string[]) => {
     let response;
 
     try {
-        const request = await fetch(HOST + `/comment/reply?reviewId=${reviewId}&current=${current.join(",")}`, {
+        const request = await fetch(HOST + `/comment/reply?reviewId=${reviewId}&current_replies=${current.join(",")}`, {
             credentials: "include",
         });
         response = await request.json();

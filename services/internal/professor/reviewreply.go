@@ -3,6 +3,7 @@ package professor
 import (
 	"context"
 	"net/http"
+	"net/url"
 	"strconv"
 	"time"
 
@@ -360,6 +361,15 @@ func (s *Server) DeleteReply() http.Handler {
 	})
 }
 
+func parseCurrentReplyIDs(query url.Values) ([]int64, error) {
+	key := "current_replies"
+	if !query.Has(key) {
+		// Older web clients sent the loaded reply IDs as "current".
+		key = "current"
+	}
+	return utils.ParseInt64List(query.Get(key))
+}
+
 func (s *Server) GetReplies() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
@@ -396,9 +406,7 @@ func (s *Server) GetReplies() http.Handler {
 			return
 		}
 
-		currentReplies := r.URL.Query().Get("current_replies")
-
-		current, err := utils.ParseInt64List(currentReplies)
+		current, err := parseCurrentReplyIDs(r.URL.Query())
 
 		logger.Debugf("current_replies %d parameter: %v", len(current), current)
 

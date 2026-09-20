@@ -145,6 +145,15 @@ cd services
 go run ./cmd/migrate force 1
 ```
 
+Run the optional PostgreSQL migration regression tests from `services/`:
+
+```powershell
+$env:TEST_DATABASE_URL = 'postgres://spaceread:spaceread@localhost:5432/spaceread?sslmode=disable'
+go test ./migrations -v
+```
+
+The test role needs `CREATEDB` permission. Tests create and remove a uniquely named database; they do not modify the database named in `TEST_DATABASE_URL`. These tests are skipped when the variable is unset.
+
 After the baseline, every schema change should include an `.up.sql` file and a matching `.down.sql` file in the same PR as the code that depends on it.
 
 ## Code Style
