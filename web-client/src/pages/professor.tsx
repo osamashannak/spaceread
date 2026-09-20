@@ -12,7 +12,8 @@ import LoadingSuspense from "../components/loading_suspense.tsx";
 import ReviewSkeleton from "../components/skeletons/review.tsx";
 import DisabledReviewForm from "../components/professor/disabled_review_form.tsx";
 import BackArrow from "../components/backarrow.tsx";
-import {Helmet} from "@dr.pogodin/react-helmet";
+import PageMetadata from "../components/page_metadata.tsx";
+import {encodePathSegment} from "../lib/metadata.ts";
 
 const ReviewForm = lazy(async () => {
     const [moduleExports] = await Promise.all([
@@ -148,6 +149,10 @@ export default function Professor() {
         return (
 
             <div className={styles.profPage}>
+                <PageMetadata
+                    title="Professor Reviews & Ratings · SpaceRead"
+                    description="Read student reviews and ratings for professors at UAE universities on SpaceRead."
+                />
 
                 <section className={styles.profInfoHead} style={{borderBottom: "none"}}>
                     <div className={styles.profIdentity}>
@@ -189,6 +194,10 @@ export default function Professor() {
         return (
 
             <div className={styles.professorNotFound}>
+                <PageMetadata
+                    title="Professor Unavailable · SpaceRead"
+                    description="This professor profile is unavailable. Search the professor directory to find reviews and ratings on SpaceRead."
+                />
                 <div>
                     <span>Professor not found</span>
                 </div>
@@ -206,15 +215,13 @@ export default function Professor() {
     const recommendationDescription = recommendationCount > 0
         ? `${recommendPercentage}% recommend, based on ${recommendationCount} ${recommendationCount === 1 ? "review" : "reviews"}.`
         : "No recommendations yet.";
-    const longestReview = professor.reviews.length > 0 ? professor.reviews.reduce((prev, current) => (prev.text.length > current.text.length) ? prev : current).text : undefined;
-
     return (
         <>
-            <Helmet>
-                <title>{professor.name} - {professor.university} - SpaceRead</title>
-                <meta name={"description"}
-                      content={longestReview ?? `Rate ${professor.name} from ${professor.university}!`}/>
-            </Helmet>
+            <PageMetadata
+                title={`${professor.name} Reviews & Ratings · ${professor.university} · SpaceRead`}
+                description={`Read student reviews and ratings for ${professor.name} at ${professor.university} on SpaceRead.`}
+                canonicalPath={`/professor/${encodePathSegment(professor.email)}`}
+            />
             <div className={styles.profPage}>
                 <BackArrow text={"Professor"} />
 

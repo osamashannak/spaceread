@@ -2,7 +2,7 @@ import styles from "../styles/pages/professor.module.scss";
 import SearchBox from "../components/searchbox.tsx";
 import UniversitySelector from "../components/professor/university_selector.tsx";
 import {createContext, type FormEvent, useEffect, useState} from "react";
-import {Helmet} from "@dr.pogodin/react-helmet";
+import PageMetadata from "../components/page_metadata.tsx";
 import {prepareProfessorRequest, submitProfessorRequest} from "../api/professor.ts";
 import {useToast} from "../components/provider/toast.tsx";
 
@@ -108,9 +108,11 @@ export default function ProfessorLookup() {
 
     return (
         <>
-            <Helmet>
-                <title>Rate a Professor - SpaceRead</title>
-            </Helmet>
+            <PageMetadata
+                title="Professor Reviews for UAE Universities · SpaceRead"
+                description="Find student reviews and ratings for professors at UAE universities. Choose your university and search by professor name on SpaceRead."
+                canonicalPath="/professor"
+            />
             <div className={styles.searchPage}>
                 <section className={styles.lookupHero}>
                     <div className={styles.heroCopy}>

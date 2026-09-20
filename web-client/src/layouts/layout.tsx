@@ -13,6 +13,8 @@ import {useAppDispatch} from "../redux/hooks.ts";
 import {setUser} from "../redux/slice/user_slice.ts";
 import {recaptchaDisabled} from "../lib/recaptcha.ts";
 import NotificationSummaryPoller from "../components/notification_summary_poller.tsx";
+import PageMetadata from "../components/page_metadata.tsx";
+import {SITE_DESCRIPTION, SITE_TITLE} from "../lib/metadata.ts";
 
 export default function Layout() {
 
@@ -39,6 +41,7 @@ export default function Layout() {
 
     return (
         <>
+            <PageMetadata title={SITE_TITLE} description={SITE_DESCRIPTION}/>
             <Helmet>
                 <script async src="https://www.googletagmanager.com/gtag/js?id=G-8S359E0E82"></script>
                 <script>

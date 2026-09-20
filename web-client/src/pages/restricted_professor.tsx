@@ -10,7 +10,7 @@ import {ProfessorAPI} from "../typed/professor.ts";
 import LoadingSuspense from "../components/loading_suspense.tsx";
 import ReviewSkeleton from "../components/skeletons/review.tsx";
 import BackArrow from "../components/backarrow.tsx";
-import {Helmet} from "@dr.pogodin/react-helmet";
+import PageMetadata from "../components/page_metadata.tsx";
 
 
 const RestrictedReviewSection = lazy(async () => {
@@ -74,6 +74,9 @@ export default function RestrictedProfessor() {
         return (
 
             <div className={styles.profPage}>
+                <PageMetadata
+                    title="Professor Profile · SpaceRead"
+                    noIndex description={""}                />
 
                 <section className={styles.profInfoHead} style={{borderBottom: "none"}}>
                     <div className={styles.profInfoLeft}>
@@ -108,6 +111,11 @@ export default function RestrictedProfessor() {
         return (
 
             <div className={styles.professorNotFound}>
+                <PageMetadata
+                    title="Professor Not Found · SpaceRead"
+                    description="This professor profile is unavailable on SpaceRead."
+                    noIndex
+                />
                 <div>
                     <span>Professor not found</span>
                 </div>
@@ -119,9 +127,11 @@ export default function RestrictedProfessor() {
 
     return (
         <>
-            <Helmet>
-                <title>{professor.name} - {professor.university} - SpaceRead</title>
-            </Helmet>
+            <PageMetadata
+                title={`${professor.name} · ${professor.university} · SpaceRead`}
+                description=""
+                noIndex
+            />
             <div className={styles.profPage}>
                 <BackArrow text={"Professor"} />
 

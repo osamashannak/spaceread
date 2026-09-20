@@ -44,7 +44,6 @@ export default function UniversitySelector() {
                 <span className={styles.stepBadge}>1</span>
                 <div>
                     <span className={styles.pickUniversityText}>Choose your university</span>
-                    <p>Professor lists are filtered by campus.</p>
                 </div>
             </div>
             <div className={styles.pickUniversity}>

@@ -6,7 +6,8 @@ import Skeleton from "react-loading-skeleton";
 import styles from "../styles/pages/course.module.scss";
 import fileStyles from "../styles/components/course/file.module.scss";
 import BackArrow from "../components/backarrow.tsx";
-import {Helmet} from "@dr.pogodin/react-helmet";
+import PageMetadata from "../components/page_metadata.tsx";
+import {encodePathSegment} from "../lib/metadata.ts";
 
 
 const FileSkeleton = lazy(
@@ -21,24 +22,40 @@ const File = lazy(
 
 
 export default function Course() {
-    const [course, setCourse] = useState<CourseAPI | undefined | null>();
+    const [result, setResult] = useState<{
+        tag: string | undefined;
+        course: CourseAPI | undefined | null;
+    }>();
     const {tag} = useParams();
+    const course = result && result.tag === tag ? result.course : undefined;
 
     useEffect(() => {
+        let active = true;
+        setResult({tag, course: undefined});
+
         if (!tag) {
-            setCourse(null);
+            setResult({tag, course: null});
             return;
         }
 
         getCourse(tag.toLowerCase()).then((course) => {
-            setCourse(course);
-        })
+            if (active) {
+                setResult({tag, course});
+            }
+        });
 
+        return () => {
+            active = false;
+        };
     }, [tag]);
 
     if (course === undefined) {
         return (
             <div className={styles.coursePage}>
+                <PageMetadata
+                    title="UAEU Course Materials · SpaceRead"
+                    description="Find notes, slides, videos, and files for courses at United Arab Emirates University (UAEU)."
+                />
                 <section className={styles.courseInfoHead} style={{width: "100%", borderBottom: 0}}>
                     <h2 style={{width: "100px"}}><Skeleton/></h2>
                     <h1 style={{width: "200px"}}><Skeleton/></h1>
@@ -60,6 +77,11 @@ export default function Course() {
     if (course === null) {
         return (
             <div className={styles.coursePage}>
+                <PageMetadata
+                    title="Course Not Found · SpaceRead"
+                    description="The requested UAEU course could not be found on SpaceRead."
+                    noIndex
+                />
                 <section className={styles.courseInfoHead} style={{width: "100%", borderBottom: 0}}>
                     <h1>Course Not Found</h1>
                 </section>
@@ -72,9 +94,11 @@ export default function Course() {
 
     return (
         <>
-            <Helmet>
-                <title>{course.name} - United Arab Emirates University - SpaceRead</title>
-            </Helmet>
+            <PageMetadata
+                title={`${course.tag}: ${course.name} · UAEU Course Materials · SpaceRead`}
+                description={`Read and share notes, slides, videos, and files for ${course.tag}: ${course.name} at United Arab Emirates University (UAEU).`}
+                canonicalPath={`/course/${encodePathSegment(course.tag)}`}
+            />
             <div className={styles.coursePage}>
                 <BackArrow text={"Course"}/>
                 <section className={styles.courseInfoHead}>

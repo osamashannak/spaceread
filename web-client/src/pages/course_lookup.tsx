@@ -1,13 +1,15 @@
 import SearchBox from "../components/searchbox.tsx";
 import styles from "../styles/pages/course.module.scss";
-import {Helmet} from "@dr.pogodin/react-helmet";
+import PageMetadata from "../components/page_metadata.tsx";
 
 export default function CourseLookup() {
     return (
         <>
-            <Helmet>
-                <title>Course Materials - SpaceRead</title>
-            </Helmet>
+            <PageMetadata
+                title="UAEU Course Materials · SpaceRead"
+                description="Share and find notes, slides, videos, and files for courses at United Arab Emirates University (UAEU)."
+                canonicalPath="/course"
+            />
             <div className={styles.searchPage}>
                 <section className={styles.lookupHero}>
                     <div className={styles.heroCopy}>
