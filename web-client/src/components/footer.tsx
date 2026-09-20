@@ -40,7 +40,7 @@ export default function Footer() {
                 <ul className={styles.links}>
                     <li><Link to={"/terms-of-service"}>Terms of Service</Link></li>
                     <li><Link to={"/privacy"}>Privacy Policy</Link></li>
-                    <li><a href={"https://api.uaeu.space/sitemap.xml"}>Site Map</a></li>
+                    <li><a href={"/sitemap.xml"}>Site Map</a></li>
                 </ul>
             </section>
         </footer>

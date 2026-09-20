@@ -5,6 +5,8 @@ on:
     paths:
       - 'admin-client/**'
       - 'web-client/**'
+      - '.github/workflows/pr-check.yml'
+      - '.github/workflows/deploy-web-client.yml'
 
 jobs:
   build-and-test:
@@ -33,3 +35,8 @@ jobs:
       - name: 'Build Vite app (Dry Run)'
         run: npm run build
         working-directory: '${{ matrix.client }}'
+
+      - name: 'Test discovery file generation and verification'
+        if: matrix.client == 'web-client'
+        run: npm run test:discovery
+        working-directory: web-client

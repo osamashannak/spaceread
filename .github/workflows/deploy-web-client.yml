@@ -6,6 +6,8 @@ on:
       - 'main'
     paths:
       - 'web-client/**'
+      - '.github/workflows/deploy-web-client.yml'
+  workflow_dispatch:
 
 jobs:
   build-and-deploy:
@@ -34,10 +36,16 @@ jobs:
       - name: 'Install dependencies'
         run: npm install --no-package-lock --no-audit --no-fund
 
+      - name: 'Test discovery file generation and verification'
+        run: npm run test:discovery
+
       - name: 'Build Vite app'
         run: npm run build
         env:
           VITE_APP_VERSION: '${{ env.VERSION }}'
+
+      - name: 'Generate sitemap from public catalogs'
+        run: npm run sitemap:generate
 
       - name: 'Configure AWS credentials'
         uses: 'aws-actions/configure-aws-credentials@v4.3.1'
@@ -48,7 +56,18 @@ jobs:
       - name: Upload versioned build
         run: |
           aws s3 sync dist "s3://static.spaceread.net/${VERSION}" \
-            --exclude "index.html"
+            --exclude "index.html" \
+            --exclude "robots.txt" \
+            --exclude "sitemap.xml"
+
+      - name: Upload discovery files to the main site origin
+        run: |
+          aws s3 cp dist/robots.txt s3://spaceread.net/www/robots.txt \
+            --cache-control "public, max-age=0, s-maxage=0, must-revalidate" \
+            --content-type "text/plain; charset=utf-8"
+          aws s3 cp dist/sitemap.xml s3://spaceread.net/www/sitemap.xml \
+            --cache-control "public, max-age=0, s-maxage=0, must-revalidate" \
+            --content-type "application/xml; charset=utf-8"
 
       - name: Upload HTML (latest)
         run: |
@@ -61,3 +80,19 @@ jobs:
         run: |
           aws s3 cp s3://spaceread.net/www/index.html "s3://spaceread.net/index-${VERSION}.html" \
             --metadata-directive COPY
+
+      - name: Invalidate cached discovery files when configured
+        if: ${{ vars.WEB_CLOUDFRONT_DISTRIBUTION_ID != '' }}
+        env:
+          DISTRIBUTION_ID: '${{ vars.WEB_CLOUDFRONT_DISTRIBUTION_ID }}'
+        run: |
+          INVALIDATION_ID=$(aws cloudfront create-invalidation \
+            --distribution-id "$DISTRIBUTION_ID" \
+            --paths "/robots.txt" "/sitemap.xml" "/www/robots.txt" "/www/sitemap.xml" \
+            --query 'Invalidation.Id' --output text)
+          aws cloudfront wait invalidation-completed \
+            --distribution-id "$DISTRIBUTION_ID" \
+            --id "$INVALIDATION_ID"
+
+      - name: Verify discovery files through the public domain
+        run: npm run discovery:verify
