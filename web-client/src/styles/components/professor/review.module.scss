@@ -280,6 +280,14 @@
   color: rgb(139, 152, 165);
 }
 
+.courseDetails {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin-top: 8px;
+}
+
 .course {
   user-select: none;
     -webkit-user-select: none;

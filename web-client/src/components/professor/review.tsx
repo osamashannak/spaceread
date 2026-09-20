@@ -97,13 +97,15 @@ export default function Review(review: ReviewProps) {
                             <div className={styles.recommendation}>
                                 <span>{review.positive ? "Recommend" : "Not recommended"}</span>
                             </div>
+                        </div>
+                        {(courseName || review.grade_received) && <div className={styles.courseDetails}>
                             {courseName && <div className={styles.course} title={review.course_taken}>
                                 <span>{courseName}</span>
                             </div>}
                             {review.grade_received && <div className={styles.course}>
                                 <span>{review.grade_received}</span>
                             </div>}
-                        </div>
+                        </div>}
                     </div>
 
                     <ReviewOptions review={review}/>
