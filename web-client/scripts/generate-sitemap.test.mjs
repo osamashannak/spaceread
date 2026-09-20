@@ -38,9 +38,10 @@ async function outputFixture(t) {
     return {directory, outputPath};
 }
 
-test('reads all four university lists and courses, then atomically replaces output', async t => {
+test('reads all five university lists including Zayed profiles and courses, then atomically replaces output', async t => {
     const {directory, outputPath} = await outputFixture(t);
     const requests = [];
+    const zayedProfessor = {email: 'zu.faculty@zu.ac.ae', name: 'ZU Faculty'};
     const result = await generateSitemap({
         outputPath,
         professorApiOrigin: 'http://professors.test:4000',
@@ -52,17 +53,20 @@ test('reads all four university lists and courses, then atomically replaces outp
             assert.equal(options.credentials, undefined);
             if (url.pathname === '/professor/all') {
                 assert.equal(url.origin, 'http://professors.test:4000');
-                return Response.json(professors);
+                return Response.json(url.searchParams.get('university') === 'Zayed University'
+                    ? [zayedProfessor] : professors);
             }
             assert.equal(url.href, 'http://courses.test:5000/course/list');
             return Response.json(courses);
         },
     });
-    assert.equal(requests.length, 5);
+    assert.equal(requests.length, 6);
     assert.deepEqual(requests.filter(url => url.pathname === '/professor/all')
         .map(url => url.searchParams.get('university')).sort(), [...UNIVERSITIES].sort());
-    assert.equal(result.urlCount, 6);
-    assert.equal(await readFile(outputPath, 'utf8'), buildSitemap(professors, courses).xml);
+    assert.equal(result.urlCount, 7);
+    const generated = await readFile(outputPath, 'utf8');
+    assert.equal(generated, buildSitemap([...professors, zayedProfessor], courses).xml);
+    assert.match(generated, /https:\/\/spaceread\.net\/professor\/zu\.faculty%40zu\.ac\.ae/);
     assert.deepEqual(await readdir(directory), ['sitemap.xml']);
 });
 

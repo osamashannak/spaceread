@@ -8,6 +8,7 @@ export const UNIVERSITIES = [
     'Khalifa University',
     'University of Sharjah',
     'American University of Sharjah',
+    'Zayed University',
 ];
 
 const SITE_ORIGIN = 'https://spaceread.net';
