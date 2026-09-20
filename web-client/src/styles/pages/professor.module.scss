@@ -384,7 +384,8 @@
       border-color: #eef3f7;
     }
 
-    .aus {
+    .aus,
+    .zu {
       border-color: #eef3f7;
     }
 
@@ -475,7 +476,8 @@
       }
     }
 
-    .selected.aus {
+    .selected.aus,
+    .selected.zu {
       border-color: #059ae5;
       box-shadow: 0 0 0 1px rgba(5, 154, 229, 0.08);
 

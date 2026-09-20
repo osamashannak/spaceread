@@ -1,6 +1,7 @@
 import styles from "../styles/pages/professor.module.scss";
 import SearchBox from "../components/searchbox.tsx";
 import UniversitySelector from "../components/professor/university_selector.tsx";
+import {universities} from "../lib/universities.ts";
 import {createContext, type FormEvent, useEffect, useState} from "react";
 import {Helmet} from "@dr.pogodin/react-helmet";
 import {prepareProfessorRequest, submitProfessorRequest} from "../api/professor.ts";
@@ -14,13 +15,6 @@ export const UniversityContext = createContext<GlobalContent>({
     setUniversity(_c: string): void {
     }, university: null
 });
-
-const universityShortNames: Record<string, string> = {
-    "United Arab Emirates University": "UAEU",
-    "Khalifa University": "KU",
-    "University of Sharjah": "UOS",
-    "American University of Sharjah": "AUS",
-};
 
 type ProfessorRequestDraft = {
     professorName: string;
@@ -128,7 +122,7 @@ export default function ProfessorLookup() {
                             <span>reviews</span>
                         </div>
                         <div className={styles.heroSignal}>
-                            <strong>4</strong>
+                            <strong>{universities.length}</strong>
                             <span>universities</span>
                         </div>
                     </div>
@@ -143,7 +137,7 @@ export default function ProfessorLookup() {
                                 <span className={styles.stepBadge}>2</span>
                                 <div>
                                     <span>Search professors</span>
-                                    <p>{university ? `${universityShortNames[university] ?? university} is selected.` : "Select a university first."}</p>
+                                    <p>{university ? `${universities.find((item) => item.name === university)?.shortName ?? university} is selected.` : "Select a university first."}</p>
                                 </div>
                             </div>
 
