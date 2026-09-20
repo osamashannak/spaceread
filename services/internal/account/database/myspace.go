@@ -48,10 +48,12 @@ func (db *DB) ListMySpaceReviews(ctx context.Context, userID int64) ([]v1.MySpac
 			r.dislike_count,
 			r.reply_count,
 			r.course_taken,
+			NULLIF(c.name, ''),
 			r.grade_received,
 			r.created_at
 		FROM professor.review r
 		LEFT JOIN professor.professor p ON p.email = r.professor_email
+		LEFT JOIN course.course c ON c.tag = r.course_taken
 		WHERE r.user_id = $1
 		  AND r.deleted_at IS NULL
 		ORDER BY r.created_at DESC
@@ -78,6 +80,7 @@ func (db *DB) ListMySpaceReviews(ctx context.Context, userID int64) ([]v1.MySpac
 			&review.DislikeCount,
 			&review.ReplyCount,
 			&review.CourseTaken,
+			&review.CourseName,
 			&review.GradeReceived,
 			&review.CreatedAt,
 		); err != nil {

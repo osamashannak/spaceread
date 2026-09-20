@@ -315,6 +315,14 @@ func (s *Server) PostReview() http.Handler {
 			flagged = &val
 		}
 
+		var courseName *string
+		if review.CourseTaken != nil {
+			courseName, err = s.db.GetCourseName(ctx, *review.CourseTaken)
+			if err != nil {
+				logger.Warnf("failed to get course name for review %d: %v", review.ID, err)
+			}
+		}
+
 		var response = v1.ReviewPostResponse{
 			SortIndex:     review.SortIndex,
 			Text:          review.Content,
@@ -326,6 +334,7 @@ func (s *Server) PostReview() http.Handler {
 			Warning:       moderationWarning,
 			Language:      review.Language,
 			CourseTaken:   review.CourseTaken,
+			CourseName:    courseName,
 			GradeReceived: review.GradeReceived,
 			CreatedAt:     review.CreatedAt,
 		}

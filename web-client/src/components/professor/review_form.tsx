@@ -174,7 +174,7 @@ function AccessibleRating(props: {
     );
 }
 
-export default function ReviewForm(props: { courses: string[] | null, professorEmail: string; canReview: boolean }) {
+export default function ReviewForm(props: { courses: string[] | null; courseOptions?: CourseItem[]; professorEmail: string; canReview: boolean }) {
     const [details, setDetails] = useState<ReviewFormDraft>({
         score: undefined,
         comment: "",
@@ -230,14 +230,14 @@ export default function ReviewForm(props: { courses: string[] | null, professorE
     }, [courseCatalog]);
 
     const professorCourseItems = useMemo<CourseItem[]>(
-        () => professorCourseTags.map(tag => {
-            const catalogCourse = courseCatalogByTag.get(tag);
-            return {
+        () => {
+            const providedNames = new Map((props.courseOptions || []).map(course => [normalizeCourseTag(course.tag), course.name]));
+            return professorCourseTags.map(tag => ({
                 tag,
-                name: catalogCourse?.name ?? "",
-            };
-        }),
-        [courseCatalogByTag, professorCourseTags]
+                name: courseCatalogByTag.get(tag)?.name?.trim() || providedNames.get(tag)?.trim() || "",
+            }));
+        },
+        [courseCatalogByTag, professorCourseTags, props.courseOptions]
     );
 
     const professorCourseIndex = useMemo(
@@ -291,6 +291,12 @@ export default function ReviewForm(props: { courses: string[] | null, professorE
 
         courseCatalogRequestRef.current = request;
     }, [courseCatalogLoaded]);
+
+    useEffect(() => {
+        if (props.canReview && props.professorEmail.endsWith('@uaeu.ac.ae')) {
+            ensureCourseCatalogLoaded();
+        }
+    }, [ensureCourseCatalogLoaded, props.canReview, props.professorEmail]);
 
     const clearError = () => {
         if (activeError) setActiveError(null);
@@ -420,6 +426,7 @@ export default function ReviewForm(props: { courses: string[] | null, professorE
                 score: review.score,
                 grade_received: review.grade_received,
                 course_taken: review.course_taken,
+                course_name: review.course_name,
                 positive: review.positive,
                 id: review.id,
                 gif: details.gif ? details.gif.url : undefined,

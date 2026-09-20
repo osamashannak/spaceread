@@ -71,6 +71,7 @@ func (db *ProfessorDB) GetProfessorReviews(ctx context.Context, sessionId int64,
 			r.content,
 			r.grade_received,
 			r.course_taken,
+			NULLIF(c.name, ''),
 			r.language,
 			r.like_count,
 			r.dislike_count,
@@ -89,6 +90,7 @@ func (db *ProfessorDB) GetProfessorReviews(ctx context.Context, sessionId int64,
 			r.session_id,
 			r.gif
 		FROM professor.review r
+		LEFT JOIN course.course c ON c.tag = r.course_taken
 		LEFT JOIN LATERAL (
 			SELECT value
 			FROM professor.review_rating
@@ -132,6 +134,7 @@ func (db *ProfessorDB) GetProfessorReviews(ctx context.Context, sessionId int64,
 			&rev.Text,
 			&rev.GradeReceived,
 			&rev.CourseTaken,
+			&rev.CourseName,
 			&rev.Language,
 			&rev.LikeCount,
 			&rev.DislikeCount,
@@ -268,8 +271,12 @@ func (db *ProfessorDB) incrementProfessorViews(ctx context.Context, email string
 	return err
 }
 
-func (db *ProfessorDB) GetProfessorCourses(ctx context.Context, email string) ([]string, error) {
-	query := `SELECT course_tag FROM professor.professor_course_history WHERE email = $1`
+func (db *ProfessorDB) GetProfessorCourses(ctx context.Context, email string) ([]v1.CourseInList, error) {
+	query := `SELECT h.course_tag, COALESCE(c.name, '')
+		FROM professor.professor_course_history h
+		LEFT JOIN course.course c ON c.tag = h.course_tag
+		WHERE h.email = $1
+		ORDER BY h.course_tag`
 
 	rows, err := db.Db.Pool.Query(ctx, query, email)
 	if err != nil {
@@ -277,13 +284,13 @@ func (db *ProfessorDB) GetProfessorCourses(ctx context.Context, email string) ([
 	}
 	defer rows.Close()
 
-	var courses []string
+	courses := make([]v1.CourseInList, 0)
 	for rows.Next() {
-		var course string
-		if err := rows.Scan(&course); err != nil {
+		var course v1.CourseInList
+		if err := rows.Scan(&course.Tag, &course.Name); err != nil {
 			return nil, err
 		}
 		courses = append(courses, course)
 	}
-	return courses, nil
+	return courses, rows.Err()
 }

@@ -1,3 +1,5 @@
+import type {CourseItem} from "./searchbox.ts";
+
 export interface ProfessorAPI {
     email: string;
     name: string;
@@ -7,6 +9,7 @@ export interface ProfessorAPI {
     score: number;
     reviewed: boolean;
     courses: string[];
+    course_options?: CourseItem[];
     similar_professors: SimilarProfessors[]
 }
 
@@ -44,6 +47,7 @@ export interface ReviewAPI {
     flagged: boolean;
     verified: boolean;
     course_taken: string;
+    course_name?: string;
     grade_received: string;
     uaeu_origin: boolean;
     gif?: string;

@@ -131,18 +131,23 @@ func (s *Server) Get() http.Handler {
 			s.similarProfCache.Set(professor.Email, similarProfessor)
 		}
 
-		var courses []string
+		var courseOptions []v1.CourseInList
 
 		if cached, ok := s.courseCache.Get(professor.Email); ok {
 			logger.Debugf("returning cached courses for email: %s", professor.Email)
-			courses = cached
+			courseOptions = cached
 		} else {
-			courses, err = s.db.GetProfessorCourses(ctx, professor.Email)
+			courseOptions, err = s.db.GetProfessorCourses(ctx, professor.Email)
 			if err != nil {
 				logger.Errorf("failed to get courses for professor %s: %v", email, err)
-				courses = []string{}
+				courseOptions = []v1.CourseInList{}
+			} else {
+				s.courseCache.Set(professor.Email, courseOptions)
 			}
-			s.courseCache.Set(professor.Email, courses)
+		}
+		courses := make([]string, 0, len(courseOptions))
+		for _, course := range courseOptions {
+			courses = append(courses, course.Tag)
 		}
 
 		response := v1.ProfessorResponse{
@@ -155,6 +160,7 @@ func (s *Server) Get() http.Handler {
 			Score:             *averageScore,
 			Reviewed:          *reviewed,
 			Courses:           courses,
+			CourseOptions:     courseOptions,
 		}
 
 		jsonutil.MarshalResponse(w, http.StatusOK, response)

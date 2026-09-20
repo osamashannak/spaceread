@@ -277,7 +277,8 @@ export default function Professor() {
                 </section>
 
                 <Suspense fallback={<DisabledReviewForm/>}>
-                    <ReviewForm courses={professor.courses} professorEmail={professor.email} canReview={!professor.reviewed}/>
+                    <ReviewForm courses={professor.courses} courseOptions={professor.course_options}
+                                professorEmail={professor.email} canReview={!professor.reviewed}/>
                 </Suspense>
 
                 <Suspense fallback={<LoadingSuspense height={"400px"}/>}>

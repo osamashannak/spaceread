@@ -33,6 +33,15 @@ func (db *ProfessorDB) GetReview(ctx context.Context, id int64) (*model.Review, 
 	return &review, nil
 }
 
+func (db *ProfessorDB) GetCourseName(ctx context.Context, tag string) (*string, error) {
+	var name *string
+	err := db.Db.Pool.QueryRow(ctx, `SELECT NULLIF(name, '') FROM course.course WHERE tag = $1`, tag).Scan(&name)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	return name, err
+}
+
 func (db *ProfessorDB) ExistsReviewIdentity(ctx context.Context, email string, sessionId int64, userId *int64) (bool, error) {
 	var exists bool
 

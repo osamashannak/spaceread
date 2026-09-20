@@ -181,7 +181,8 @@ function ReviewItem({review}: { review: MySpaceReviewAPI }) {
         review.positive ? "Positive" : "Critical",
         `${review.reply_count} ${pluralize(review.reply_count, "reply")}`,
     ];
-    if (review.course_taken) details.push(review.course_taken);
+    const courseName = review.course_name?.trim() || review.course_taken;
+    if (courseName) details.push(courseName);
     if (review.grade_received) details.push(`Grade ${review.grade_received}`);
 
     return (

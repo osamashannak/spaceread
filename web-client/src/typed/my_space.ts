@@ -30,6 +30,7 @@ export interface MySpaceReviewAPI {
     dislike_count: number;
     reply_count: number;
     course_taken?: string;
+    course_name?: string;
     grade_received?: string;
     created_at: string;
 }

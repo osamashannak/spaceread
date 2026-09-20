@@ -83,6 +83,7 @@ type MySpaceReviewResponse struct {
 	DislikeCount   int       `json:"dislike_count"`
 	ReplyCount     int       `json:"reply_count"`
 	CourseTaken    *string   `json:"course_taken,omitempty"`
+	CourseName     *string   `json:"course_name,omitempty"`
 	GradeReceived  *string   `json:"grade_received,omitempty"`
 	CreatedAt      time.Time `json:"created_at"`
 }

@@ -30,6 +30,7 @@ type ProfessorResponse struct {
 	Reviewed          bool               `json:"reviewed"`
 	Score             float64            `json:"score"`
 	Courses           []string           `json:"courses"`
+	CourseOptions     []CourseInList     `json:"course_options"`
 }
 
 type SimilarProfessor struct {
@@ -55,6 +56,7 @@ type Review struct {
 	ReplyCount    int               `json:"reply_count"`
 	GradeReceived *string           `json:"grade_received,omitempty"`
 	CourseTaken   *string           `json:"course_taken,omitempty"`
+	CourseName    *string           `json:"course_name,omitempty"`
 	Attachment    *ReviewAttachment `json:"attachment,omitempty"`
 	Gif           *string           `json:"gif,omitempty"`
 	Self          bool              `json:"self"`
@@ -114,6 +116,7 @@ type ReviewPostResponse struct {
 	Score         int                  `json:"score"`
 	Positive      bool                 `json:"positive"`
 	CourseTaken   *string              `json:"course_taken,omitempty"`
+	CourseName    *string              `json:"course_name,omitempty"`
 	GradeReceived *string              `json:"grade_received,omitempty"`
 	Attachment    *ReviewAttachment    `json:"attachment,omitempty"`
 	Gif           *string              `json:"gif,omitempty"`

@@ -234,6 +234,7 @@
 
 .reviewInfoLeft {
   width: 100%;
+  min-width: 0;
   align-items: baseline;
 
   .reviewHead {
@@ -285,7 +286,10 @@
   background-color: rgba(4, 154, 229, 0.2);
   color: #049AE5;
   font-size: 14px;
-  margin-left: 4px;
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
   padding-left: 4px;
   padding-right: 4px;
   font-weight: 500;
@@ -296,12 +300,14 @@
   font-weight: 600;
   white-space: nowrap;
   display: flex;
+  flex-wrap: wrap;
   margin-top: 8px;
   align-items: center;
   gap: 4px;
 
   .reviewStars {
     display: flex;
+    flex-shrink: 0;
     align-items: center;
   }
 }

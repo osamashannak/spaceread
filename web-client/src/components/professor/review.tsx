@@ -25,6 +25,7 @@ export default function Review(review: ReviewProps) {
 
     const originalText = review.text.trim();
     const displayText = translatedText && !showOriginalText ? translatedText : originalText;
+    const courseName = review.course_name?.trim() || review.course_taken;
 
     useEffect(() => {
         const p = document.getElementById(`review_comment_${review.id}`);
@@ -96,8 +97,8 @@ export default function Review(review: ReviewProps) {
                             <div className={styles.recommendation}>
                                 <span>{review.positive ? "Recommend" : "Not recommended"}</span>
                             </div>
-                            {review.course_taken && <div className={styles.course}>
-                                <span>{review.course_taken}</span>
+                            {courseName && <div className={styles.course} title={review.course_taken}>
+                                <span>{courseName}</span>
                             </div>}
                             {review.grade_received && <div className={styles.course}>
                                 <span>{review.grade_received}</span>
