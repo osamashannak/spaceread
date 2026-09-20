@@ -1,10 +1,12 @@
 name: 'Build and Deploy Professor Microservice to Cloud Run'
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - 'main'
     paths:
+      - '.github/workflows/deploy-professor.yml'
       - 'services/cmd/professor/**'
       - 'services/internal/api/v1/error_types.go'
       - 'services/internal/api/v1/professor_types.go'
