@@ -202,7 +202,7 @@ func (db *AdminDB) ListProfessorRequests(ctx context.Context, opts ListProfessor
 	}
 	metadata := buildProfessorRequestMetadata(indexRows)
 
-	matchCandidateIDs := professorRequestExistingMatchCandidateIDs(indexRows, metadata, opts)
+	matchCandidateIDs := professorRequestExistingMatchCandidateIDs(indexRows, opts)
 	existingMatches, err := db.loadProfessorRequestExistingMatches(ctx, matchCandidateIDs)
 	if err != nil {
 		return nil, err
@@ -237,12 +237,9 @@ func (db *AdminDB) GetProfessorRequest(ctx context.Context, requestID int64) (*v
 	}
 	metadata := map[int64]professorRequestMetadata{requestID: requestMetadata}
 
-	existingMatches := map[int64]struct{}{}
-	if requestMetadata.GroupSize == 1 {
-		existingMatches, err = db.loadProfessorRequestExistingMatches(ctx, []int64{requestID})
-		if err != nil {
-			return nil, err
-		}
+	existingMatches, err := db.loadProfessorRequestExistingMatches(ctx, []int64{requestID})
+	if err != nil {
+		return nil, err
 	}
 	markProfessorRequestExistingMatches(metadata, existingMatches)
 
@@ -377,10 +374,9 @@ func (db *AdminDB) loadProfessorRequestMetadata(
 		return professorRequestMetadata{}, false, nil
 	}
 	return professorRequestMetadata{
-		GroupID:         *groupID,
-		GroupSize:       groupSize,
-		PendingCount:    pendingCount,
-		LikelyDuplicate: groupSize > 1,
+		GroupID:      *groupID,
+		GroupSize:    groupSize,
+		PendingCount: pendingCount,
 	}, true, nil
 }
 
@@ -422,10 +418,9 @@ func buildProfessorRequestMetadata(rows []professorRequestIndexRow) map[int64]pr
 		groupID := groups.find(row.ID)
 		groupSize := groups.size[groupID]
 		metadata[row.ID] = professorRequestMetadata{
-			GroupID:         groupID,
-			GroupSize:       groupSize,
-			PendingCount:    pendingCounts[groupID],
-			LikelyDuplicate: groupSize > 1,
+			GroupID:      groupID,
+			GroupSize:    groupSize,
+			PendingCount: pendingCounts[groupID],
 		}
 	}
 	return metadata
@@ -465,14 +460,12 @@ func (groups *professorRequestDisjointSet) union(leftID, rightID int64) {
 
 func professorRequestExistingMatchCandidateIDs(
 	rows []professorRequestIndexRow,
-	metadata map[int64]professorRequestMetadata,
 	opts ListProfessorRequestOptions,
 ) []int64 {
 	opts = normalizeProfessorRequestListOptions(opts)
 	ids := make([]int64, 0)
 	for _, row := range rows {
-		requestMetadata := metadata[row.ID]
-		if !row.SearchMatch || requestMetadata.GroupSize > 1 {
+		if !row.SearchMatch {
 			continue
 		}
 		// With no duplicate filter, existing-professor matches only affect the
@@ -518,7 +511,9 @@ func (db *AdminDB) loadProfessorRequestExistingMatches(ctx context.Context, ids 
 func markProfessorRequestExistingMatches(metadata map[int64]professorRequestMetadata, matches map[int64]struct{}) {
 	for id, requestMetadata := range metadata {
 		_, hasExistingMatch := matches[id]
-		requestMetadata.LikelyDuplicate = requestMetadata.GroupSize > 1 || hasExistingMatch
+		// Repeated submissions are grouped for moderation, but only a strong
+		// match to an existing professor makes a request a likely duplicate.
+		requestMetadata.LikelyDuplicate = hasExistingMatch
 		metadata[id] = requestMetadata
 	}
 }

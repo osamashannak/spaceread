@@ -997,18 +997,14 @@ function recommendationFor(request: AdminProfessorRequest): {
     tone: "success" | "warning" | "danger";
     icon: ReactNode;
 } {
-    const likelyMatch = (request.matches || []).find(match => (
-        normalizedSimilarity(match.name_similarity) >= 0.85
-        || match.match_type === "exact_email"
-        || match.match_type === "same_university_name"
-    ));
-    if (request.likely_duplicate || likelyMatch) {
+    if (request.likely_duplicate) {
+        const likelyMatch = request.matches?.[0];
         return {
             kind: "duplicate",
             label: "Likely duplicate",
             description: likelyMatch
                 ? `${likelyMatch.name} is a strong existing-professor match. Review the candidate before deciding.`
-                : "A strong existing-professor match was found. Review the candidates before deciding.",
+                : "This request may match an existing professor. Review the request details before deciding.",
             tone: "danger",
             icon: <CopyCheck size={17}/>,
         };
