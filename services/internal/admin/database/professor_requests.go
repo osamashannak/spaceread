@@ -263,7 +263,9 @@ func normalizeProfessorRequestListOptions(opts ListProfessorRequestOptions) List
 	if opts.Status == "" {
 		opts.Status = "pending"
 	}
-	if opts.Duplicate != "likely" && opts.Duplicate != "not_likely" {
+	// Approved requests match the professor they created, so their history
+	// must remain visible regardless of the moderation duplicate filter.
+	if opts.Status == "approved" || (opts.Duplicate != "likely" && opts.Duplicate != "not_likely") {
 		opts.Duplicate = "all"
 	}
 	opts.Search = strings.TrimSpace(opts.Search)
@@ -558,6 +560,11 @@ func buildProfessorRequestListPage(
 			incrementProfessorRequestStatusCount(&page.StatusCounts, row.Status)
 			statusGroupIDs["all"][requestMetadata.GroupID] = struct{}{}
 			statusGroupIDs[row.Status][requestMetadata.GroupID] = struct{}{}
+		} else if row.Status == "approved" {
+			// The Approved tab ignores the duplicate filter. Its badge must
+			// therefore include every approved request matching the search.
+			page.StatusCounts.Approved++
+			statusGroupIDs["approved"][requestMetadata.GroupID] = struct{}{}
 		}
 		if matchesStatus {
 			page.DuplicateCounts.All++

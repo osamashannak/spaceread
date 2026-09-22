@@ -101,6 +101,8 @@ export function ProfessorRequestsPage() {
     const [offset, setOffset] = useState(0);
     const [status, setStatus] = useState<AdminProfessorRequestStatusFilter>("pending");
     const [duplicate, setDuplicate] = useState<AdminProfessorRequestDuplicateFilter>("all");
+    const showDuplicateFilter = status !== "approved";
+    const activeDuplicate = showDuplicateFilter ? duplicate : "all";
     const [searchDraft, setSearchDraft] = useState("");
     const [search, setSearch] = useState("");
     const [loadState, setLoadState] = useState<LoadState>("loading");
@@ -130,7 +132,7 @@ export function ProfessorRequestsPage() {
 
         listAdminProfessorRequests(controller.signal, {
             status,
-            duplicate,
+            duplicate: activeDuplicate,
             search,
             limit: pageSize,
             offset: requestedOffset,
@@ -154,7 +156,7 @@ export function ProfessorRequestsPage() {
                 listControllerRef.current = null;
                 setIsRefreshing(false);
             });
-    }, [duplicate, search, status]);
+    }, [activeDuplicate, search, status]);
 
     useEffect(() => {
         setOffset(0);
@@ -329,7 +331,7 @@ export function ProfessorRequestsPage() {
                             </TabsList>
                         </Tabs>
                     </div>
-                    <div className={styles.filterSet}>
+                    {showDuplicateFilter && <div className={styles.filterSet}>
                         <span className={styles.filterLabel}>Duplicate likelihood (groups)</span>
                         <Tabs value={duplicate} onValueChange={value => setDuplicate(value as AdminProfessorRequestDuplicateFilter)}>
                             <TabsList className={styles.duplicateTabs} aria-label="Filter by duplicate likelihood">
@@ -341,7 +343,7 @@ export function ProfessorRequestsPage() {
                                 ))}
                             </TabsList>
                         </Tabs>
-                    </div>
+                    </div>}
                 </div>
                 <form className={styles.searchForm} role="search" onSubmit={submitSearch}>
                     <label className={styles.searchField}>
@@ -364,7 +366,7 @@ export function ProfessorRequestsPage() {
             <div className={styles.resultBar} aria-live="polite">
                 <span>
                     {search ? `Results for “${search}”` : `${statusLabel(status)} requests`}
-                    {` · ${duplicateFilterLabel(duplicate)}`}
+                    {showDuplicateFilter && ` · ${duplicateFilterLabel(activeDuplicate)}`}
                 </span>
                 <strong>
                     {total === 0
@@ -387,10 +389,10 @@ export function ProfessorRequestsPage() {
                 {loadState === "ready" && requests.length === 0 && (
                     <StateNotice
                         icon={<UserRoundPlus size={22}/>}
-                        title={emptyQueueTitle(search, status, duplicate)}
+                        title={emptyQueueTitle(search, status, activeDuplicate)}
                         message={search
                             ? "Try a name, email, university, or request ID."
-                            : duplicate === "all" ? "There is nothing in this queue right now." : "Try another status or duplicate-likelihood filter."}
+                            : activeDuplicate === "all" ? "There is nothing in this queue right now." : "Try another status or duplicate-likelihood filter."}
                     />
                 )}
                 {loadState === "ready" && requestGroups.map(group => (
