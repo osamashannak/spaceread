@@ -13,7 +13,11 @@ export default function FilePreview(props: {
 }) {
 
     const locked = props.disabled || props.status === "uploading" || props.status === "uploaded";
-
+    const extensionIndex = props.file.name.lastIndexOf(".");
+    const extension = extensionIndex >= 0 ? props.file.name.slice(extensionIndex) : "";
+    const title = extension && props.name.toLowerCase().endsWith(extension.toLowerCase())
+        ? props.name.slice(0, -extension.length)
+        : props.name;
 
     return (
         <div className={styles.filePreview}>
@@ -21,15 +25,18 @@ export default function FilePreview(props: {
                 {getIconFromMIME(props.file.type)}
             </div>
             <div className={styles.filePreviewBody}>
-                <input
-                    type={"text"}
-                    onChange={event => {
-                        props.changeName(props.id, event.target.value);
-                    }}
-                    disabled={locked}
-                    className={styles.filePreviewName}
-                    defaultValue={props.name}
-                    aria-label={"File name"}/>
+                <div className={styles.filePreviewNameRow}>
+                    <input
+                        type={"text"}
+                        onChange={event => {
+                            props.changeName(props.id, event.target.value + extension);
+                        }}
+                        disabled={locked}
+                        className={styles.filePreviewName}
+                        value={title}
+                        aria-label={"File title"}/>
+                    <span className={styles.filePreviewExtension}>{extension.toLowerCase()}</span>
+                </div>
                 <div className={styles.filePreviewMeta}>
                     <span>{formatBytes(props.file.size)}</span>
                     <span className={styles.metaDivider}/>

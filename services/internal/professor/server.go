@@ -86,8 +86,5 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("POST /comment/reply/like", s.gateway.OptionalAuthMiddleware(s.gateway.RequireCSRF(s.LikeReply())))
 	mux.Handle("DELETE /comment/reply/like", s.gateway.OptionalAuthMiddleware(s.gateway.RequireCSRF(s.UnlikeReply())))
 
-	mux.Handle("GET /feedback/new", s.gateway.OptionalAuthMiddleware(s.NewFeedback()))
-	mux.Handle("POST /feedback", s.gateway.OptionalAuthMiddleware(s.gateway.RequireCSRF(s.Feedback())))
-
 	return middleware.CORS(mux)
 }

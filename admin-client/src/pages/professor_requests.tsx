@@ -101,7 +101,7 @@ export function ProfessorRequestsPage() {
     const [offset, setOffset] = useState(0);
     const [status, setStatus] = useState<AdminProfessorRequestStatusFilter>("pending");
     const [duplicate, setDuplicate] = useState<AdminProfessorRequestDuplicateFilter>("all");
-    const showDuplicateFilter = status !== "approved";
+    const showDuplicateFilter = status === "pending" || status === "all";
     const activeDuplicate = showDuplicateFilter ? duplicate : "all";
     const [searchDraft, setSearchDraft] = useState("");
     const [search, setSearch] = useState("");
@@ -138,6 +138,7 @@ export function ProfessorRequestsPage() {
             offset: requestedOffset,
         })
             .then(response => {
+                if (controller.signal.aborted || listControllerRef.current !== controller) return;
                 setRequests((response.requests || []).map(normalizeRequest));
                 setCounts({...emptyCounts, ...(response.status_group_counts ?? response.status_counts)});
                 setDuplicateCounts({...emptyDuplicateCounts, ...(response.duplicate_group_counts ?? response.duplicate_counts)});
@@ -319,13 +320,15 @@ export function ProfessorRequestsPage() {
             <section className={styles.controls} aria-label="Professor request filters">
                 <div className={styles.filterControls}>
                     <div className={styles.filterSet}>
-                        <span className={styles.filterLabel}>Status (groups)</span>
+                        <span className={styles.filterLabel}>Status totals (groups)</span>
                         <Tabs value={status} onValueChange={value => setStatus(value as AdminProfessorRequestStatusFilter)}>
                             <TabsList className={styles.statusTabs} aria-label="Filter by request status">
                                 {statusTabs.map(tab => (
                                     <TabsTrigger className={styles.statusTab} key={tab.value} value={tab.value}>
                                         <span>{tab.label}</span>
-                                        <span className={styles.tabCount} title={`${counts[tab.value]} groups`}>{counts[tab.value]}</span>
+                                        <span className={styles.tabCount} title={loadState === "loading" ? "Loading count" : `${counts[tab.value]} groups`}>
+                                            {loadState === "loading" ? "…" : counts[tab.value]}
+                                        </span>
                                     </TabsTrigger>
                                 ))}
                             </TabsList>
@@ -338,7 +341,9 @@ export function ProfessorRequestsPage() {
                                 {duplicateTabs.map(tab => (
                                     <TabsTrigger className={styles.statusTab} key={tab.value} value={tab.value}>
                                         <span>{tab.label}</span>
-                                        <span className={styles.tabCount} title={`${duplicateCounts[tab.value]} groups`}>{duplicateCounts[tab.value]}</span>
+                                        <span className={styles.tabCount} title={loadState === "loading" ? "Loading count" : `${duplicateCounts[tab.value]} groups`}>
+                                            {loadState === "loading" ? "…" : duplicateCounts[tab.value]}
+                                        </span>
                                     </TabsTrigger>
                                 ))}
                             </TabsList>
@@ -369,7 +374,9 @@ export function ProfessorRequestsPage() {
                     {showDuplicateFilter && ` · ${duplicateFilterLabel(activeDuplicate)}`}
                 </span>
                 <strong>
-                    {total === 0
+                    {loadState === "loading"
+                        ? "Loading requests…"
+                        : total === 0
                         ? "No requests"
                         : `${pageStart}–${pageEnd} of ${groupTotal} ${groupTotal === 1 ? "group" : "groups"} · ${total} ${total === 1 ? "request" : "requests"}`}
                 </strong>

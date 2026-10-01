@@ -123,18 +123,3 @@ type ReviewReport struct {
 	CreatedAt time.Time
 	SessionId int64
 }
-
-type Feedback struct {
-	ID              int64
-	SessionId       int64
-	Completed       bool
-	CurrentQuestion string
-	CreatedAt       time.Time
-}
-
-type FeedbackEntry struct {
-	FeedbackId int64
-	Question   string
-	Answer     string
-	CreatedAt  time.Time
-}

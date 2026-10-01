@@ -276,7 +276,6 @@ func (db *DB) AttachUserToSessionAndContent(ctx context.Context, sessionID, user
 		         AND existing.user_id = $2
 		   )`,
 		`UPDATE professor.reply_name SET user_id = $2 WHERE session_id = $1 AND user_id IS NULL`,
-		`UPDATE public.feedback SET user_id = $2 WHERE session_id = $1 AND user_id IS NULL`,
 		`UPDATE course.file SET user_id = $2 WHERE session_id = $1 AND user_id IS NULL`,
 		`UPDATE account.notification SET user_id = $2 WHERE session_id = $1 AND user_id IS NULL`,
 	}

@@ -173,9 +173,22 @@ func (s *Server) UploadCourseFile() http.Handler {
 		}
 
 		tag := r.FormValue("course_tag")
-		fileName := r.FormValue("file_name")
-		if fileName == "" && fileHeader != nil {
-			fileName = fileHeader.Filename
+		contentType, err := validateCourseMaterial(fileHeader.Filename, contents)
+		if err != nil {
+			logger.Debugf("invalid course material upload: %v", err)
+			jsonutil.MarshalResponse(w, http.StatusBadRequest, v1.ErrorResponse{
+				Message: err.Error(),
+				Error:   http.StatusBadRequest,
+			})
+			return
+		}
+		fileName, err := courseMaterialDisplayName(fileHeader.Filename, r.FormValue("file_name"))
+		if err != nil {
+			jsonutil.MarshalResponse(w, http.StatusBadRequest, v1.ErrorResponse{
+				Message: err.Error(),
+				Error:   http.StatusBadRequest,
+			})
+			return
 		}
 
 		logger.Debugf("received request to upload course file by session id: %d", profile.SessionId)
@@ -193,18 +206,6 @@ func (s *Server) UploadCourseFile() http.Handler {
 		}
 
 		fileId := strconv.FormatUint(s.generator.Next(), 10)
-
-		fileName = utils.SanitizeFileName(fileName)
-
-		contentType, err := validateCourseMaterial(fileName, contents)
-		if err != nil {
-			logger.Debugf("invalid course material upload: %v", err)
-			jsonutil.MarshalResponse(w, http.StatusBadRequest, v1.ErrorResponse{
-				Message: err.Error(),
-				Error:   http.StatusBadRequest,
-			})
-			return
-		}
 
 		compressedContents, err := utils.CompressData(contents)
 

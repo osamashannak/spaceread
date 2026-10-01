@@ -13,6 +13,7 @@ import (
 )
 
 type ListCourseFileOptions struct {
+	// Limit and Offset count metadata groups, including singleton uploads.
 	Limit                int
 	Offset               int
 	Sort                 string
@@ -243,6 +244,26 @@ func (db *AdminDB) courseFileDecisionResult(ctx context.Context, fileID int64, a
 }
 
 func (db *AdminDB) listCourseFileIDs(ctx context.Context, opts ListCourseFileOptions) ([]int64, error) {
+	query, args := buildCourseFileIDsQuery(opts)
+	rows, err := db.db.Pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	ids := make([]int64, 0)
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+
+	return ids, rows.Err()
+}
+
+func buildCourseFileIDsQuery(opts ListCourseFileOptions) (string, []any) {
 	if opts.Limit <= 0 {
 		opts.Limit = 50
 	}
@@ -372,31 +393,32 @@ func (db *AdminDB) listCourseFileIDs(ctx context.Context, opts ListCourseFileOpt
 			FROM moderation.signal
 			WHERE target_type = 'course_file'
 			GROUP BY target_id
+		), matching_files AS (
+			SELECT
+				cf.id,
+				row_number() OVER (ORDER BY %s) AS queue_position,
+				min(cf.id) OVER (
+					PARTITION BY cf.course_tag, LOWER(BTRIM(cf.name)), LOWER(BTRIM(cf.type)), cf.size
+				) AS group_id
+			FROM course.file cf
+			LEFT JOIN course.course c ON c.tag = cf.course_tag
+			LEFT JOIN signal_counts sc ON sc.target_id = cf.id::text
+			WHERE %s
+		), selected_groups AS (
+			SELECT group_id, min(queue_position) AS first_position
+			FROM matching_files
+			GROUP BY group_id
+			ORDER BY first_position
+			LIMIT $1 OFFSET $2
 		)
-		SELECT cf.id
-		FROM course.file cf
-		LEFT JOIN course.course c ON c.tag = cf.course_tag
-		LEFT JOIN signal_counts sc ON sc.target_id = cf.id::text
-		WHERE %s
-		ORDER BY %s
-		LIMIT $1 OFFSET $2`, where, courseFileListOrderBy(opts.Sort))
+		SELECT files.id
+		FROM matching_files files
+		JOIN selected_groups groups ON groups.group_id = files.group_id
+		ORDER BY groups.first_position, files.queue_position`, courseFileListOrderBy(opts.Sort), where)
 
-	rows, err := db.db.Pool.Query(ctx, query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	ids := make([]int64, 0)
-	for rows.Next() {
-		var id int64
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		ids = append(ids, id)
-	}
-
-	return ids, rows.Err()
+	// Paginate metadata groups rather than uploads so a duplicate set cannot be
+	// split at the page boundary. Filters still apply to individual uploads.
+	return query, args
 }
 
 func courseFileListOrderBy(sort string) string {

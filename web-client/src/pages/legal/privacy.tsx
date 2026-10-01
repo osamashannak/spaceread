@@ -3,12 +3,12 @@ import {LegalMarkdownDocument, LegalPage} from "./legal_page.tsx";
 
 const privacyPolicy = `
 # Information We Collect
-SpaceRead, formerly known as UAEU Space, is a student-led platform for sharing course materials, professor reviews, replies, ratings, and feedback. This Privacy Policy explains what information we collect, how we use it, when we share it, and the choices you have.
+SpaceRead, formerly known as UAEU Space, is a student-led platform for sharing course materials, professor reviews, replies, and ratings. This Privacy Policy explains what information we collect, how we use it, when we share it, and the choices you have.
 
 SpaceRead is not affiliated with United Arab Emirates University. If you do not agree with this Privacy Policy, please do not use SpaceRead.
 
 We collect information in the following ways:
-- Content you submit, including course files, file names, professor reviews, ratings, replies, reports, GIF links, review attachments, survey answers, and feedback.
+- Content you submit, including course files, file names, professor reviews, ratings, replies, reports, GIF links, and review attachments.
 - Contact or verification information you choose to provide, such as a university email address used to send a student verification code.
 - Account information if account features are available and you choose to use them, such as a username, email address, password credentials, or Google sign-in information.
 - Technical information collected automatically, including IP address, user agent, browser and device information, approximate usage data, pages viewed, actions taken, timestamps, cookies, session identifiers, and error or performance data.
@@ -17,12 +17,12 @@ We collect information in the following ways:
 # Cookies, Local Storage, and Sessions
 SpaceRead uses cookies and similar technologies to create and recognize a browser session, prevent duplicate reviews or ratings, support deletion from the same session, protect against abuse, and keep the website working. Session cookies may last for an extended period unless you clear them from your browser.
 
-SpaceRead may also use browser local storage or session storage for interface state, feedback prompts, and student verification status. For example, your browser may temporarily store a pending verification email address or whether a feedback prompt has already been shown.
+SpaceRead may also use browser local storage or session storage for interface state and student verification status. For example, your browser may temporarily store a pending verification email address.
 
 # How We Use Information
 We use information to:
 - Operate, maintain, and improve SpaceRead.
-- Publish and organize course materials, reviews, replies, ratings, and feedback.
+- Publish and organize course materials, reviews, replies, and ratings.
 - Prevent spam, fraud, abuse, duplicate submissions, and security incidents.
 - Moderate content, detect unsafe or inappropriate submissions, and respond to reports.
 - Send student verification emails and confirm verification status when you request it.
@@ -92,7 +92,7 @@ export default function Privacy() {
             <LegalPage
                 title="Privacy Policy"
                 label="SpaceRead"
-                lastUpdated="July 1, 2026"
+                lastUpdated="September 24, 2026"
                 notice="This policy explains how SpaceRead handles information submitted through the website and information collected to keep the platform useful, secure, and respectful."
             >
                 <LegalMarkdownDocument source={privacyPolicy}/>

@@ -15,6 +15,7 @@ type UploadDetails = {
 }
 
 const readyMessage = "Ready to upload";
+const supportedExtensions = [".pdf", ".txt", ".jpg", ".jpeg", ".png", ".gif", ".webp", ".docx", ".pptx", ".xlsx"];
 
 export default function FileUpload(props: { courseTag: string }) {
     const nextFileId = useRef(0);
@@ -126,9 +127,16 @@ export default function FileUpload(props: { courseTag: string }) {
 
         const fileDetails = details.slice();
         const skipped: string[] = [];
+        let skippedForType = 0;
         let skippedForLimit = 0;
 
         files.forEach((file) => {
+            const extension = file.name.slice(file.name.lastIndexOf(".")).toLowerCase();
+            if (!supportedExtensions.includes(extension)) {
+                skippedForType++;
+                return;
+            }
+
             if (fileDetails.length >= 10) {
                 skippedForLimit++;
                 return;
@@ -163,6 +171,9 @@ export default function FileUpload(props: { courseTag: string }) {
         setUploadComplete(false);
 
         const notices = [];
+        if (skippedForType > 0) {
+            notices.push(`${skippedForType} ${skippedForType === 1 ? "file has an unsupported format and was" : "files have unsupported formats and were"} not added.`);
+        }
         if (skipped.length > 0) {
             notices.push(`${skipped.length} ${skipped.length === 1 ? "file was" : "files were"} over 100 MB and not added.`);
         }
@@ -214,6 +225,7 @@ export default function FileUpload(props: { courseTag: string }) {
             <fieldset style={{border: "none", padding: 0}}>
 
                 <input type={"file"}
+                       accept={supportedExtensions.join(",")}
                        title={""}
                        className={styles.uploadButtonHTML}
                        id={"file-upload"}
@@ -236,7 +248,7 @@ export default function FileUpload(props: { courseTag: string }) {
                     </span>
                     <div className={styles.dropZoneText}>
                         <span>Drag files here or choose files</span>
-                        <p>PDFs, images, documents, slides, sheets, or archives.</p>
+                        <p>PDF, DOCX, PPTX, XLSX, TXT, JPG/JPEG, PNG, GIF, or WebP.</p>
                     </div>
                     <span className={styles.uploadButtonLabel}>Choose files</span>
                 </label>

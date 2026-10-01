@@ -263,9 +263,9 @@ func normalizeProfessorRequestListOptions(opts ListProfessorRequestOptions) List
 	if opts.Status == "" {
 		opts.Status = "pending"
 	}
-	// Approved requests match the professor they created, so their history
-	// must remain visible regardless of the moderation duplicate filter.
-	if opts.Status == "approved" || (opts.Duplicate != "likely" && opts.Duplicate != "not_likely") {
+	// Completed decisions remain visible in their history tabs regardless of
+	// the duplicate filter used while reviewing pending requests.
+	if professorRequestStatusIgnoresDuplicateFilter(opts.Status) || (opts.Duplicate != "likely" && opts.Duplicate != "not_likely") {
 		opts.Duplicate = "all"
 	}
 	opts.Search = strings.TrimSpace(opts.Search)
@@ -470,10 +470,9 @@ func professorRequestExistingMatchCandidateIDs(
 		if !row.SearchMatch {
 			continue
 		}
-		// With no duplicate filter, existing-professor matches only affect the
-		// duplicate counts for the selected status. A duplicate filter also makes
-		// them necessary for status counts across every status.
-		if opts.Duplicate != "all" || professorRequestMatchesStatus(row.Status, opts.Status) {
+		// Status totals do not depend on duplicate likelihood. Only requests in
+		// the selected status need matches for the results and duplicate counts.
+		if professorRequestMatchesStatus(row.Status, opts.Status) {
 			ids = append(ids, row.ID)
 		}
 	}
@@ -556,16 +555,12 @@ func buildProfessorRequestListPage(
 
 		matchesStatus := professorRequestMatchesStatus(row.Status, opts.Status)
 		matchesDuplicate := professorRequestMatchesDuplicate(requestMetadata.LikelyDuplicate, opts.Duplicate)
-		if matchesDuplicate {
-			incrementProfessorRequestStatusCount(&page.StatusCounts, row.Status)
-			statusGroupIDs["all"][requestMetadata.GroupID] = struct{}{}
-			statusGroupIDs[row.Status][requestMetadata.GroupID] = struct{}{}
-		} else if row.Status == "approved" {
-			// The Approved tab ignores the duplicate filter. Its badge must
-			// therefore include every approved request matching the search.
-			page.StatusCounts.Approved++
-			statusGroupIDs["approved"][requestMetadata.GroupID] = struct{}{}
-		}
+		// Status badges show the complete search-scoped totals. Duplicate
+		// likelihood narrows the queue and its own facets, not these totals.
+		page.StatusCounts.All++
+		incrementProfessorRequestStatusCount(&page.StatusCounts, row.Status)
+		statusGroupIDs["all"][requestMetadata.GroupID] = struct{}{}
+		statusGroupIDs[row.Status][requestMetadata.GroupID] = struct{}{}
 		if matchesStatus {
 			page.DuplicateCounts.All++
 			duplicateGroupIDs["all"][requestMetadata.GroupID] = struct{}{}
@@ -662,7 +657,6 @@ func buildProfessorRequestListPage(
 }
 
 func incrementProfessorRequestStatusCount(counts *v1.AdminProfessorRequestStatusCounts, status string) {
-	counts.All++
 	switch status {
 	case "pending":
 		counts.Pending++
@@ -673,6 +667,10 @@ func incrementProfessorRequestStatusCount(counts *v1.AdminProfessorRequestStatus
 	case "dismissed":
 		counts.Dismissed++
 	}
+}
+
+func professorRequestStatusIgnoresDuplicateFilter(status string) bool {
+	return status == "approved" || status == "rejected" || status == "dismissed"
 }
 
 func professorRequestMatchesStatus(status, selectedStatus string) bool {

@@ -56,8 +56,6 @@ export default function Professor() {
     const focusedReviewId = reviewIdFromHash(location.hash);
     const professorEmail = professor?.email ?? "";
 
-    // useFeedbackPopup(!!professor);
-
     useEffect(() => {
         if (!email) {
             dispatch(setProfessor(null));

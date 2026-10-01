@@ -1,8 +1,9 @@
-import {type KeyboardEvent, type ReactNode, useCallback, useEffect, useMemo, useState} from "react";
+import {type KeyboardEvent, type ReactNode, useCallback, useEffect, useId, useMemo, useState} from "react";
 import {createPortal} from "react-dom";
 import {
     AlertCircle,
     CheckCircle2,
+    ChevronDown,
     Download,
     Eye,
     EyeOff,
@@ -31,6 +32,7 @@ import {
 } from "@/lib/admin_api";
 import {cn} from "@/lib/utils";
 import styles from "./moderation.module.scss";
+import groupStyles from "./course_files.module.scss";
 
 type LoadState = "loading" | "ready" | "error";
 type Tone = "default" | "warning" | "danger" | "info" | "success";
@@ -200,6 +202,7 @@ export function CourseFilesPage() {
     }, [filters]);
 
     const orderedFiles = useMemo(() => sortCourseFiles(files, filters.sort), [files, filters.sort]);
+    const fileGroups = useMemo(() => groupCourseFiles(orderedFiles), [orderedFiles]);
     const visibleFileIds = useMemo(() => orderedFiles.map(file => file.id), [orderedFiles]);
     const selectedVisibleCount = visibleFileIds.filter(id => selectedFileIds.has(id)).length;
     const allVisibleFilesSelected = visibleFileIds.length > 0 && selectedVisibleCount === visibleFileIds.length;
@@ -268,15 +271,17 @@ export function CourseFilesPage() {
         });
     }
 
-    function toggleFileSelection(fileId: string, checked: boolean) {
+    function toggleFileSelection(fileIds: string[], checked: boolean) {
         setBulkActionMessage("");
         setSelectedFileIds(current => {
             const next = new Set(current);
-            if (checked) {
-                next.add(fileId);
-            } else {
-                next.delete(fileId);
-            }
+            fileIds.forEach(fileId => {
+                if (checked) {
+                    next.add(fileId);
+                } else {
+                    next.delete(fileId);
+                }
+            });
             return next;
         });
     }
@@ -484,14 +489,16 @@ export function CourseFilesPage() {
             </section>
 
             {orderedFiles.length > 0 && (
-                <section className={styles.selectionBar} aria-label="Course file selection">
+                <section className={cn(styles.selectionBar, groupStyles.selectionBar)} aria-label="Course file selection">
                     <label className={styles.selectionToggle}>
                         <input
+                            aria-label="Select all uploads in queue"
                             checked={allVisibleFilesSelected}
+                            ref={input => { if (input) input.indeterminate = selectedVisibleCount > 0 && !allVisibleFilesSelected; }}
                             type="checkbox"
                             onChange={toggleVisibleSelection}
                         />
-                        <span>{selectedFileIds.size > 0 ? `${selectedFileIds.size} selected` : `${orderedFiles.length} files in queue`}</span>
+                        <span>{selectedFileIds.size > 0 ? `${selectedFileIds.size} selected` : `${orderedFiles.length} ${orderedFiles.length === 1 ? "upload" : "uploads"} in ${fileGroups.length} ${fileGroups.length === 1 ? "group" : "groups"}`}</span>
                     </label>
                     <div className={styles.selectionActions}>
                         {selectedFileIds.size > 0 && (
@@ -603,14 +610,14 @@ export function CourseFilesPage() {
                 )}
                 {orderedFiles.length > 0 && (
                     <div className={styles.queue}>
-                        {orderedFiles.map(file => (
-                            <CourseFileQueueItem
-                                key={file.id}
-                                file={file}
-                                selected={file.id === selectedId}
-                                selectedForBatch={selectedFileIds.has(file.id)}
-                                onOpen={() => openFile(file)}
-                                onSelectionChange={checked => toggleFileSelection(file.id, checked)}
+                        {fileGroups.map(group => (
+                            <CourseFileQueueGroup
+                                key={group.key}
+                                files={group.files}
+                                selectedId={selectedId}
+                                selectedFileIds={selectedFileIds}
+                                onOpen={openFile}
+                                onSelectionChange={toggleFileSelection}
                             />
                         ))}
                     </div>
@@ -626,6 +633,90 @@ function FilterGroup({title, children}: { title: string; children: ReactNode }) 
             <strong>{title}</strong>
             <div>{children}</div>
         </div>
+    );
+}
+
+function CourseFileQueueGroup({
+    files,
+    selectedId,
+    selectedFileIds,
+    onOpen,
+    onSelectionChange,
+}: {
+    files: AdminCourseFileSummary[];
+    selectedId: string | null;
+    selectedFileIds: Set<string>;
+    onOpen: (file: AdminCourseFileSummary) => void;
+    onSelectionChange: (fileIds: string[], checked: boolean) => void;
+}) {
+    const [expanded, setExpanded] = useState(false);
+    const uploadsId = useId();
+    const first = files[0];
+    const selectedCount = files.filter(file => selectedFileIds.has(file.id)).length;
+    const allSelected = selectedCount === files.length;
+    const pendingCount = files.filter(file => !file.reviewed).length;
+    const hiddenCount = files.filter(file => !file.visible).length;
+    const signalCount = files.reduce((count, file) => count + courseFileSignalCount(file), 0);
+
+    function renderFile(file: AdminCourseFileSummary) {
+        return (
+            <CourseFileQueueItem
+                key={file.id}
+                file={file}
+                selected={file.id === selectedId}
+                selectedForBatch={selectedFileIds.has(file.id)}
+                onOpen={() => onOpen(file)}
+                onSelectionChange={checked => onSelectionChange([file.id], checked)}
+            />
+        );
+    }
+
+    if (files.length === 1) return renderFile(first);
+
+    return (
+        <section className={groupStyles.group} aria-label={`${files.length} likely duplicate uploads of ${first.name} for ${first.course_tag}`}>
+            <header className={cn(groupStyles.header, selectedCount > 0 && groupStyles.selected)}>
+                <label className={styles.reviewSelector}>
+                    <input
+                        aria-label={`Select all ${files.length} uploads of ${first.name} for ${first.course_tag}`}
+                        checked={allSelected}
+                        ref={input => { if (input) input.indeterminate = selectedCount > 0 && !allSelected; }}
+                        type="checkbox"
+                        onChange={event => onSelectionChange(files.map(file => file.id), event.target.checked)}
+                    />
+                </label>
+                <button
+                    aria-controls={uploadsId}
+                    aria-expanded={expanded}
+                    className={groupStyles.toggle}
+                    type="button"
+                    onClick={() => setExpanded(current => !current)}
+                >
+                    <span className={groupStyles.summary}>
+                        <span className={groupStyles.title}>
+                            <strong>{first.name}</strong>
+                            <Badge className={styles.compactBadge} variant="info">{files.length} uploads</Badge>
+                            <Badge className={styles.compactBadge} variant="warning">Likely duplicates</Badge>
+                        </span>
+                        <span className={groupStyles.description}>{first.course_tag}{first.course_name && ` · ${first.course_name}`}</span>
+                        <span className={styles.queueState}>
+                            <Badge className={styles.compactBadge} title={first.type} variant="info">{mimeLabel(first.type)}</Badge>
+                            <Badge className={styles.compactBadge} variant="default">{formatBytes(first.size)} each</Badge>
+                            {pendingCount > 0 && <Badge className={styles.compactBadge} variant="warning">{pendingCount} not reviewed</Badge>}
+                            {hiddenCount > 0 && <Badge className={styles.compactBadge} variant="default">{hiddenCount} hidden</Badge>}
+                            {signalCount > 0 && <Badge className={styles.compactBadge} variant="danger">{signalCount} signals</Badge>}
+                            {selectedCount > 0 && <Badge className={styles.compactBadge} variant="info">{selectedCount} selected</Badge>}
+                        </span>
+                        <span className={groupStyles.hint}>Matching course, filename, type and size in this queue.</span>
+                        <span className={groupStyles.expandLabel}>{expanded ? "Hide uploads" : "Show uploads"}</span>
+                    </span>
+                    <ChevronDown aria-hidden="true" className={cn(groupStyles.chevron, expanded && groupStyles.expanded)} size={18}/>
+                </button>
+            </header>
+            <div className={groupStyles.uploads} hidden={!expanded} id={uploadsId}>
+                {expanded && files.map(renderFile)}
+            </div>
+        </section>
     );
 }
 
@@ -669,6 +760,7 @@ function CourseFileQueueItem({
                     onKeyDown={event => event.stopPropagation()}
                 >
                     <input
+                        aria-label={`Select course file ${file.id}`}
                         checked={selectedForBatch}
                         type="checkbox"
                         onChange={event => onSelectionChange(event.target.checked)}
@@ -959,6 +1051,22 @@ function sortCourseFiles(files: AdminCourseFileSummary[], sort: AdminCourseFileF
             return timestamp(b.created_at) - timestamp(a.created_at) || b.id.localeCompare(a.id);
         }
     });
+}
+
+function groupCourseFiles(files: AdminCourseFileSummary[]) {
+    const groups = new Map<string, {key: string; files: AdminCourseFileSummary[]}>();
+    // Match the server's LOWER(BTRIM(...)) metadata grouping; blob names are unique per upload.
+    const normalize = (value: string) => value.replace(/^ +| +$/g, "").toLowerCase();
+    for (const file of files) {
+        const key = JSON.stringify([file.course_tag, normalize(file.name), normalize(file.type), file.size]);
+        const group = groups.get(key);
+        if (group) {
+            group.files.push(file);
+        } else {
+            groups.set(key, {key, files: [file]});
+        }
+    }
+    return [...groups.values()];
 }
 
 function courseFileMatchesFilters(file: AdminCourseFileSummary, filters: AdminCourseFileFilters) {

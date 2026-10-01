@@ -1,0 +1,139 @@
+.group {
+  border-bottom: 1px solid #dce5ec;
+  min-width: 0;
+}
+
+.header {
+  align-items: start;
+  background: #f8fbff;
+  border-left: 3px solid hsl(var(--spaceread-blue) / 0.4);
+  display: grid;
+  gap: 10px;
+  grid-template-columns: auto minmax(0, 1fr);
+  padding: 12px 14px;
+}
+
+.selected {
+  background: #f3fbff;
+  border-left-color: #38bdf8;
+}
+
+.toggle {
+  align-items: center;
+  appearance: none;
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  color: hsl(var(--foreground));
+  cursor: pointer;
+  display: flex;
+  font: inherit;
+  gap: 12px;
+  justify-content: space-between;
+  min-width: 0;
+  padding: 0;
+  text-align: left;
+  width: 100%;
+
+  &:hover .expandLabel {
+    text-decoration: underline;
+  }
+
+  &:focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 4px;
+  }
+}
+
+.summary {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.title {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 8px;
+
+  strong {
+    font-size: 13px;
+    font-weight: 800;
+    line-height: 1.4;
+    overflow-wrap: anywhere;
+  }
+}
+
+.description,
+.hint {
+  color: hsl(var(--muted-foreground));
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.hint {
+  font-size: 10px;
+}
+
+.expandLabel {
+  color: hsl(var(--spaceread-blue));
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.5;
+}
+
+.chevron {
+  color: hsl(var(--spaceread-blue));
+  flex-shrink: 0;
+  transition: transform 0.16s ease;
+}
+
+.expanded {
+  transform: rotate(180deg);
+}
+
+.uploads {
+  border-left: 3px solid hsl(var(--spaceread-blue) / 0.4);
+  margin-left: 28px;
+
+  > :last-child {
+    border-bottom: 0;
+  }
+}
+
+@media (max-width: 640px) {
+  .selectionBar {
+    flex-wrap: wrap;
+
+    > label {
+      flex-basis: 100%;
+
+      input {
+        flex-shrink: 0;
+      }
+
+      span {
+        overflow: visible;
+        white-space: normal;
+      }
+    }
+  }
+
+  .header {
+    gap: 8px;
+    padding: 12px 10px;
+  }
+
+  .uploads {
+    margin-left: 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chevron {
+    transition: none;
+  }
+}

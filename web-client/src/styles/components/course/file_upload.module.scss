@@ -182,6 +182,18 @@
   }
 }
 
+.filePreviewNameRow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.filePreviewExtension {
+  flex: 0 0 auto;
+  color: rgb(83, 100, 113);
+  font-size: 12px;
+}
+
 .filePreviewName {
   display: block;
   width: 100%;

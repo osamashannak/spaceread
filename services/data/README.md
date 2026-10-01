@@ -1,63 +1,9 @@
-# Faculty imports
+# Faculty snapshots
 
 `zayed_faculty.json` is a reviewed snapshot of public Zayed University faculty names,
 published `@zu.ac.ae` email addresses, colleges, and official source URLs. Its
 coverage and exclusions document what was verified; it is not a fabricated list
 or a guarantee that every faculty member has a public profile.
-
-Run from `services/` with the intended database's `DB_*` environment variables.
-The importer never automatically loads `.env`; an explicit `--env-file` loads a
-chosen file without overriding variables already set in the environment.
-
-```powershell
-go run ./cmd/import-professors --file ./data/zayed_faculty.json --env-file ./.env --report ./zayed-dry-run.json
-go run ./cmd/import-professors --file ./data/zayed_faculty.json --env-file ./.env --apply --report ./zayed-import.json
-```
-
-The first command is read-only. Review the target database and dry-run report
-before applying. Reports contain the source file's SHA-256, counts, new and
-existing faculty, conflicts, and the exact emails committed by this invocation.
-Omit `--report` to print JSON to stdout. An insert failure rolls back the batch.
-If the COMMIT response is lost, `commit_status` is `unknown` and
-`needs_reconciliation` is true: `applied=false` and zero confirmed inserts do not
-prove rollback. Check every `attempted_emails` entry against the database before
-retrying. `inserted_emails` contains only inserts with a confirmed commit. Report files should be retained with
-the source manifest as the import audit record, not committed with deployment
-credentials or operational database details.
-
-The importer accepts only this manifest's canonical `Zayed University` identity,
-UTC retrieval timestamp, non-empty names/colleges, published institutional emails,
-and HTTPS sources under `zu.ac.ae`. It lowercases emails, sorts and deduplicates
-colleges, and joins multiple college names with `; `. Source and coverage metadata
-remain in the manifest/report; no schema change is required.
-
-Existing records are never updated or removed. Matching records are skipped;
-conflicting emails, changed names/colleges/universities, and same-name/different-email
-identities are reported for review and skipped. Distinct people with the same name
-must be resolved manually from source evidence. Other valid new records can still
-be imported. This preserves reviews, visibility, views, aliases, and moderation.
-During apply, a short table write lock protects the case-insensitive duplicate
-check because the database email primary key itself is case-sensitive. Lock
-acquisition times out after 15 seconds; the whole command times out after 5 minutes.
-
-Import before enabling the new selector in production. Restart every professor
-API instance afterward: university lists, including empty lists, are cached in
-memory for 12 hours. Verify the Zayed University list and a representative profile.
-This command does not deploy or restart services and is not an automatic sync.
-
-Tests:
-
-```powershell
-go test ./cmd/import-professors
-# Optional PostgreSQL tests: the role needs CREATEDB.
-$env:TEST_DATABASE_URL = 'postgres://testuser:testpassword@localhost:5432/postgres?sslmode=disable'
-go test ./cmd/import-professors -v
-```
-
-Database tests create and remove uniquely named disposable databases and never
-modify the database named in `TEST_DATABASE_URL`. They verify dry runs, idempotency,
-case-insensitive identity checks, preservation of existing data, and atomic failure.
-
 
 ## Collecting the public snapshot
 
@@ -73,7 +19,7 @@ python -m unittest discover -s scripts -p 'test_collect_zayed_faculty.py' -v
 HTTPS client. Public HTML is cached for up to 24 hours in the system temporary
 directory (`spaceread-zayed-faculty`), outside this repository. Omit `--refresh` to
 reuse that cache while reviewing extraction changes. Default concurrency is six.
-Review the generated manifest and import dry run after every collection.
+Review the generated manifest after every collection.
 
 Membership comes from the seven active college faculty directories linked by ZU's
 college menus, including their 17 campus/department child directories. Academic

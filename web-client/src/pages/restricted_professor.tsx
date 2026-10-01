@@ -38,8 +38,6 @@ export default function RestrictedProfessor() {
 
     const professor = professorState.professor as ProfessorAPI | undefined | null;
 
-    // useFeedbackPopup(!!professor);
-
     useEffect(() => {
         if (!email) {
             dispatch(setProfessor(null));
