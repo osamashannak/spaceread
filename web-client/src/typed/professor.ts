@@ -58,6 +58,7 @@ export interface ReviewAPI {
         height: number;
         width: number;
         url: string;
+        mime_type?: string;
     };
 }
 

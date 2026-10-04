@@ -3,15 +3,22 @@ import relativeTime from 'dayjs/plugin/relativeTime';
 import {formatBytes, getIconFromMIME} from "../../utils.tsx";
 import {CourseFileAPI} from "../../typed/course.ts";
 import styles from "../../styles/components/course/file.module.scss";
-import {getDownloadLink} from "../../api/course.ts";
+import {getDownloadLink, getPreviewLink} from "../../api/course.ts";
 import {useModal} from "../provider/modal.tsx";
 import PdfPreviewModal from "../modal/pdf_preview_modal.tsx";
+import ImagePreviewModal from "../modal/image_preview_modal.tsx";
 
 dayjs.extend(relativeTime);
 
+// Must match the static image types the course preview endpoint accepts; GIFs are download-only.
+const PREVIEWABLE_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+
 export default function File(props: CourseFileAPI) {
     const modal = useModal();
-    const isPdf = props.type.split(";", 1)[0].trim().toLowerCase() === "application/pdf";
+    const mimeType = props.type.split(";", 1)[0].trim().toLowerCase();
+    const isPdf = mimeType === "application/pdf";
+    const isImage = PREVIEWABLE_IMAGE_TYPES.has(mimeType);
+    const canPreview = isPdf || isImage;
     const downloadUrl = getDownloadLink(props.id);
     const uploadedAt = dayjs(props.created_at);
 
@@ -43,7 +50,7 @@ export default function File(props: CourseFileAPI) {
                         </svg>
                         {props.download_count.toLocaleString()}
                     </span>
-                    <span className={styles.downloadLink}>{isPdf ? "Preview" : "Download"}</span>
+                    <span className={styles.downloadLink}>{canPreview ? "Preview" : "Download"}</span>
                 </div>
             </div>
         </>
@@ -51,14 +58,24 @@ export default function File(props: CourseFileAPI) {
 
     return (
         <article className={styles.fileWrapper}>
-            {isPdf ? (
+            {canPreview ? (
                 <button
                     className={styles.file}
                     type="button"
                     aria-label={`Preview ${props.name}`}
                     aria-haspopup="dialog"
                     title={props.name}
-                    onClick={() => modal.openModal(PdfPreviewModal, {file: props})}
+                    onClick={() => {
+                        if (isPdf) {
+                            modal.openModal(PdfPreviewModal, {file: props});
+                            return;
+                        }
+                        modal.openModal(ImagePreviewModal, {
+                            title: props.name,
+                            downloadUrl,
+                            loadSrc: (signal: AbortSignal) => getPreviewLink(props.id, signal),
+                        });
+                    }}
                 >
                     {content}
                 </button>

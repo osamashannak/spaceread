@@ -87,6 +87,7 @@ func (db *ProfessorDB) GetProfessorReviews(ctx context.Context, sessionId int64,
 			ra.height,
 			ra.width,
 			ra.blob_name,
+			ra.mime_type,
 			r.session_id,
 			r.gif
 		FROM professor.review r
@@ -122,6 +123,7 @@ func (db *ProfessorDB) GetProfessorReviews(ctx context.Context, sessionId int64,
 			attHeight    *int
 			attWidth     *int
 			attURL       *string
+			attMimeType  *string
 			revSessionId *int64
 		)
 
@@ -147,6 +149,7 @@ func (db *ProfessorDB) GetProfessorReviews(ctx context.Context, sessionId int64,
 			&attHeight,
 			&attWidth,
 			&attURL,
+			&attMimeType,
 			&revSessionId,
 			&rev.Gif,
 		); err != nil {
@@ -167,6 +170,9 @@ func (db *ProfessorDB) GetProfessorReviews(ctx context.Context, sessionId int64,
 				Height: *attHeight,
 				Width:  *attWidth,
 				URL:    db.formatAttachmentURL(*attURL),
+			}
+			if attMimeType != nil {
+				rev.Attachment.MimeType = *attMimeType
 			}
 		}
 

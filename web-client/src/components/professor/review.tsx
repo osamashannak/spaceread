@@ -10,6 +10,7 @@ import {translateReview} from "../../api/professor.ts";
 import {ReplyProvider} from "../provider/reply.tsx";
 import ReplyComposeModal from "../modal/reply_compose_modal.tsx";
 import GoogleAttribution from "../google_attribution.tsx";
+import ReviewImage from "./review_image.tsx";
 
 
 type ReviewProps = ReviewAPI & {
@@ -135,35 +136,13 @@ export default function Review(review: ReviewProps) {
                         {displayText}
                     </p>
 
-                    {review.attachment && <div className={styles.imageList}>
-                        <div className={styles.attachment} onClick={() => {
-                                window.open(review.attachment!.url, "_blank");
-                            }}>
-                                <div
-                                    style={{paddingBottom: `${review.attachment.height / review.attachment.width * 100}%`}}></div>
-                                <div style={{backgroundImage: `url(${review.attachment.url})`}} className={styles.imageDiv}>
-                                </div>
-                                <img src={review.attachment.url}
-                                     draggable={false}
-                                     width={100}
-                                     height={100}
-                                     alt={""}/>
-                            </div>
-                    </div>}
+                    {review.attachment && <ReviewImage url={review.attachment.url}
+                                                     width={review.attachment.width}
+                                                     height={review.attachment.height}
+                                                     mimeType={review.attachment.mime_type}/>}
 
-                    {gifPreview && <div className={styles.imageList}>
-                        <div className={styles.attachment}>
-                            <div
-                                style={{paddingBottom: `${gifPreview.height / gifPreview.width * 100}%`}}></div>
-                            <div style={{backgroundImage: `url(${gifPreview.url})`}} className={styles.imageDiv}>
-                            </div>
-                            <img src={gifPreview.url}
-                                 draggable={false}
-                                 width={100}
-                                 height={100}
-                                 alt={""}/>
-                        </div>
-                    </div>}
+                    {gifPreview && <ReviewImage url={gifPreview.url} width={gifPreview.width} height={gifPreview.height}
+                                             previewable={false}/>}
 
                     {translatedText && !showOriginalText && <GoogleAttribution/>}
 

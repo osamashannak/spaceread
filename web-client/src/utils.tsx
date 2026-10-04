@@ -105,6 +105,14 @@ export function getIconFromMIME(mimeType: string): JSX.Element {
     }
 }
 
+export const isGifUrl = (url: string) => {
+    try {
+        return new URL(url, window.location.href).pathname.toLowerCase().endsWith(".gif");
+    } catch {
+        return false;
+    }
+}
+
 export const formatRelativeTime = (inputDate: Date) => {
 
     const now = new Date();

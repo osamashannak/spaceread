@@ -15,6 +15,14 @@ import (
 	"github.com/osamashannak/uaeu-space/services/pkg/utils"
 )
 
+// GIFs are excluded: course materials only preview static images.
+var previewableCourseFileTypes = map[string]struct{}{
+	"application/pdf": {},
+	"image/jpeg":      {},
+	"image/png":       {},
+	"image/webp":      {},
+}
+
 type courseFilePreviewStore interface {
 	GetCourseFileForPreview(context.Context, string) (*model.CourseFile, error)
 }
@@ -58,8 +66,8 @@ func courseFilePreviewHandler(db courseFilePreviewStore, storage courseFilePrevi
 			return
 		}
 		contentType, _, err := mime.ParseMediaType(file.Type)
-		if err != nil || contentType != "application/pdf" {
-			respondError(http.StatusUnsupportedMediaType, "preview is only available for PDF files")
+		if _, ok := previewableCourseFileTypes[contentType]; err != nil || !ok {
+			respondError(http.StatusUnsupportedMediaType, "preview is only available for PDF and image files")
 			return
 		}
 

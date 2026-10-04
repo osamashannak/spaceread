@@ -194,10 +194,11 @@ func (s *Server) PostReview() http.Handler {
 			} else {
 				logger.Debugf("review attachment: %v", attachment)
 				attachmentInfo = &v1.ReviewAttachment{
-					ID:     attachment.ID,
-					Height: attachment.Height,
-					Width:  attachment.Width,
-					URL:    s.storage.FormatSASURL(attachment.BlobName, ""),
+					ID:       attachment.ID,
+					Height:   attachment.Height,
+					Width:    attachment.Width,
+					URL:      s.storage.FormatSASURL(attachment.BlobName, ""),
+					MimeType: attachment.MimeType,
 				}
 			}
 		}

@@ -65,10 +65,11 @@ type Review struct {
 }
 
 type ReviewAttachment struct {
-	ID     int64  `json:"id,string"`
-	Height int    `json:"height"`
-	Width  int    `json:"width"`
-	URL    string `json:"url"`
+	ID       int64  `json:"id,string"`
+	Height   int    `json:"height"`
+	Width    int    `json:"width"`
+	URL      string `json:"url"`
+	MimeType string `json:"mime_type,omitempty"`
 }
 
 type ReviewPostBody struct {

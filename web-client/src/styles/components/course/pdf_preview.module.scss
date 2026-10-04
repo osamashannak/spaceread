@@ -45,8 +45,15 @@
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 16px 20px;
+  padding: 12px 12px 12px 20px;
   border-bottom: 1px solid rgb(239, 243, 244);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 8px;
 }
 
 .details {
@@ -138,44 +145,14 @@
   cursor: pointer;
 }
 
-.footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 14px 20px;
-  border-top: 1px solid rgb(239, 243, 244);
-}
-
-.fallback {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 16px;
-  font-size: 12px;
-  color: rgb(83, 100, 113);
-
-  a, button {
-    text-decoration: underline;
-    text-underline-offset: 3px;
-  }
-
-  button {
-    border: 0;
-    background: none;
-    color: inherit;
-    font: inherit;
-    cursor: pointer;
-  }
-}
-
 .download {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  flex-shrink: 0;
-  gap: 8px;
-  padding: 12px 16px;
-  border-radius: 8px;
+  gap: 6px;
+  height: 40px;
+  padding: 0 14px;
+  border-radius: 20px;
   background: #049ae5;
   color: white;
   font-size: 13px;
@@ -207,11 +184,15 @@
   }
 
   .header {
-    padding: calc(12px + env(safe-area-inset-top, 0px)) 12px 12px;
+    padding: calc(12px + env(safe-area-inset-top, 0px)) 12px 12px 16px;
   }
 
-  .footer {
-    gap: 12px;
-    padding: 12px 12px calc(12px + env(safe-area-inset-bottom, 0px));
+  .download {
+    width: 40px;
+    padding: 0;
+
+    span {
+      display: none;
+    }
   }
 }

@@ -108,17 +108,17 @@ export const getPreviewLink = async (fileId: number, signal: AbortSignal): Promi
     });
 
     if (!response.ok) {
-        throw new Error("PDF preview is unavailable.");
+        throw new Error("Preview is unavailable.");
     }
 
     const preview: unknown = await response.json();
     if (!preview || typeof preview !== "object" || !("url" in preview) || typeof preview.url !== "string") {
-        throw new Error("PDF preview is unavailable.");
+        throw new Error("Preview is unavailable.");
     }
 
     const url = new URL(preview.url);
     if (url.protocol !== "https:" && url.protocol !== "http:") {
-        throw new Error("PDF preview is unavailable.");
+        throw new Error("Preview is unavailable.");
     }
 
     return url.href;
