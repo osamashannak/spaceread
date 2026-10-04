@@ -144,6 +144,19 @@ func (db *CourseDB) IncrementCourseFileDownloadCount(ctx context.Context, id str
 	return nil
 }
 
+func (db *CourseDB) GetCourseFileForPreview(ctx context.Context, id string) (*model.CourseFile, error) {
+	var file model.CourseFile
+	err := db.Db.Pool.QueryRow(ctx, `SELECT blob_name, name, type FROM course.file WHERE id = $1 AND visible`, id).
+		Scan(&file.BlobName, &file.Name, &file.Type)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &file, nil
+}
+
 func (db *CourseDB) GetAccessToken(ctx context.Context, ipAddress string) (*model.FileAccessToken, error) {
 	var accessToken model.FileAccessToken
 

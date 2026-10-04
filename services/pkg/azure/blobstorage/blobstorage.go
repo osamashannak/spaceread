@@ -6,6 +6,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blob"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/sas"
 	"github.com/osamashannak/uaeu-space/services/pkg/utils"
+	"mime"
 	"net"
 	"os"
 	"strings"
@@ -78,16 +79,28 @@ func (s *BlobStorage) CreateObject(ctx context.Context, name string, contentType
 }
 
 func (s *BlobStorage) GenerateSASToken(blobName string, ipAddress net.IP, expiresOn time.Time) (string, error) {
+	return s.generateSASToken(blobName, ipAddress, expiresOn, "", "")
+}
+
+// GenerateInlineSASToken overrides the stored attachment headers for this URL only.
+func (s *BlobStorage) GenerateInlineSASToken(blobName, fileName, contentType string, ipAddress net.IP, expiresOn time.Time) (string, error) {
+	disposition := mime.FormatMediaType("inline", map[string]string{"filename": fileName})
+	return s.generateSASToken(blobName, ipAddress, expiresOn, contentType, disposition)
+}
+
+func (s *BlobStorage) generateSASToken(blobName string, ipAddress net.IP, expiresOn time.Time, contentType, disposition string) (string, error) {
 	permissions := sas.BlobPermissions{
 		Read: true,
 	}
 
 	sasValues := sas.BlobSignatureValues{
-		ContainerName: s.containerName,
-		BlobName:      blobName,
-		Permissions:   permissions.String(),
-		ExpiryTime:    expiresOn,
-		Protocol:      sas.ProtocolHTTPS,
+		ContainerName:      s.containerName,
+		BlobName:           blobName,
+		Permissions:        permissions.String(),
+		ExpiryTime:         expiresOn,
+		Protocol:           sas.ProtocolHTTPS,
+		ContentType:        contentType,
+		ContentDisposition: disposition,
 	}
 
 	if ip4 := ipAddress.To4(); ip4 != nil {

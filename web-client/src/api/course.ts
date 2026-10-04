@@ -100,3 +100,26 @@ export const uploadFile = async (fileName: string, file: File, courseTag: string
 export const getDownloadLink = (fileId: number) => {
     return HOST + "/course/download?fileId=" + fileId;
 }
+
+export const getPreviewLink = async (fileId: number, signal: AbortSignal): Promise<string> => {
+    const response = await fetch(HOST + "/course/preview?fileId=" + fileId, {
+        cache: "no-store",
+        signal,
+    });
+
+    if (!response.ok) {
+        throw new Error("PDF preview is unavailable.");
+    }
+
+    const preview: unknown = await response.json();
+    if (!preview || typeof preview !== "object" || !("url" in preview) || typeof preview.url !== "string") {
+        throw new Error("PDF preview is unavailable.");
+    }
+
+    const url = new URL(preview.url);
+    if (url.protocol !== "https:" && url.protocol !== "http:") {
+        throw new Error("PDF preview is unavailable.");
+    }
+
+    return url.href;
+}
