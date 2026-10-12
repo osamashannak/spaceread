@@ -18,10 +18,10 @@ import (
 )
 
 const (
-	defaultLeaseDuration       = 15 * time.Second
-	defaultRenewInterval       = 5 * time.Second
+	defaultLeaseDuration       = 60 * time.Second
+	defaultRenewInterval       = 20 * time.Second
 	defaultOperationTimeout    = 2 * time.Second
-	defaultReservationDuration = 30 * time.Second
+	defaultReservationDuration = 60 * time.Second
 	workerLeaseTokenBytes      = 32
 )
 
@@ -34,9 +34,10 @@ var (
 )
 
 // WorkerLeaseConfig controls a transaction-pooler-safe PostgreSQL row lease.
-// Zero durations use a 15-second lease, five-second renewal interval,
-// two-second statement timeout, and timestamp ranges reserved 30 seconds at a
-// time.
+// Zero durations use a 60-second lease, 20-second renewal interval,
+// two-second statement timeout, and timestamp ranges reserved 60 seconds at a
+// time. The reservation matches the lease so IDs generated at any point before
+// the lease deadline are already covered without a synchronous renewal.
 //
 // Worker 1 is always excluded so new instances can coexist with an older
 // revision hard-coded to worker 1. The lease uses only short statements; it
@@ -228,6 +229,10 @@ func (s *pgxWorkerLeaseStore) lookup(ctx context.Context, holderToken []byte, re
 // renew an expired same-token row: PostgreSQL serializes its row update with a
 // competing acquisition, so either renewal extends the lease first or the
 // acquirer changes token/fence first and renewal returns no row.
+//
+// It returns only the database clock and the new reservation; the worker,
+// token, fence, and lifetime are the caller's own arguments, which the WHERE
+// clause already matched, so echoing them back would only add egress.
 const renewWorkerLeaseSQL = `
 WITH timing AS MATERIALIZED (
 	SELECT clock.db_now,
@@ -249,18 +254,9 @@ WITH timing AS MATERIALIZED (
 		lease.reserved_through,
 		greatest(timing.db_elapsed, $6::bigint) + $5::bigint - 1
 	  ) <= 4398046511103
-	RETURNING lease.worker_id,
-		lease.holder_token,
-		lease.fencing_token,
-		lease.reserved_through
+	RETURNING lease.reserved_through
 )
-SELECT renewed.worker_id,
-	renewed.holder_token,
-	renewed.fencing_token,
-	timing.db_elapsed,
-	$4::bigint,
-	0::bigint,
-	renewed.reserved_through
+SELECT timing.db_elapsed, renewed.reserved_through
 FROM renewed
 CROSS JOIN timing`
 
@@ -273,7 +269,13 @@ func (s *pgxWorkerLeaseStore) renew(
 	reservationMillis int64,
 	minimumThrough int64,
 ) (leaseRecord, error) {
-	return scanLeaseRecord(s.pool.QueryRow(
+	record := leaseRecord{
+		workerID:     workerID,
+		holderToken:  holderToken,
+		fencingToken: fencingToken,
+		leaseMillis:  leaseMillis,
+	}
+	err := s.pool.QueryRow(
 		ctx,
 		renewWorkerLeaseSQL,
 		workerID,
@@ -282,7 +284,14 @@ func (s *pgxWorkerLeaseStore) renew(
 		leaseMillis,
 		reservationMillis,
 		minimumThrough,
-	), ErrWorkerLeaseLost)
+	).Scan(&record.databaseNow, &record.reservedThrough)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return leaseRecord{}, ErrWorkerLeaseLost
+	}
+	if err != nil {
+		return leaseRecord{}, err
+	}
+	return record, nil
 }
 
 const releaseWorkerLeaseSQL = `
