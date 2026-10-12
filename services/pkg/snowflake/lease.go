@@ -567,16 +567,27 @@ func (l *WorkerLease) leaseDeadlineValid() bool {
 
 func (l *WorkerLease) monitor(ctx context.Context) {
 	defer close(l.monitorDone)
-	ticker := time.NewTicker(l.config.renewInterval)
-	defer ticker.Stop()
+	retryInterval := l.config.renewInterval / 5
+	if retryInterval < time.Millisecond {
+		retryInterval = time.Millisecond
+	}
+	timer := time.NewTimer(l.config.renewInterval)
+	defer timer.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticker.C:
+		case <-timer.C:
 			if err := l.renew(0, true); err != nil {
-				return
+				if workerLeaseState(l.state.Load()) != workerLeaseHealthy {
+					return
+				}
+				// A transient failure while the lease is still valid: retry
+				// sooner than the regular interval.
+				timer.Reset(retryInterval)
+				continue
 			}
+			timer.Reset(l.config.renewInterval)
 		}
 	}
 }
@@ -604,8 +615,18 @@ func (l *WorkerLease) renew(minimumThrough int64, force bool) error {
 	)
 	cancel()
 	if err != nil {
-		l.markLost(fmt.Errorf("%w: renew worker %d fence %d: %w", ErrWorkerLeaseLost, l.workerID, l.fencingToken, err))
-		return l.Err()
+		// The store reports ErrWorkerLeaseLost when no row matched, meaning
+		// another holder fenced this token: the loss is definite. Any other
+		// error (timeout, dropped connection) is ambiguous, and the
+		// conservative local deadline from the last successful renewal still
+		// bounds ownership, so keep the lease until that deadline passes.
+		definite := errors.Is(err, ErrWorkerLeaseLost)
+		err = fmt.Errorf("%w: renew worker %d fence %d: %w", ErrWorkerLeaseLost, l.workerID, l.fencingToken, err)
+		if definite || !l.leaseDeadlineValid() {
+			l.markLost(err)
+			return l.Err()
+		}
+		return err
 	}
 	if err := validateLeaseRecord(record, l.holderToken, false); err != nil || record.workerID != l.workerID || record.fencingToken != l.fencingToken {
 		if err == nil {
@@ -646,7 +667,10 @@ func (l *WorkerLease) assertHealthy() {
 		panic(ErrWorkerLeaseInvalid)
 	}
 	if workerLeaseState(l.state.Load()) == workerLeaseHealthy {
-		if err := l.renew(0, false); err == nil && l.leaseDeadlineValid() {
+		// A transient renewal error leaves the lease healthy while its local
+		// deadline holds, so check state rather than the renewal result.
+		_ = l.renew(0, false)
+		if workerLeaseState(l.state.Load()) == workerLeaseHealthy && l.leaseDeadlineValid() {
 			return
 		}
 	}
@@ -688,6 +712,9 @@ func (l *WorkerLease) authorizeTimestamp(elapsed uint64) {
 	}
 	if err := l.renew(int64(elapsed), true); err != nil {
 		l.assertHealthy()
+		// The lease survived a transient failure, but the timestamp is still
+		// unreserved. Fail this generation without giving up the lease.
+		panic(fmt.Errorf("snowflake: could not reserve timestamp %d: %w", elapsed, err))
 	}
 	l.metadataMu.RLock()
 	reservedThrough = l.reservedThrough
