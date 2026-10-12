@@ -111,6 +111,8 @@ func (s *Server) GetCourseList() http.Handler {
 			return
 		}
 
+		s.cache.Set("courses", courses)
+
 		jsonutil.MarshalResponse(w, http.StatusOK, courses)
 
 	})

@@ -24,7 +24,7 @@ func NewServer(db *database.CourseDB, generator *snowflake.Generator, storage *b
 	return &Server{
 		db:        db,
 		generator: generator,
-		cache:     cache.New[[]v1.CourseInList](24 * 7 * 24 * time.Hour),
+		cache:     cache.New[[]v1.CourseInList](24 * time.Hour),
 		storage:   storage,
 		gateway:   gateway,
 	}, nil
