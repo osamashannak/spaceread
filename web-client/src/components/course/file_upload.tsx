@@ -15,7 +15,7 @@ type UploadDetails = {
 }
 
 const readyMessage = "Ready to upload";
-const supportedExtensions = [".pdf", ".txt", ".jpg", ".jpeg", ".png", ".gif", ".webp", ".docx", ".pptx", ".xlsx"];
+const supportedExtensions = [".pdf", ".txt", ".jpg", ".jpeg", ".png", ".gif", ".webp", ".doc", ".docx", ".ppt", ".pptx", ".xlsx", ".mp3", ".m4a", ".wav", ".mp4", ".webm"];
 
 export default function FileUpload(props: { courseTag: string }) {
     const nextFileId = useRef(0);
@@ -248,7 +248,7 @@ export default function FileUpload(props: { courseTag: string }) {
                     </span>
                     <div className={styles.dropZoneText}>
                         <span>Drag files here or choose files</span>
-                        <p>PDF, DOCX, PPTX, XLSX, TXT, JPG/JPEG, PNG, GIF, or WebP.</p>
+                        <p>PDF, DOC/DOCX, PPT/PPTX, XLSX, TXT, JPG/JPEG, PNG, GIF, WebP, MP3, M4A, WAV, MP4, or WebM.</p>
                     </div>
                     <span className={styles.uploadButtonLabel}>Choose files</span>
                 </label>

@@ -1,7 +1,6 @@
 package utils
 
 import (
-	"path/filepath"
 	"regexp"
 	"strings"
 )
@@ -27,27 +26,3 @@ func ReviewTextCleaner(text string) string {
 	return normalizedSpaces
 }
 
-func SanitizeFileName(original string) string {
-	ext := filepath.Ext(original)
-	base := strings.TrimSuffix(original, ext)
-
-	re := regexp.MustCompile(`[^a-zA-Z0-9 _.-]+`)
-	base = re.ReplaceAllString(base, "_")
-
-	base = strings.Join(strings.Fields(base), " ")
-
-	base = strings.TrimSpace(base)
-
-	if base == "" {
-		base = "file"
-	}
-
-	ext = strings.ToLower(ext)
-	reExt := regexp.MustCompile(`[^a-z0-9]+`)
-	ext = reExt.ReplaceAllString(ext, "")
-
-	if ext != "" {
-		return base + "." + ext
-	}
-	return base
-}

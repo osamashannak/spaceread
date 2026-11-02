@@ -1024,6 +1024,11 @@ export async function getAdminCourseFile(fileId: string, signal?: AbortSignal) {
     return adminFetch<{ file: AdminCourseFileSummary }>(`/course-files/${encodeURIComponent(fileId)}`, {signal});
 }
 
+// Signed, IP-locked link that expires after 15 minutes. Fetch a fresh one per click.
+export async function getAdminCourseFileLink(fileId: string, mode: "preview" | "download") {
+    return adminFetch<{ url: string; expires_at: string }>(`/course-files/${encodeURIComponent(fileId)}/link?mode=${mode}`);
+}
+
 export async function getAdminReviewReply(replyId: string, signal?: AbortSignal) {
     return adminFetch<AdminReviewReplyResponse>(`/review-replies/${encodeURIComponent(replyId)}`, {signal});
 }

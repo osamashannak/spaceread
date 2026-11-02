@@ -122,7 +122,7 @@ func realMain(ctx context.Context) error {
 
 	logger.Info("setting up admin server")
 
-	adminServer, err := admin.NewServer(adminStore, gatewayClient)
+	adminServer, err := admin.NewServer(adminStore, gatewayClient, materialStorage)
 	if err != nil {
 		return fmt.Errorf("admin.NewServer: %w", err)
 	}

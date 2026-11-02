@@ -6,19 +6,28 @@ import styles from "../../styles/components/course/file.module.scss";
 import {getDownloadLink, getPreviewLink} from "../../api/course.ts";
 import {useModal} from "../provider/modal.tsx";
 import PdfPreviewModal from "../modal/pdf_preview_modal.tsx";
-import ImagePreviewModal from "../modal/image_preview_modal.tsx";
+import ImagePreviewModal, {type PreviewKind} from "../modal/image_preview_modal.tsx";
 
 dayjs.extend(relativeTime);
 
-// Must match the static image types the course preview endpoint accepts; GIFs are download-only.
+// Must match coursefile.PreviewContentType on the server; GIFs are download-only.
 const PREVIEWABLE_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+const PREVIEWABLE_VIDEO_TYPES = new Set(["video/mp4", "video/webm"]);
+const PREVIEWABLE_AUDIO_TYPES = new Set(["audio/mpeg", "audio/mp4", "audio/wav"]);
+
+function previewKind(mimeType: string): PreviewKind | null {
+    if (PREVIEWABLE_IMAGE_TYPES.has(mimeType)) return "image";
+    if (PREVIEWABLE_VIDEO_TYPES.has(mimeType)) return "video";
+    if (PREVIEWABLE_AUDIO_TYPES.has(mimeType)) return "audio";
+    return null;
+}
 
 export default function File(props: CourseFileAPI) {
     const modal = useModal();
     const mimeType = props.type.split(";", 1)[0].trim().toLowerCase();
     const isPdf = mimeType === "application/pdf";
-    const isImage = PREVIEWABLE_IMAGE_TYPES.has(mimeType);
-    const canPreview = isPdf || isImage;
+    const mediaKind = previewKind(mimeType);
+    const canPreview = isPdf || mediaKind !== null;
     const downloadUrl = getDownloadLink(props.id);
     const uploadedAt = dayjs(props.created_at);
 
@@ -29,7 +38,7 @@ export default function File(props: CourseFileAPI) {
             </div>
             <div className={styles.fileBody}>
                 <div className={styles.fileMain}>
-                    <h3 className={styles.fileName}>
+                    <h3 className={styles.fileName} dir="auto">
                         {props.name}
                     </h3>
                     <div className={styles.fileMeta}>
@@ -71,6 +80,7 @@ export default function File(props: CourseFileAPI) {
                             return;
                         }
                         modal.openModal(ImagePreviewModal, {
+                            kind: mediaKind ?? "image",
                             title: props.name,
                             downloadUrl,
                             loadSrc: (signal: AbortSignal) => getPreviewLink(props.id, signal),

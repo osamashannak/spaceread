@@ -29,6 +29,7 @@ import {
     X,
 } from "lucide-react";
 import {BidiParagraph, BidiSpan} from "@/components/admin/bidi_text";
+import {CourseFileLinks} from "@/components/admin/course_file_links";
 import {Badge} from "@/components/ui/badge";
 import {Button} from "@/components/ui/button";
 import {Textarea} from "@/components/ui/textarea";
@@ -1153,7 +1154,7 @@ function CourseFileRow({file}: { file: AdminCourseFileSummary }) {
     return (
         <SummaryRow
             icon={<FileImage size={15}/>}
-            title={file.name}
+            title={<BidiSpan>{file.name}</BidiSpan>}
             meta={[
                 `File ${file.id}`,
                 file.course_tag,
@@ -1165,9 +1166,9 @@ function CourseFileRow({file}: { file: AdminCourseFileSummary }) {
                 file.reviewed ? "Reviewed" : "Not reviewed",
                 file.session_id ? <EntityLink key="session" target={{type: "session", id: file.session_id}}>Session {file.session_id}</EntityLink> : undefined,
                 file.user_id ? <EntityLink key="user" target={{type: "user", id: file.user_id}}>User {file.user_id}</EntityLink> : undefined,
-                file.url ? <a key="file-url" href={file.url} target="_blank" rel="noreferrer">Open file <ExternalLink size={12}/></a> : undefined,
                 formatDateTime(file.created_at),
             ]}
+            action={<CourseFileLinks file={file}/>}
         />
     );
 }

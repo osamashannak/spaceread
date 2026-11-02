@@ -9,14 +9,16 @@ import (
 )
 
 type Server struct {
-	db      *database.AdminDB
-	gateway *gateway.Gateway
+	db              *database.AdminDB
+	gateway         *gateway.Gateway
+	courseFileLinks CourseFileLinkSigner
 }
 
-func NewServer(db *database.AdminDB, gatewayClient *gateway.Gateway) (*Server, error) {
+func NewServer(db *database.AdminDB, gatewayClient *gateway.Gateway, courseFileLinks CourseFileLinkSigner) (*Server, error) {
 	return &Server{
-		db:      db,
-		gateway: gatewayClient,
+		db:              db,
+		gateway:         gatewayClient,
+		courseFileLinks: courseFileLinks,
 	}, nil
 }
 
@@ -50,6 +52,7 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("GET /reviews/{reviewID}", s.gateway.RequireAdmin(s.GetReview()))
 	mux.Handle("GET /course-files", s.gateway.RequireAdmin(s.ListCourseFiles()))
 	mux.Handle("GET /course-files/{fileID}", s.gateway.RequireAdmin(s.GetCourseFile()))
+	mux.Handle("GET /course-files/{fileID}/link", s.gateway.RequireAdmin(s.GetCourseFileLink()))
 	mux.Handle("GET /review-replies/{replyID}", s.gateway.RequireAdmin(s.GetReviewReply()))
 	mux.Handle("GET /sessions/{sessionID}", s.gateway.RequireAdmin(s.GetSessionDetail()))
 	mux.Handle("GET /users/{userID}", s.gateway.RequireAdmin(s.GetUserDetail()))

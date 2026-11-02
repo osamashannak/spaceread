@@ -88,6 +88,13 @@ func (s *BlobStorage) GenerateInlineSASToken(blobName, fileName, contentType str
 	return s.generateSASToken(blobName, ipAddress, expiresOn, contentType, disposition)
 }
 
+// GenerateAttachmentSASToken forces a download for this URL only, even for
+// blobs stored without an attachment Content-Disposition.
+func (s *BlobStorage) GenerateAttachmentSASToken(blobName, fileName string, ipAddress net.IP, expiresOn time.Time) (string, error) {
+	disposition := mime.FormatMediaType("attachment", map[string]string{"filename": fileName})
+	return s.generateSASToken(blobName, ipAddress, expiresOn, "", disposition)
+}
+
 func (s *BlobStorage) generateSASToken(blobName string, ipAddress net.IP, expiresOn time.Time, contentType, disposition string) (string, error) {
 	permissions := sas.BlobPermissions{
 		Read: true,

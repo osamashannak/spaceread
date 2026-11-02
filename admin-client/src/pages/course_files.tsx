@@ -4,7 +4,6 @@ import {
     AlertCircle,
     CheckCircle2,
     ChevronDown,
-    Download,
     Eye,
     EyeOff,
     FileText,
@@ -17,6 +16,7 @@ import {
     X,
 } from "lucide-react";
 import {EntityLink, useAdminEntityDrawer} from "@/components/admin/entity_drawer";
+import {CourseFileLinks} from "@/components/admin/course_file_links";
 import {Badge} from "@/components/ui/badge";
 import {Button} from "@/components/ui/button";
 import {Input} from "@/components/ui/input";
@@ -767,7 +767,7 @@ function CourseFileQueueItem({
                 </label>
                 <div className={styles.queueMain}>
                     <div className={styles.queueHeader}>
-                        <strong>{file.name}</strong>
+                        <strong dir="auto">{file.name}</strong>
                         <span>#{file.id}</span>
                         <span>{file.course_tag}</span>
                         <span>{formatDateTime(file.created_at)}</span>
@@ -857,7 +857,7 @@ function CourseFilePanel({
                 <header className={styles.filterSheetHeader}>
                     <div>
                         <span><FileText size={14}/> Course file</span>
-                        <h2>{file.name}</h2>
+                        <h2 dir="auto">{file.name}</h2>
                         <p>{file.course_name || file.course_tag} * #{file.id}</p>
                     </div>
                     <Button disabled={Boolean(pendingAction)} size="icon" type="button" variant="ghost" aria-label="Close course file details" onClick={onClose}>
@@ -887,16 +887,9 @@ function CourseFilePanel({
                             {file.session_id && <span><EntityLink target={{type: "session", id: file.session_id}}>Session {file.session_id}</EntityLink></span>}
                             {file.user_id && <span><EntityLink target={{type: "user", id: file.user_id}}>User {file.user_id}</EntityLink></span>}
                         </div>
-                        {file.url && (
-                            <div className={styles.mediaActions}>
-                                <Button asChild size="sm" type="button" variant="outline">
-                                    <a href={file.url} target="_blank" rel="noreferrer">
-                                        <Download size={15}/>
-                                        Open file
-                                    </a>
-                                </Button>
-                            </div>
-                        )}
+                        <div className={styles.mediaActions}>
+                            <CourseFileLinks file={file}/>
+                        </div>
                     </div>
                     <div className={styles.relatedPanel}>
                         <div className={styles.boxHead}>

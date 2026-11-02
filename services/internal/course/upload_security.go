@@ -51,6 +51,33 @@ var allowedCourseMaterialTypes = map[string]struct {
 	".xlsx": {
 		canonical: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 	},
+	".doc": {
+		canonical: "application/msword",
+	},
+	".ppt": {
+		canonical: "application/vnd.ms-powerpoint",
+	},
+	".mp4": {
+		contentTypes: setOf("video/mp4"),
+		canonical:    "video/mp4",
+	},
+	".webm": {
+		contentTypes: setOf("video/webm"),
+		canonical:    "video/webm",
+	},
+	".mp3": {
+		contentTypes: setOf("audio/mpeg"),
+		canonical:    "audio/mpeg",
+	},
+	// M4A shares the MP4 container, which Go's sniffer reports as video/mp4.
+	".m4a": {
+		contentTypes: setOf("video/mp4"),
+		canonical:    "audio/mp4",
+	},
+	".wav": {
+		contentTypes: setOf("audio/wave"),
+		canonical:    "audio/wav",
+	},
 }
 
 func validateCourseMaterial(fileName string, contents []byte) (string, error) {
@@ -70,6 +97,16 @@ func validateCourseMaterial(fileName string, contents []byte) (string, error) {
 		if err := validateOfficeMaterial(contents, format); err != nil {
 			return "", err
 		}
+		return allowed.canonical, nil
+	}
+	if mainStream, ok := legacyOfficeFormats[ext]; ok {
+		if err := validateLegacyOffice(contents, mainStream); err != nil {
+			return "", err
+		}
+		return allowed.canonical, nil
+	}
+	// Go's sniffer only recognises MP3s that start with an ID3 tag.
+	if ext == ".mp3" && isMP3FrameHeader(contents) {
 		return allowed.canonical, nil
 	}
 
@@ -111,6 +148,17 @@ func courseMaterialDisplayName(originalName, displayName string) (string, error)
 		displayName = displayName[:len(displayName)-len(ext)]
 	}
 	return utils.SanitizeFileName(displayName + ext), nil
+}
+
+// isMP3FrameHeader checks for an MPEG audio Layer III frame header with valid
+// version, bitrate and sample-rate fields.
+func isMP3FrameHeader(b []byte) bool {
+	if len(b) < 4 || b[0] != 0xff || b[1]&0xe0 != 0xe0 {
+		return false
+	}
+	version, layer := (b[1]>>3)&0x03, (b[1]>>1)&0x03
+	bitrate, sampleRate := b[2]>>4, (b[2]>>2)&0x03
+	return version != 0x01 && layer == 0x01 && bitrate != 0x00 && bitrate != 0x0f && sampleRate != 0x03
 }
 
 func setOf(values ...string) map[string]struct{} {

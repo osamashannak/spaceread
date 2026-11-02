@@ -85,7 +85,7 @@ export default function PdfPreviewModal({file, onClose}: {file: CourseFileAPI; o
             >
                 <div className={styles.header}>
                     <div className={styles.details}>
-                        <h2 id={titleId}>{file.name}</h2>
+                        <h2 id={titleId} dir="auto">{file.name}</h2>
                         <p>PDF <span aria-hidden="true">·</span> {formatBytes(file.size)}</p>
                     </div>
                     <div className={styles.actions}>

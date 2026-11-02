@@ -125,6 +125,16 @@
   }
 }
 
+.audio {
+  width: min(640px, 100%);
+  opacity: 0;
+  transition: opacity 0.15s;
+
+  &.loaded {
+    opacity: 1;
+  }
+}
+
 .message {
   position: absolute;
   top: 0;

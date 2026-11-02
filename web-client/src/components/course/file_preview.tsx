@@ -33,6 +33,7 @@ export default function FilePreview(props: {
                         }}
                         disabled={locked}
                         className={styles.filePreviewName}
+                        dir="auto"
                         value={title}
                         aria-label={"File title"}/>
                     <span className={styles.filePreviewExtension}>{extension.toLowerCase()}</span>

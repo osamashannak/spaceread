@@ -5,6 +5,7 @@ import (
 	"fmt"
 	v1 "github.com/osamashannak/uaeu-space/services/internal/api/v1"
 	"github.com/osamashannak/uaeu-space/services/internal/course/model"
+	"github.com/osamashannak/uaeu-space/services/pkg/coursefile"
 	"github.com/osamashannak/uaeu-space/services/pkg/jsonutil"
 	"github.com/osamashannak/uaeu-space/services/pkg/logging"
 	"github.com/osamashannak/uaeu-space/services/pkg/utils"
@@ -209,23 +210,32 @@ func (s *Server) UploadCourseFile() http.Handler {
 
 		fileId := strconv.FormatUint(s.generator.Next(), 10)
 
-		compressedContents, err := utils.CompressData(contents)
-
-		if err != nil {
-			logger.Errorf("failed to compress file contents: %v", err)
-			errorResponse := v1.ErrorResponse{
-				Message: "an error occurred. please try again later.",
-				Error:   http.StatusInternalServerError,
+		// Audio/video is already compressed, and gzip would break range requests
+		// that browsers use to stream and seek, so media is stored as-is.
+		storedContents := contents
+		var encoding *string
+		if !coursefile.IsMedia(contentType) {
+			storedContents, err = utils.CompressData(contents)
+			if err != nil {
+				logger.Errorf("failed to compress file contents: %v", err)
+				errorResponse := v1.ErrorResponse{
+					Message: "an error occurred. please try again later.",
+					Error:   http.StatusInternalServerError,
+				}
+				jsonutil.MarshalResponse(w, http.StatusInternalServerError, errorResponse)
+				return
 			}
-			jsonutil.MarshalResponse(w, http.StatusInternalServerError, errorResponse)
-			return
+			gzipEncoding := "gzip"
+			encoding = &gzipEncoding
 		}
 
 		cacheControl := "max-age=31536000, immutable"
-		encoding := "gzip"
 		disposition := mime.FormatMediaType("attachment", map[string]string{"filename": fileName})
 
-		err = s.storage.CreateObject(ctx, fileId, &contentType, &cacheControl, &encoding, &disposition, compressedContents)
+		// CreateObject may rewrite the blob's content type (it clears it for video),
+		// so pass a copy to keep the real type for the database row below.
+		blobContentType := contentType
+		err = s.storage.CreateObject(ctx, fileId, &blobContentType, &cacheControl, encoding, &disposition, storedContents)
 
 		if err != nil {
 			logger.Errorf("failed to upload file to blob storage: %v", err)
@@ -242,7 +252,7 @@ func (s *Server) UploadCourseFile() http.Handler {
 			BlobName:  fileId,
 			Name:      fileName,
 			Type:      contentType,
-			Size:      len(compressedContents),
+			Size:      len(storedContents),
 			CourseTag: course.Tag,
 			UserId:    profile.UserId,
 			SessionId: &profile.SessionId,
@@ -282,7 +292,7 @@ func (s *Server) DownloadCourseFile() http.Handler {
 			return
 		}
 
-		blobName, err := s.db.GetCourseFileBlobName(ctx, fileId)
+		file, err := s.db.GetCourseFileForPreview(ctx, fileId)
 
 		if err != nil {
 			logger.Errorf("failed to get course file blob name with id %s: %v", fileId, err)
@@ -294,7 +304,7 @@ func (s *Server) DownloadCourseFile() http.Handler {
 			return
 		}
 
-		if blobName == nil {
+		if file == nil {
 			logger.Debugf("course file with id %s not found", fileId)
 			errorResponse := v1.ErrorResponse{
 				Message: "file not found",
@@ -307,7 +317,8 @@ func (s *Server) DownloadCourseFile() http.Handler {
 		ipAddress := utils.GetClientIP(r)
 
 		expiresOn := time.Now().Add(courseDownloadSASDuration)
-		queryParams, err := s.storage.GenerateSASToken(*blobName, net.ParseIP(ipAddress), expiresOn)
+		// Force a download: older blobs were stored without an attachment disposition.
+		queryParams, err := s.storage.GenerateAttachmentSASToken(file.BlobName, file.Name, net.ParseIP(ipAddress), expiresOn)
 		if err != nil || queryParams == "" {
 			logger.Errorf("failed to generate SAS token for file %s and ip address %s: %v", fileId, ipAddress, err)
 			errorResponse := v1.ErrorResponse{
@@ -318,7 +329,7 @@ func (s *Server) DownloadCourseFile() http.Handler {
 			return
 		}
 
-		downloadUrl := s.storage.FormatSASURL(*blobName, queryParams)
+		downloadUrl := s.storage.FormatSASURL(file.BlobName, queryParams)
 
 		err = s.db.IncrementCourseFileDownloadCount(ctx, fileId)
 
