@@ -787,7 +787,6 @@ func (db *AdminDB) loadProfessorRequests(
 		request.RelatedPendingRequestCount = requestMetadata.PendingCount
 		request.LikelyDuplicate = requestMetadata.LikelyDuplicate
 		request.Matches = []v1.AdminProfessorMatch{}
-		request.Signals = []v1.AdminModerationSignal{}
 		request.ActionHistory = []v1.AdminModerationAction{}
 		requestsByID[request.ID] = &request
 	}
@@ -799,9 +798,6 @@ func (db *AdminDB) loadProfessorRequests(
 		return nil, err
 	}
 	if includeModerationContext {
-		if err := db.attachProfessorRequestSignals(ctx, ids, requestsByID); err != nil {
-			return nil, err
-		}
 		if err := db.attachProfessorRequestActions(ctx, ids, requestsByID); err != nil {
 			return nil, err
 		}
@@ -845,50 +841,6 @@ func (db *AdminDB) attachProfessorRequestMatches(ctx context.Context, ids []int6
 		}
 	}
 
-	return rows.Err()
-}
-
-func (db *AdminDB) attachProfessorRequestSignals(ctx context.Context, ids []int64, requestsByID map[int64]*v1.AdminProfessorRequest) error {
-	targetIDs := professorRequestTargetIDs(ids)
-	rows, err := db.db.Pool.Query(ctx, `
-		SELECT id, target_type, target_id, source, attribute, score, threshold, severity, payload, created_at
-		FROM moderation.signal
-		WHERE target_type = 'professor_request'
-		  AND target_id = ANY($1::text[])
-		ORDER BY created_at DESC`, targetIDs)
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var (
-			signal  v1.AdminModerationSignal
-			payload []byte
-		)
-		if err := rows.Scan(
-			&signal.ID,
-			&signal.TargetType,
-			&signal.TargetID,
-			&signal.Source,
-			&signal.Attribute,
-			&signal.Score,
-			&signal.Threshold,
-			&signal.Severity,
-			&payload,
-			&signal.CreatedAt,
-		); err != nil {
-			return err
-		}
-		signal.Payload = rawJSONPtr(payload)
-		requestID, err := strconv.ParseInt(signal.TargetID, 10, 64)
-		if err != nil {
-			continue
-		}
-		if request, ok := requestsByID[requestID]; ok {
-			request.Signals = append(request.Signals, signal)
-		}
-	}
 	return rows.Err()
 }
 

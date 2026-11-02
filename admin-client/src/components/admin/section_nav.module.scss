@@ -39,6 +39,18 @@
   }
 }
 
+.badge {
+  background: hsl(var(--spaceread-red) / 0.12);
+  border-radius: 999px;
+  color: hsl(0 60% 40%);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  line-height: 1;
+  margin-left: auto;
+  padding: 4px 7px;
+}
+
 .active {
   background: hsl(var(--spaceread-blue) / 0.12);
   color: hsl(var(--spaceread-blue));

@@ -6,6 +6,7 @@ import {
     useContext,
     useEffect,
     useMemo,
+    useRef,
     useState,
 } from "react";
 import {createPortal} from "react-dom";
@@ -39,7 +40,6 @@ import {
     type AdminIPDetailResponse,
     type AdminLoginSession,
     type AdminModerationAction,
-    type AdminModerationSignal,
     type AdminProfessorRequestSummary,
     type AdminReason,
     type AdminReplyDecisionResponse,
@@ -69,6 +69,7 @@ import {
     setReviewReplyVisibility,
     setReviewVisibility,
 } from "@/lib/admin_api";
+import {useUrlParam} from "@/lib/url_state";
 import {cn} from "@/lib/utils";
 import styles from "./entity_drawer.module.scss";
 
@@ -107,6 +108,8 @@ export function AdminEntityDrawerProvider({children}: { children: ReactNode }) {
     const [showSensitive, setShowSensitive] = useState(false);
     const [reasons, setReasons] = useState<AdminReason[]>([]);
     const drawerOpen = Boolean(current || pending);
+    const [openParam, setOpenParam] = useUrlParam("open");
+    const initialOpenParam = useRef(openParam);
 
     const refreshReasons = useCallback((signal?: AbortSignal) => {
         listAdminReasons(signal)
@@ -162,6 +165,24 @@ export function AdminEntityDrawerProvider({children}: { children: ReactNode }) {
             return {target};
         });
     }, []);
+
+    // Reopen the entity named in the URL (?open=review:123) on first load.
+    useEffect(() => {
+        const target = parseTargetKey(initialOpenParam.current);
+        if (target) openEntity(target);
+    }, [openEntity]);
+
+    // Keep the URL pointing at the entity on screen so it can be shared or refreshed.
+    // Wait until the entity from the URL is showing, or the first sync would clear it.
+    const shownKey = pending ? targetKey(pending) : current ? targetKey(current.target) : "";
+    const urlSyncReady = useRef(!parseTargetKey(initialOpenParam.current));
+    useEffect(() => {
+        if (!urlSyncReady.current) {
+            if (!shownKey) return;
+            urlSyncReady.current = true;
+        }
+        if (shownKey !== openParam) setOpenParam(shownKey);
+    }, [shownKey]);
 
     const goBack = useCallback(() => {
         setBackStack(stack => {
@@ -517,7 +538,6 @@ function ReviewDrawer({
             <RatingsSection ratings={review.ratings} likeCount={review.like_count} dislikeCount={review.dislike_count} showSensitive={showSensitive}/>
             <RepliesSection replies={review.replies} showSensitive={showSensitive}/>
             <ReportsSection reports={review.reports}/>
-            <SignalsSection signals={review.signals}/>
             <ActionsSection actions={review.action_history}/>
 
             <DecisionBox
@@ -670,7 +690,6 @@ function ReplyDrawer({
                 </ActivityList>
             </DrawerSection>
 
-            <SignalsSection signals={detail.signals}/>
             <ActionsSection actions={detail.action_history}/>
 
             <DecisionBox
@@ -832,7 +851,6 @@ function ActivitySections({activity, showSensitive}: { activity: AdminEntityActi
                     {activity.attachments.map(attachment => <AttachmentSummaryRow key={attachment.id} attachment={attachment} showSensitive={showSensitive}/>)}
                 </ActivityList>
             </DrawerSection>
-            <SignalsSection signals={activity.signals}/>
             <ActionsSection actions={activity.actions}/>
         </>
     );
@@ -955,29 +973,6 @@ function ReportsSection({reports}: { reports: AdminReviewReport[] }) {
     );
 }
 
-function SignalsSection({signals}: { signals: AdminModerationSignal[] }) {
-    return (
-        <DrawerSection title="Moderation signals" count={signals.length}>
-            <ActivityList empty="No moderation signals recorded.">
-                {signals.map(signal => (
-                    <SummaryRow
-                        key={signal.id || `${signal.target_type}-${signal.target_id}-${signal.attribute}-${signal.created_at}`}
-                        icon={<ShieldCheck size={15}/>}
-                        title={signal.attribute}
-                        meta={[
-                            signal.source,
-                            signal.severity ? actionLabel(signal.severity) : undefined,
-                            signal.score !== undefined ? `Score ${formatScore(signal.score)}` : undefined,
-                            signal.threshold !== undefined ? `Threshold ${formatScore(signal.threshold)}` : undefined,
-                            formatDateTime(signal.created_at),
-                        ]}
-                    />
-                ))}
-            </ActivityList>
-        </DrawerSection>
-    );
-}
-
 function ActionsSection({actions}: { actions: AdminModerationAction[] }) {
     return (
         <DrawerSection title="Action history" count={actions.length}>
@@ -1057,7 +1052,6 @@ function ReviewSummaryRow({review, showSensitive}: { review: AdminReviewSummary;
                 `${review.score}/5`,
                 review.visible ? "Visible" : "Hidden",
                 review.open_report_count ? `${review.open_report_count} open reports` : undefined,
-                review.signal_count ? `${review.signal_count} signals` : undefined,
                 review.session_id ? <EntityLink key="session" target={{type: "session", id: review.session_id}}>Session {review.session_id}</EntityLink> : undefined,
                 review.user_id ? <EntityLink key="user" target={{type: "user", id: review.user_id}}>User {review.user_id}</EntityLink> : undefined,
                 review.ip_address ? <EntityLink key="ip" target={{type: "ip", id: review.ip_address}}>{maskIpAddress(review.ip_address, showSensitive)}</EntityLink> : undefined,
@@ -1167,7 +1161,6 @@ function CourseFileRow({file}: { file: AdminCourseFileSummary }) {
                 file.type,
                 formatBytes(file.size),
                 `${file.download_count} downloads`,
-                file.signal_count > 0 ? `${file.signal_count} signals` : undefined,
                 file.visible ? "Visible" : "Hidden",
                 file.reviewed ? "Reviewed" : "Not reviewed",
                 file.session_id ? <EntityLink key="session" target={{type: "session", id: file.session_id}}>Session {file.session_id}</EntityLink> : undefined,
@@ -1274,7 +1267,6 @@ function StatsGrid({stats}: { stats: AdminEntityStats }) {
             <Stat label="Activity" value={stats.recent_activity_count}/>
             <Stat label="Hidden" value={stats.hidden_content_count}/>
             <Stat label="Open reports" value={stats.open_report_count}/>
-            <Stat label="Signals" value={stats.signal_count}/>
             <Stat label="Sessions" value={stats.distinct_session_count || 0}/>
             <Stat label="Users" value={stats.distinct_user_count || 0}/>
         </div>
@@ -1421,6 +1413,15 @@ function targetKey(target: AdminEntityTarget) {
     return `${target.type}:${target.id}`;
 }
 
+function parseTargetKey(value: string): AdminEntityTarget | null {
+    const split = value.indexOf(":");
+    if (split <= 0) return null;
+    const type = value.slice(0, split);
+    const id = value.slice(split + 1);
+    if (!id || !["review", "reply", "session", "user", "ip"].includes(type)) return null;
+    return {type, id} as AdminEntityTarget;
+}
+
 function targetTitle(target: AdminEntityTarget) {
     if (target.type === "ip") return `IP address ${target.id}`;
     const label = target.type.charAt(0).toUpperCase() + target.type.slice(1);
@@ -1524,11 +1525,6 @@ function formatDateTime(value?: string) {
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return value;
     return dateFormatter.format(date);
-}
-
-function formatScore(value?: number) {
-    if (value === undefined) return "";
-    return value.toFixed(value >= 10 ? 0 : 2).replace(/\.?0+$/, "");
 }
 
 function formatBytes(bytes: number) {

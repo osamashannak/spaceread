@@ -24,11 +24,10 @@ func (s *Server) ListCourseFiles() http.Handler {
 		files, err := s.db.ListCourseFiles(r.Context(), admindb.ListCourseFileOptions{
 			Limit:                limit,
 			Offset:               offset,
-			Sort:                 parseChoiceQuery(r, "sort", "newest", "newest", "oldest", "largest", "most_downloads", "most_signals"),
+			Sort:                 parseChoiceQuery(r, "sort", "newest", "newest", "oldest", "largest", "most_downloads"),
 			NeedsAttention:       parseBoolQuery(r, "needs_attention", true),
 			Visible:              parseBoolChoiceQuery(r, "visible", "visible", "hidden"),
 			Reviewed:             parseBoolChoiceQuery(r, "reviewed", "reviewed", "not_reviewed"),
-			Signals:              parseChoiceQuery(r, "signals", "any", "any", "has", "none"),
 			HasSession:           parseChoiceQuery(r, "has_session", "any", "any", "has", "none"),
 			HasUser:              parseChoiceQuery(r, "has_user", "any", "any", "has", "none"),
 			Search:               strings.TrimSpace(r.URL.Query().Get("search")),

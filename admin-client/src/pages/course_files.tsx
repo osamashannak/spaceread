@@ -31,6 +31,7 @@ import {
     setCourseFileVisibility,
 } from "@/lib/admin_api";
 import {cn} from "@/lib/utils";
+import {useUrlFilters} from "@/lib/url_state";
 import styles from "./moderation.module.scss";
 import groupStyles from "./course_files.module.scss";
 
@@ -47,7 +48,6 @@ const defaultCourseFileFilters: AdminCourseFileFilters = {
     needs_attention: true,
     visible: "any",
     reviewed: "any",
-    signals: "any",
     has_session: "any",
     has_user: "any",
     search: "",
@@ -75,10 +75,9 @@ const stateFilters: {
     label: string;
     options: { label: string; value: string }[];
 }[] = [
-    {key: "sort", label: "Sort", options: [{label: "Newest first", value: "newest"}, {label: "Oldest first", value: "oldest"}, {label: "Largest files", value: "largest"}, {label: "Most downloads", value: "most_downloads"}, {label: "Most signals", value: "most_signals"}]},
+    {key: "sort", label: "Sort", options: [{label: "Newest first", value: "newest"}, {label: "Oldest first", value: "oldest"}, {label: "Largest files", value: "largest"}, {label: "Most downloads", value: "most_downloads"}]},
     {key: "visible", label: "Visibility", options: [{label: "Any", value: "any"}, {label: "Visible", value: "visible"}, {label: "Hidden", value: "hidden"}]},
     {key: "reviewed", label: "Reviewed", options: [{label: "Any", value: "any"}, {label: "Reviewed", value: "reviewed"}, {label: "Not reviewed", value: "not_reviewed"}]},
-    {key: "signals", label: "Signals", options: [{label: "Any", value: "any"}, {label: "Has signals", value: "has"}, {label: "No signals", value: "none"}]},
     {key: "has_session", label: "Session", options: [{label: "Any", value: "any"}, {label: "Has session", value: "has"}, {label: "No session", value: "none"}]},
     {key: "has_user", label: "User", options: [{label: "Any", value: "any"}, {label: "Has user", value: "has"}, {label: "No user", value: "none"}]},
 ];
@@ -113,8 +112,10 @@ export function CourseFilesPage() {
     const [loadState, setLoadState] = useState<LoadState>("loading");
     const [error, setError] = useState<string | null>(null);
     const [isRefreshing, setIsRefreshing] = useState(false);
-    const [filters, setFilters] = useState<AdminCourseFileFilters>(defaultCourseFileFilters);
-    const [draftFilters, setDraftFilters] = useState<AdminCourseFileFilters>(defaultCourseFileFilters);
+    const [filters, setFilters] = useUrlFilters(defaultCourseFileFilters);
+    const [draftFilters, setDraftFilters] = useState<AdminCourseFileFilters>(filters);
+    // Follow back/forward navigation that changes the applied filters.
+    useEffect(() => setDraftFilters(filters), [filters]);
     const [filtersOpen, setFiltersOpen] = useState(false);
     const [selectedId, setSelectedId] = useState<string | null>(null);
     const [selectedFileIds, setSelectedFileIds] = useState<Set<string>>(new Set());
@@ -604,7 +605,7 @@ export function CourseFilesPage() {
                         <CheckCircle2 size={20}/>
                         <div>
                             <strong>{defaultFiltersSelected ? "No course files need attention" : "No course files match these filters"}</strong>
-                            <span>{defaultFiltersSelected ? "New uploads or files with moderation signals will appear here." : "Change the selected filters or refresh the queue."}</span>
+                            <span>{defaultFiltersSelected ? "New uploads will appear here." : "Change the selected filters or refresh the queue."}</span>
                         </div>
                     </div>
                 )}
@@ -656,7 +657,6 @@ function CourseFileQueueGroup({
     const allSelected = selectedCount === files.length;
     const pendingCount = files.filter(file => !file.reviewed).length;
     const hiddenCount = files.filter(file => !file.visible).length;
-    const signalCount = files.reduce((count, file) => count + courseFileSignalCount(file), 0);
 
     function renderFile(file: AdminCourseFileSummary) {
         return (
@@ -704,7 +704,6 @@ function CourseFileQueueGroup({
                             <Badge className={styles.compactBadge} variant="default">{formatBytes(first.size)} each</Badge>
                             {pendingCount > 0 && <Badge className={styles.compactBadge} variant="warning">{pendingCount} not reviewed</Badge>}
                             {hiddenCount > 0 && <Badge className={styles.compactBadge} variant="default">{hiddenCount} hidden</Badge>}
-                            {signalCount > 0 && <Badge className={styles.compactBadge} variant="danger">{signalCount} signals</Badge>}
                             {selectedCount > 0 && <Badge className={styles.compactBadge} variant="info">{selectedCount} selected</Badge>}
                         </span>
                         <span className={groupStyles.hint}>Matching course, filename, type and size in this queue.</span>
@@ -734,7 +733,6 @@ function CourseFileQueueItem({
     onSelectionChange: (checked: boolean) => void;
 }) {
     const status = courseFileStatus(file);
-    const signalCount = courseFileSignalCount(file);
 
     function onKeyDown(event: KeyboardEvent<HTMLElement>) {
         if (event.key === "Enter" || event.key === " ") {
@@ -794,7 +792,6 @@ function CourseFileQueueItem({
                         <Badge className={styles.compactBadge} title={file.type} variant="info">{mimeLabel(file.type)}</Badge>
                         <Badge className={styles.compactBadge} variant="default">{formatBytes(file.size)}</Badge>
                         {file.download_count > 0 && <Badge className={styles.compactBadge} variant="success">{file.download_count} downloads</Badge>}
-                        {signalCount > 0 && <Badge className={styles.compactBadge} variant="danger">{signalCount} signals</Badge>}
                     </div>
                     <p className={styles.queueText}>{file.course_name || file.course_tag}</p>
                     <div className={styles.queueMeta}>
@@ -851,7 +848,6 @@ function CourseFilePanel({
         }
     }
 
-    const signalCount = courseFileSignalCount(file);
     const actions = file.action_history || [];
 
     return (
@@ -881,7 +877,6 @@ function CourseFilePanel({
                         <Field label="Reviewed at" value={formatDateTime(file.reviewed_at) || "Never"}/>
                         <Field label="Reviewer" value={file.reviewer_user_id ? `User ${file.reviewer_user_id}` : "None"}/>
                         <Field label="Blob" value={file.blob_name || "None"}/>
-                        <Field label="Signals" value={String(signalCount)}/>
                     </div>
                     <div className={styles.relatedPanel}>
                         <div className={styles.boxHead}>
@@ -902,28 +897,6 @@ function CourseFilePanel({
                                 </Button>
                             </div>
                         )}
-                    </div>
-                    <div className={styles.relatedPanel}>
-                        <div className={styles.boxHead}>
-                            <span>Signals</span>
-                            <Badge className={styles.compactBadge} variant={signalCount > 0 ? "danger" : "info"}>{signalCount}</Badge>
-                        </div>
-                        {(file.signals || []).length > 0 ? (
-                            <div className={styles.reportList}>
-                                {(file.signals || []).map(signal => (
-                                    <div className={styles.reportItem} key={signal.id || `${signal.source}-${signal.attribute}-${signal.created_at}`}>
-                                        <div>
-                                            <strong>{signal.attribute}</strong>
-                                            <span>{signal.source} * {formatDateTime(signal.created_at)}</span>
-                                        </div>
-                                        <div className={styles.sideNote}>
-                                            {signal.severity && <span>{signal.severity}</span>}
-                                            {signal.score !== undefined && <span>Score {signal.score}</span>}
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        ) : <p className={styles.emptyLine}>No moderation signals recorded.</p>}
                     </div>
                     <div className={styles.relatedPanel}>
                         <div className={styles.boxHead}>
@@ -1045,8 +1018,6 @@ function sortCourseFiles(files: AdminCourseFileSummary[], sort: AdminCourseFileF
             return b.size - a.size || timestamp(b.created_at) - timestamp(a.created_at);
         case "most_downloads":
             return b.download_count - a.download_count || timestamp(b.created_at) - timestamp(a.created_at);
-        case "most_signals":
-            return courseFileSignalCount(b) - courseFileSignalCount(a) || timestamp(b.created_at) - timestamp(a.created_at);
         default:
             return timestamp(b.created_at) - timestamp(a.created_at) || b.id.localeCompare(a.id);
         }
@@ -1074,7 +1045,6 @@ function courseFileMatchesFilters(file: AdminCourseFileSummary, filters: AdminCo
 
     if (!matchesChoice(filters.visible, file.visible, "visible", "hidden")) return false;
     if (!matchesChoice(filters.reviewed, file.reviewed, "reviewed", "not_reviewed")) return false;
-    if (!matchesCountState(filters.signals, courseFileSignalCount(file))) return false;
     if (!matchesPresence(filters.has_session, file.session_id)) return false;
     if (!matchesPresence(filters.has_user, file.user_id)) return false;
 
@@ -1110,11 +1080,7 @@ function courseFileMatchesFilters(file: AdminCourseFileSummary, filters: AdminCo
 }
 
 function isCourseFileInDefaultQueue(file: AdminCourseFileSummary) {
-    return !file.reviewed || courseFileSignalCount(file) > 0;
-}
-
-function courseFileSignalCount(file: AdminCourseFileSummary) {
-    return file.signals?.length ?? file.signal_count ?? 0;
+    return !file.reviewed;
 }
 
 function filtersEqual(a: AdminCourseFileFilters, b: AdminCourseFileFilters) {
@@ -1157,10 +1123,6 @@ function countActiveFilters(filters: AdminCourseFileFilters) {
 
 function matchesChoice(value: string, actual: boolean, trueValue: string, falseValue: string) {
     return value === "any" || value === (actual ? trueValue : falseValue);
-}
-
-function matchesCountState(value: string, count: number) {
-    return value === "any" || (value === "has" ? count > 0 : count === 0);
 }
 
 function matchesPresence(value: string, actual?: string | null) {

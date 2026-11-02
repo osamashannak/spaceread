@@ -11,6 +11,7 @@ import {
     type AdminStatsResponse,
     getAdminStats,
 } from "@/lib/admin_api";
+import {useUrlFilters} from "@/lib/url_state";
 import styles from "./statistics.module.scss";
 
 const rangeOptions: { key: AdminStatsRangeKey; label: string; previous: string }[] = [
@@ -45,9 +46,12 @@ const numberFormat = new Intl.NumberFormat("en-US");
 const formatNumber = (value: number) => numberFormat.format(Math.round(value));
 const formatPercent = (value: number) => `${value.toFixed(value >= 10 || value === 0 ? 0 : 1)}%`;
 
+const defaultView = {range: "30d", bucket: ""};
+
 export function StatisticsPage() {
-    const [range, setRange] = useState<AdminStatsRangeKey>("30d");
-    const [bucket, setBucket] = useState<AdminStatsBucket | undefined>(undefined);
+    const [view, setView] = useUrlFilters(defaultView);
+    const range = view.range as AdminStatsRangeKey;
+    const bucket = (view.bucket || undefined) as AdminStatsBucket | undefined;
     const [data, setData] = useState<AdminStatsResponse | null>(null);
     const [loadState, setLoadState] = useState<"loading" | "ready" | "error">("loading");
     const [reloadKey, setReloadKey] = useState(0);
@@ -114,16 +118,13 @@ export function StatisticsPage() {
                     label="Time range"
                     value={range}
                     options={rangeOptions}
-                    onChange={key => {
-                        setRange(key);
-                        setBucket(undefined);
-                    }}
+                    onChange={key => setView({range: key, bucket: ""})}
                 />
                 <Segmented
                     label="Group by"
                     value={activeBucket}
                     options={bucketOptions}
-                    onChange={setBucket}
+                    onChange={key => setView({...view, bucket: key})}
                 />
                 {loadState === "loading" && data && <LoaderCircle className={styles.spin} size={16} aria-label="Updating"/>}
             </div>
@@ -292,8 +293,26 @@ export function StatisticsPage() {
                         </Panel>
                     </div>
 
-                    <SectionHeading title="Traffic"/>
+                    <SectionHeading title="Traffic" note="Views and downloads are recorded per day from migration 000020 onward."/>
+                    <section className={styles.kpis}>
+                        <Kpi label="Professor page views" value={current.professor_views} previous={previous?.professor_views} compare={rangeOption.previous}/>
+                        <Kpi label="Course page views" value={current.course_views} previous={previous?.course_views} compare={rangeOption.previous}/>
+                        <Kpi label="File downloads" value={current.file_downloads} previous={previous?.file_downloads} compare={rangeOption.previous}/>
+                        <Kpi label="New visitor sessions" value={current.sessions} previous={previous?.sessions} compare={rangeOption.previous}/>
+                    </section>
                     <div className={styles.chartGrid}>
+                        <LineChart
+                            className={styles.wide}
+                            title="Page views and downloads"
+                            description="Professor and course page views, and course file downloads."
+                            labels={axis.labels}
+                            tooltipLabels={axis.tooltips}
+                            series={[
+                                pick("Professor views", series[0], p => p.professor_views),
+                                pick("Course views", series[1], p => p.course_views),
+                                pick("File downloads", series[2], p => p.file_downloads),
+                            ]}
+                        />
                         <LineChart
                             className={styles.wide}
                             title="New visitor sessions"
@@ -304,7 +323,7 @@ export function StatisticsPage() {
                         />
                     </div>
 
-                    <SectionHeading title="All time" note="Views and downloads are running totals, so they have no history."/>
+                    <SectionHeading title="All time" note="Includes views and downloads from before daily tracking started."/>
                     <section className={styles.kpis}>
                         <Stat label="Live reviews" value={formatNumber(data.totals.reviews)}/>
                         <Stat label="Professors" value={formatNumber(data.totals.professors)}/>

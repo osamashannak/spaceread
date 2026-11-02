@@ -33,6 +33,7 @@ import {
     setReviewVisibility,
 } from "@/lib/admin_api";
 import {cn} from "@/lib/utils";
+import {useUrlFilters} from "@/lib/url_state";
 import styles from "./moderation.module.scss";
 
 type LoadState = "loading" | "ready" | "error";
@@ -58,7 +59,6 @@ const defaultReviewFilters: AdminReviewFilters = {
     uaeu_origin: "any",
     media: "any",
     open_reports: "any",
-    signals: "any",
     has_session: "any",
     has_user: "any",
     has_ip: "any",
@@ -99,7 +99,7 @@ const stateFilters: {
     label: string;
     options: { label: string; value: string }[];
 }[] = [
-    {key: "sort", label: "Sort", options: [{label: "Newest first", value: "newest"}, {label: "Oldest first", value: "oldest"}, {label: "Most reports", value: "most_reports"}, {label: "New reports", value: "new_reports"}, {label: "Most signals", value: "most_signals"}, {label: "Random on refresh", value: "random"}]},
+    {key: "sort", label: "Sort", options: [{label: "Newest first", value: "newest"}, {label: "Oldest first", value: "oldest"}, {label: "Most reports", value: "most_reports"}, {label: "New reports", value: "new_reports"}, {label: "Random on refresh", value: "random"}]},
     {key: "deleted", label: "Deleted", options: [{label: "Exclude", value: "exclude"}, {label: "Include", value: "include"}, {label: "Only", value: "only"}]},
     {key: "visible", label: "Visibility", options: [{label: "Any", value: "any"}, {label: "Visible", value: "visible"}, {label: "Hidden", value: "hidden"}]},
     {key: "reviewed", label: "Reviewed", options: [{label: "Any", value: "any"}, {label: "Reviewed", value: "reviewed"}, {label: "Not reviewed", value: "not_reviewed"}]},
@@ -108,7 +108,6 @@ const stateFilters: {
     {key: "uaeu_origin", label: "UAEU origin", options: [{label: "Any", value: "any"}, {label: "UAEU", value: "uaeu"}, {label: "Non-UAEU", value: "non_uaeu"}]},
     {key: "media", label: "Media", options: [{label: "Any", value: "any"}, {label: "Has media", value: "with_media"}, {label: "No media", value: "without_media"}, {label: "Attachment", value: "attachment"}, {label: "GIF", value: "gif"}]},
     {key: "open_reports", label: "Open reports", options: [{label: "Any", value: "any"}, {label: "Has open reports", value: "has"}, {label: "No open reports", value: "none"}]},
-    {key: "signals", label: "Signals", options: [{label: "Any", value: "any"}, {label: "Has signals", value: "has"}, {label: "No signals", value: "none"}]},
     {key: "has_session", label: "Session", options: [{label: "Any", value: "any"}, {label: "Has session", value: "has"}, {label: "No session", value: "none"}]},
     {key: "has_user", label: "User", options: [{label: "Any", value: "any"}, {label: "Has user", value: "has"}, {label: "No user", value: "none"}]},
     {key: "has_ip", label: "IP address", options: [{label: "Any", value: "any"}, {label: "Has IP", value: "has"}, {label: "No IP", value: "none"}]},
@@ -154,7 +153,7 @@ const filterSections: { key: FilterSectionKey; label: string }[] = [
 
 const sectionSelectFilterKeys: Record<FilterSectionKey, SelectFilterKey[]> = {
     common: ["sort"],
-    status: ["deleted", "visible", "reviewed", "positive", "student_verified", "uaeu_origin", "media", "open_reports", "signals"],
+    status: ["deleted", "visible", "reviewed", "positive", "student_verified", "uaeu_origin", "media", "open_reports"],
     identity: ["has_session", "has_user", "has_ip", "has_fingerprint"],
     content: [],
     metrics: [],
@@ -178,7 +177,7 @@ const sectionRangeFilterKeys: Record<FilterSectionKey, SelectFilterKey[]> = {
 
 const sectionFilterKeys: Record<FilterSectionKey, ReviewFilterKey[]> = {
     common: ["sort", "needs_attention", "search"],
-    status: ["deleted", "visible", "reviewed", "positive", "student_verified", "uaeu_origin", "media", "open_reports", "signals"],
+    status: ["deleted", "visible", "reviewed", "positive", "student_verified", "uaeu_origin", "media", "open_reports"],
     identity: ["has_session", "has_user", "has_ip", "has_fingerprint", "review_id", "professor_email", "professor_name", "professor_college", "professor_university", "reviewer_user_id", "session_id", "user_id", "ip_address", "fingerprint", "thumbmark_fingerprint", "creep_fingerprint"],
     content: ["language", "course_taken", "grade_received", "moderation_reason_code"],
     metrics: ["score_min", "score_max", "like_min", "like_max", "dislike_min", "dislike_max", "reply_min", "reply_max", "created_from", "created_to", "reviewed_from", "reviewed_to"],
@@ -199,8 +198,10 @@ export function ModerationPage() {
     const [isLoadingMore, setIsLoadingMore] = useState(false);
     const [selectedId, setSelectedId] = useState<string | null>(null);
     const [selectedReviewIds, setSelectedReviewIds] = useState<Set<string>>(new Set());
-    const [filters, setFilters] = useState<AdminReviewFilters>(defaultReviewFilters);
-    const [draftFilters, setDraftFilters] = useState<AdminReviewFilters>(defaultReviewFilters);
+    const [filters, setFilters] = useUrlFilters(defaultReviewFilters);
+    const [draftFilters, setDraftFilters] = useState<AdminReviewFilters>(filters);
+    // Follow back/forward navigation that changes the applied filters.
+    useEffect(() => setDraftFilters(filters), [filters]);
     const [filtersOpen, setFiltersOpen] = useState(false);
     const [activeFilterSection, setActiveFilterSection] = useState<FilterSectionKey>("common");
     const [bulkActionsOpen, setBulkActionsOpen] = useState(false);
@@ -928,7 +929,6 @@ function ReviewQueueItem({
                             </Badge>
                         )}
                         {openReportCount > 0 && <Badge className={styles.compactBadge} variant="warning">{openReportCount} reports</Badge>}
-                        {review.signals.length > 0 && <Badge className={styles.compactBadge} variant="danger">{review.signals.length} signals</Badge>}
                     </div>
                     <BidiParagraph className={styles.queueText}>{review.text}</BidiParagraph>
                     <div className={styles.queueMeta}>
@@ -1002,8 +1002,6 @@ function sortReviews(reviews: AdminReview[], sort: AdminReviewFilters["sort"]) {
             return openReports(b).length - openReports(a).length || timestamp(b.created_at) - timestamp(a.created_at);
         case "new_reports":
             return latestOpenReportTime(b) - latestOpenReportTime(a) || timestamp(b.created_at) - timestamp(a.created_at);
-        case "most_signals":
-            return b.signals.length - a.signals.length || timestamp(b.created_at) - timestamp(a.created_at);
         default:
             return timestamp(b.created_at) - timestamp(a.created_at) || b.id.localeCompare(a.id);
         }
@@ -1029,7 +1027,6 @@ function reviewMatchesFilters(review: AdminReview, filters: AdminReviewFilters) 
 
     const openReportCount = openReports(review).length;
     if (!matchesCountState(filters.open_reports, openReportCount)) return false;
-    if (!matchesCountState(filters.signals, review.signals.length)) return false;
     if (!matchesPresence(filters.has_session, review.session_id)) return false;
     if (!matchesPresence(filters.has_user, review.user_id)) return false;
     if (!matchesPresence(filters.has_ip, review.ip_address)) return false;

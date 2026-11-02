@@ -70,11 +70,7 @@ func (s *Server) DeleteReviewRatings() http.Handler {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		reasonCode := cleanOptionalText(request.ReasonCode)
-		if reasonCode == nil {
-			writeError(w, http.StatusBadRequest, "reason_code is required")
-			return
-		}
+		reasonCode := spamReasonCode()
 		if !s.validReason(w, r, reasonCode) {
 			return
 		}

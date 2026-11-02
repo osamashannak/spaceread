@@ -20,7 +20,6 @@ type ListCourseFileOptions struct {
 	NeedsAttention       bool
 	Visible              *bool
 	Reviewed             *bool
-	Signals              string
 	HasSession           string
 	HasUser              string
 	Search               string
@@ -313,19 +312,13 @@ func buildCourseFileIDsQuery(opts ListCourseFileOptions) (string, []any) {
 	}
 
 	if opts.NeedsAttention {
-		add("(cf.reviewed = false OR COALESCE(sc.signal_count, 0) > 0)")
+		add("cf.reviewed = false")
 	}
 	if opts.Visible != nil {
 		add(fmt.Sprintf("cf.visible = %s", nextArg(*opts.Visible)))
 	}
 	if opts.Reviewed != nil {
 		add(fmt.Sprintf("cf.reviewed = %s", nextArg(*opts.Reviewed)))
-	}
-	switch opts.Signals {
-	case "has":
-		add("COALESCE(sc.signal_count, 0) > 0")
-	case "none":
-		add("COALESCE(sc.signal_count, 0) = 0")
 	}
 	switch opts.HasSession {
 	case "has":
@@ -388,12 +381,7 @@ func buildCourseFileIDsQuery(opts ListCourseFileOptions) (string, []any) {
 	}
 
 	query := fmt.Sprintf(`
-		WITH signal_counts AS (
-			SELECT target_id, count(*) AS signal_count
-			FROM moderation.signal
-			WHERE target_type = 'course_file'
-			GROUP BY target_id
-		), matching_files AS (
+		WITH matching_files AS (
 			SELECT
 				cf.id,
 				row_number() OVER (ORDER BY %s) AS queue_position,
@@ -402,7 +390,6 @@ func buildCourseFileIDsQuery(opts ListCourseFileOptions) (string, []any) {
 				) AS group_id
 			FROM course.file cf
 			LEFT JOIN course.course c ON c.tag = cf.course_tag
-			LEFT JOIN signal_counts sc ON sc.target_id = cf.id::text
 			WHERE %s
 		), selected_groups AS (
 			SELECT group_id, min(queue_position) AS first_position
@@ -429,8 +416,6 @@ func courseFileListOrderBy(sort string) string {
 		return "cf.size DESC, cf.created_at DESC, cf.id DESC"
 	case "most_downloads":
 		return "cf.download_count DESC, cf.created_at DESC, cf.id DESC"
-	case "most_signals":
-		return "COALESCE(sc.signal_count, 0) DESC, cf.created_at DESC, cf.id DESC"
 	default:
 		return "cf.created_at DESC, cf.id DESC"
 	}
@@ -442,12 +427,6 @@ func (db *AdminDB) loadCourseFiles(ctx context.Context, ids []int64) ([]v1.Admin
 	}
 
 	rows, err := db.db.Pool.Query(ctx, `
-		WITH signal_counts AS (
-			SELECT target_id, count(*) AS signal_count
-			FROM moderation.signal
-			WHERE target_type = 'course_file'
-			GROUP BY target_id
-		)
 		SELECT
 			cf.id,
 			cf.name,
@@ -465,11 +444,9 @@ func (db *AdminDB) loadCourseFiles(ctx context.Context, ids []int64) ([]v1.Admin
 			cf.reviewer_user_id,
 			cf.moderation_reason_code,
 			cf.moderation_note,
-			cf.blob_name,
-			COALESCE(sc.signal_count, 0)::int
+			cf.blob_name
 		FROM course.file cf
 		LEFT JOIN course.course c ON c.tag = cf.course_tag
-		LEFT JOIN signal_counts sc ON sc.target_id = cf.id::text
 		WHERE cf.id = ANY($1::bigint[])`,
 		ids,
 	)
@@ -499,12 +476,10 @@ func (db *AdminDB) loadCourseFiles(ctx context.Context, ids []int64) ([]v1.Admin
 			&file.ModerationReasonCode,
 			&file.ModerationNote,
 			&file.BlobName,
-			&file.SignalCount,
 		); err != nil {
 			return nil, err
 		}
 		file.URL = db.formatCourseFileURL(file.BlobName)
-		file.Signals = []v1.AdminModerationSignal{}
 		file.ActionHistory = []v1.AdminModerationAction{}
 		filesByID[file.ID] = &file
 	}
@@ -512,9 +487,6 @@ func (db *AdminDB) loadCourseFiles(ctx context.Context, ids []int64) ([]v1.Admin
 		return nil, err
 	}
 
-	if err := db.attachCourseFileSignals(ctx, ids, filesByID); err != nil {
-		return nil, err
-	}
 	if err := db.attachCourseFileActions(ctx, ids, filesByID); err != nil {
 		return nil, err
 	}
@@ -526,56 +498,6 @@ func (db *AdminDB) loadCourseFiles(ctx context.Context, ids []int64) ([]v1.Admin
 		}
 	}
 	return files, nil
-}
-
-func (db *AdminDB) attachCourseFileSignals(ctx context.Context, ids []int64, filesByID map[int64]*v1.AdminCourseFileSummary) error {
-	targetIDs := make([]string, 0, len(ids))
-	for _, id := range ids {
-		targetIDs = append(targetIDs, strconv.FormatInt(id, 10))
-	}
-
-	rows, err := db.db.Pool.Query(ctx, `
-		SELECT id, target_type, target_id, source, attribute, score, threshold, severity, payload, created_at
-		FROM moderation.signal
-		WHERE target_type = 'course_file'
-		  AND target_id = ANY($1::text[])
-		ORDER BY created_at DESC`,
-		targetIDs,
-	)
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var (
-			signal  v1.AdminModerationSignal
-			payload []byte
-		)
-		if err := rows.Scan(
-			&signal.ID,
-			&signal.TargetType,
-			&signal.TargetID,
-			&signal.Source,
-			&signal.Attribute,
-			&signal.Score,
-			&signal.Threshold,
-			&signal.Severity,
-			&payload,
-			&signal.CreatedAt,
-		); err != nil {
-			return err
-		}
-		signal.Payload = rawJSONPtr(payload)
-		fileID, err := strconv.ParseInt(signal.TargetID, 10, 64)
-		if err != nil {
-			continue
-		}
-		if file, ok := filesByID[fileID]; ok {
-			file.Signals = append(file.Signals, signal)
-		}
-	}
-	return rows.Err()
 }
 
 func (db *AdminDB) attachCourseFileActions(ctx context.Context, ids []int64, filesByID map[int64]*v1.AdminCourseFileSummary) error {

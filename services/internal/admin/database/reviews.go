@@ -34,7 +34,6 @@ type ListReviewOptions struct {
 	UaeuOrigin           *bool
 	Media                string
 	OpenReports          string
-	Signals              string
 	HasSession           string
 	HasUser              string
 	HasIP                string
@@ -1262,12 +1261,6 @@ func (db *AdminDB) listReviewIDs(ctx context.Context, opts ListReviewOptions) ([
 	case "none":
 		add("COALESCE(rc.open_report_count, 0) = 0")
 	}
-	switch opts.Signals {
-	case "has":
-		add("COALESCE(sc.signal_count, 0) > 0")
-	case "none":
-		add("COALESCE(sc.signal_count, 0) = 0")
-	}
 
 	if opts.Search != "" {
 		param := nextArg("%" + opts.Search + "%")
@@ -1347,20 +1340,7 @@ func (db *AdminDB) listReviewIDs(ctx context.Context, opts ListReviewOptions) ([
 	}
 
 	query := fmt.Sprintf(`
-		WITH signal_source AS (
-			SELECT target_id
-			FROM moderation.signal
-			WHERE target_type = 'professor_review'
-			UNION ALL
-			SELECT review_id::text
-			FROM professor.review_flag
-		),
-		signal_counts AS (
-			SELECT target_id, count(*) AS signal_count
-			FROM signal_source
-			GROUP BY target_id
-		),
-		report_counts AS (
+		WITH report_counts AS (
 			SELECT
 				review_id,
 				count(*) FILTER (WHERE resolved = false) AS open_report_count,
@@ -1372,7 +1352,6 @@ func (db *AdminDB) listReviewIDs(ctx context.Context, opts ListReviewOptions) ([
 		FROM professor.review r
 		LEFT JOIN professor.professor p ON p.email = r.professor_email
 		LEFT JOIN report_counts rc ON rc.review_id = r.id
-		LEFT JOIN signal_counts sc ON sc.target_id = r.id::text
 		WHERE %s
 		ORDER BY %s
 		LIMIT $1 OFFSET $2`, where, orderBy)
@@ -1407,8 +1386,6 @@ func reviewListOrderBy(sort string) string {
 		return "COALESCE(rc.open_report_count, 0) DESC, r.created_at DESC, r.id DESC"
 	case "new_reports":
 		return "rc.latest_open_report_at DESC NULLS LAST, r.created_at DESC, r.id DESC"
-	case "most_signals":
-		return "COALESCE(sc.signal_count, 0) DESC, r.created_at DESC, r.id DESC"
 	case "random":
 		return "random()"
 	default:
@@ -1559,7 +1536,6 @@ func (db *AdminDB) loadReviews(ctx context.Context, ids []int64) ([]v1.AdminRevi
 		review.Reports = []v1.AdminReviewReport{}
 		review.Replies = []v1.AdminReviewReply{}
 		review.Ratings = []v1.AdminReviewRating{}
-		review.Signals = []v1.AdminModerationSignal{}
 		review.ActionHistory = []v1.AdminModerationAction{}
 		if len(browserFingerprint) > 0 {
 			raw := json.RawMessage(append([]byte(nil), browserFingerprint...))
@@ -1599,9 +1575,6 @@ func (db *AdminDB) loadReviews(ctx context.Context, ids []int64) ([]v1.AdminRevi
 		return nil, err
 	}
 	if err := db.attachRatings(ctx, ids, reviewsByID); err != nil {
-		return nil, err
-	}
-	if err := db.attachSignals(ctx, ids, reviewsByID); err != nil {
 		return nil, err
 	}
 	if err := db.attachActionHistory(ctx, ids, reviewsByID); err != nil {
@@ -1778,96 +1751,6 @@ func (db *AdminDB) attachRatings(ctx context.Context, ids []int64, reviewsByID m
 	}
 
 	return rows.Err()
-}
-
-func (db *AdminDB) attachSignals(ctx context.Context, ids []int64, reviewsByID map[int64]*v1.AdminReview) error {
-	targetIDs := make([]string, 0, len(ids))
-	for _, id := range ids {
-		targetIDs = append(targetIDs, strconv.FormatInt(id, 10))
-	}
-
-	rows, err := db.db.Pool.Query(ctx, `
-		SELECT
-			id,
-			target_type,
-			target_id,
-			source,
-			attribute,
-			score,
-			threshold,
-			severity,
-			payload,
-			created_at
-		FROM moderation.signal
-		WHERE target_type = 'professor_review'
-		  AND target_id = ANY($1::text[])
-		ORDER BY created_at DESC`,
-		targetIDs,
-	)
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var (
-			signal  v1.AdminModerationSignal
-			payload []byte
-		)
-		if err := rows.Scan(
-			&signal.ID,
-			&signal.TargetType,
-			&signal.TargetID,
-			&signal.Source,
-			&signal.Attribute,
-			&signal.Score,
-			&signal.Threshold,
-			&signal.Severity,
-			&payload,
-			&signal.CreatedAt,
-		); err != nil {
-			return err
-		}
-		signal.Payload = rawJSONPtr(payload)
-		attachSignal(reviewsByID, signal)
-	}
-	if err := rows.Err(); err != nil {
-		return err
-	}
-
-	legacyRows, err := db.db.Pool.Query(ctx, `
-		SELECT
-			review_id::text AS target_id,
-			attribute,
-			score,
-			engine,
-			created_at
-		FROM professor.review_flag
-		WHERE review_id = ANY($1::bigint[])
-		ORDER BY created_at DESC`,
-		ids,
-	)
-	if err != nil {
-		return err
-	}
-	defer legacyRows.Close()
-
-	for legacyRows.Next() {
-		var signal v1.AdminModerationSignal
-		if err := legacyRows.Scan(
-			&signal.TargetID,
-			&signal.Attribute,
-			&signal.Score,
-			&signal.Source,
-			&signal.CreatedAt,
-		); err != nil {
-			return err
-		}
-		signal.TargetType = "professor_review"
-		attachSignal(reviewsByID, signal)
-	}
-
-	return legacyRows.Err()
 }
 
 func (db *AdminDB) attachActionHistory(ctx context.Context, ids []int64, reviewsByID map[int64]*v1.AdminReview) error {
@@ -2090,14 +1973,4 @@ func jsonbParam(data []byte) any {
 		return nil
 	}
 	return string(data)
-}
-
-func attachSignal(reviewsByID map[int64]*v1.AdminReview, signal v1.AdminModerationSignal) {
-	reviewID, err := strconv.ParseInt(signal.TargetID, 10, 64)
-	if err != nil {
-		return
-	}
-	if review, ok := reviewsByID[reviewID]; ok {
-		review.Signals = append(review.Signals, signal)
-	}
 }

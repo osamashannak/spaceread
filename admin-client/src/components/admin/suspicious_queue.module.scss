@@ -465,16 +465,41 @@
   padding: 12px 14px;
 }
 
+// Wrapping rows: selection, fixed reason, note, actions; messages take a full line.
+.bulkBar,
+.pairAction {
+  align-items: flex-end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px;
+
+  > .selectionToggle {
+    flex: 1 1 190px;
+  }
+
+  > .bulkNote,
+  > .actionNote {
+    flex: 1 1 220px;
+  }
+
+  > .bulkActions {
+    flex: 0 0 auto;
+    margin-left: auto;
+  }
+
+  > .actionStatus,
+  > .actionError,
+  > .actionExplainer {
+    flex: 1 0 100%;
+  }
+}
+
 .bulkBar {
-  align-items: end;
   background: #fff;
   border: 1px solid #dce5ec;
   border-radius: var(--radius);
-  display: grid;
-  gap: 8px;
-  grid-template-columns: minmax(190px, 0.8fr) minmax(190px, 0.8fr) minmax(220px, 1fr) auto;
-  min-width: 0;
-  padding: 10px;
 }
 
 .selectionToggle {
@@ -518,6 +543,22 @@
 
 .bulkNote {
   min-width: 0;
+}
+
+// Suspicious actions always use the spam reason, shown as a fixed tag.
+.fixedReason {
+  align-items: center;
+  background: hsl(var(--destructive) / 0.08);
+  border: 1px solid hsl(var(--destructive) / 0.24);
+  border-radius: 6px;
+  color: hsl(0 60% 38%);
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 800;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 10px;
+  white-space: nowrap;
 }
 
 .bulkActions {
@@ -828,15 +869,9 @@
 }
 
 .pairAction {
-  align-items: end;
   background: #f8fbfc;
   border: 1px solid #dce5ec;
   border-radius: var(--radius);
-  display: grid;
-  gap: 8px;
-  grid-template-columns: minmax(190px, 0.8fr) minmax(220px, 1fr) auto;
-  min-width: 0;
-  padding: 10px;
 }
 
 .actionField {
@@ -1241,7 +1276,7 @@
 
 @media (max-width: 1320px) {
   .filterToolbar {
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .filterSearch {
@@ -1254,7 +1289,7 @@
 
   .filterActions {
     justify-content: flex-start;
-    justify-self: end;
+    justify-self: start;
   }
 }
 

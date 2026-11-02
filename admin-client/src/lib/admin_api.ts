@@ -112,7 +112,7 @@ export type AdminProfessorRequestGroupDecisionResponse = AdminProfessorRequestDe
 };
 
 export type AdminReviewFilters = {
-    sort: "newest" | "oldest" | "most_reports" | "new_reports" | "most_signals" | "random";
+    sort: "newest" | "oldest" | "most_reports" | "new_reports" | "random";
     needs_attention: boolean;
     deleted: "exclude" | "include" | "only";
     visible: "any" | "visible" | "hidden";
@@ -122,7 +122,6 @@ export type AdminReviewFilters = {
     uaeu_origin: "any" | "uaeu" | "non_uaeu";
     media: "any" | "with_media" | "without_media" | "attachment" | "gif";
     open_reports: "any" | "has" | "none";
-    signals: "any" | "has" | "none";
     has_session: "any" | "has" | "none";
     has_user: "any" | "has" | "none";
     has_ip: "any" | "has" | "none";
@@ -159,11 +158,10 @@ export type AdminReviewFilters = {
 };
 
 export type AdminCourseFileFilters = {
-    sort: "newest" | "oldest" | "largest" | "most_downloads" | "most_signals";
+    sort: "newest" | "oldest" | "largest" | "most_downloads";
     needs_attention: boolean;
     visible: "any" | "visible" | "hidden";
     reviewed: "any" | "reviewed" | "not_reviewed";
-    signals: "any" | "has" | "none";
     has_session: "any" | "has" | "none";
     has_user: "any" | "has" | "none";
     search: string;
@@ -300,7 +298,6 @@ export type AdminReview = {
     reports: AdminReviewReport[];
     replies: AdminReviewReply[];
     ratings: AdminReviewRating[];
-    signals: AdminModerationSignal[];
     action_history: AdminModerationAction[];
 };
 
@@ -433,19 +430,6 @@ export type AdminReviewRating = {
     created_at: string;
 };
 
-export type AdminModerationSignal = {
-    id?: string;
-    target_type: string;
-    target_id: string;
-    source: string;
-    attribute: string;
-    score?: number;
-    threshold?: number;
-    severity?: string;
-    payload?: unknown;
-    created_at: string;
-};
-
 export type AdminModerationAction = {
     id: string;
     actor_user_id?: string;
@@ -463,7 +447,6 @@ export type AdminReviewReplyResponse = {
     reply: AdminReviewReply;
     parent_review: AdminReview;
     likes: AdminReplyLike[];
-    signals: AdminModerationSignal[];
     action_history: AdminModerationAction[];
 };
 
@@ -516,7 +499,6 @@ export type AdminLoginSession = {
 export type AdminEntityStats = {
     hidden_content_count: number;
     open_report_count: number;
-    signal_count: number;
     recent_activity_count: number;
     distinct_session_count?: number;
     distinct_user_count?: number;
@@ -533,7 +515,6 @@ export type AdminEntityActivity = {
     professor_requests: AdminProfessorRequestSummary[];
     course_files: AdminCourseFileSummary[];
     attachments: AdminReviewAttachmentSummary[];
-    signals: AdminModerationSignal[];
     actions: AdminModerationAction[];
 };
 
@@ -555,7 +536,6 @@ export type AdminReviewSummary = {
     user_id?: string;
     ip_address?: string;
     open_report_count: number;
-    signal_count: number;
     media_kind?: "attachment" | "gif";
 };
 
@@ -639,7 +619,6 @@ export type AdminProfessorRequest = AdminProfessorRequestSummary & {
     related_pending_request_count?: number;
     likely_duplicate: boolean;
     matches: AdminProfessorMatch[];
-    signals: AdminModerationSignal[];
     action_history: AdminModerationAction[];
 };
 
@@ -672,8 +651,6 @@ export type AdminCourseFileSummary = {
     moderation_note?: string;
     blob_name: string;
     url?: string;
-    signal_count: number;
-    signals?: AdminModerationSignal[];
     action_history?: AdminModerationAction[];
 };
 
@@ -723,6 +700,9 @@ export type AdminStatsCounts = {
     reports_resolved: number;
     moderation_actions: number;
     active_contributors: number;
+    professor_views: number;
+    course_views: number;
+    file_downloads: number;
 };
 
 export type AdminStatsPoint = AdminStatsCounts & {
@@ -787,6 +767,123 @@ export async function getAdminStats(
     const params = new URLSearchParams({range: options.range || "30d"});
     if (options.bucket) params.set("bucket", options.bucket);
     return adminFetch<AdminStatsResponse>(`/stats?${params.toString()}`, {signal});
+}
+
+export type AdminCatalogProfessor = {
+    email: string;
+    name: string;
+    college: string;
+    university: string;
+    visible: boolean;
+    aliases: string[];
+    views: number;
+    review_count: number;
+    visible_review_count: number;
+    course_count: number;
+    moderated_at?: string;
+};
+
+export type AdminCatalogProfessorDetail = AdminCatalogProfessor & {
+    courses: { tag: string; name: string }[];
+    views_last_30_days: number;
+    action_history: AdminModerationAction[];
+};
+
+export type AdminCatalogProfessorListResponse = {
+    professors: AdminCatalogProfessor[];
+    total: number;
+    limit: number;
+    offset: number;
+    universities: string[];
+};
+
+export type AdminCatalogProfessorQuery = {
+    search?: string;
+    visible?: "any" | "visible" | "hidden";
+    university?: string;
+    sort?: "reviews" | "views" | "name" | "fewest_reviews";
+    offset?: number;
+};
+
+export type AdminCatalogProfessorUpdate = {
+    name: string;
+    college: string;
+    university: string;
+    aliases: string[];
+    visible: boolean;
+    course_tags: string[];
+    reason_code?: string;
+    note?: string;
+};
+
+export type AdminCatalogCourse = {
+    tag: string;
+    name: string;
+    views: number;
+    file_count: number;
+    visible_file_count: number;
+    professor_count: number;
+};
+
+export type AdminCatalogCourseListResponse = {
+    courses: AdminCatalogCourse[];
+    total: number;
+    limit: number;
+    offset: number;
+};
+
+export type AdminQueueCounts = {
+    reviews: number;
+    course_files: number;
+    professor_requests: number;
+};
+
+function catalogParams(values: Record<string, string | number | undefined>) {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(values)) {
+        if (value !== undefined && value !== "" && value !== "any") params.set(key, String(value));
+    }
+    return params.toString();
+}
+
+export async function listAdminCatalogProfessors(signal: AbortSignal | undefined, query: AdminCatalogProfessorQuery) {
+    return adminFetch<AdminCatalogProfessorListResponse>(`/professors?${catalogParams({...query, limit: 50})}`, {signal});
+}
+
+export async function getAdminCatalogProfessor(email: string, signal?: AbortSignal) {
+    return adminFetch<{ professor: AdminCatalogProfessorDetail }>(`/professors/${encodeURIComponent(email)}`, {signal});
+}
+
+export async function updateAdminCatalogProfessor(email: string, body: AdminCatalogProfessorUpdate) {
+    return adminFetch<{ professor: AdminCatalogProfessorDetail }>(`/professors/${encodeURIComponent(email)}`, {
+        method: "POST",
+        body: JSON.stringify(body),
+    });
+}
+
+export async function mergeAdminCatalogProfessor(email: string, body: { target_email: string; note?: string }) {
+    return adminFetch<{ professor: AdminCatalogProfessorDetail; moved_review_count: number }>(`/professors/${encodeURIComponent(email)}/merge`, {
+        method: "POST",
+        body: JSON.stringify(body),
+    });
+}
+
+export async function listAdminCatalogCourses(
+    signal: AbortSignal | undefined,
+    query: { search?: string; sort?: "views" | "files" | "tag"; offset?: number },
+) {
+    return adminFetch<AdminCatalogCourseListResponse>(`/courses?${catalogParams({...query, limit: 50})}`, {signal});
+}
+
+export async function updateAdminCatalogCourse(tag: string, body: { name: string; note?: string }) {
+    return adminFetch<{ course: AdminCatalogCourse }>(`/courses/${encodeURIComponent(tag)}`, {
+        method: "POST",
+        body: JSON.stringify(body),
+    });
+}
+
+export async function getAdminQueueCounts(signal?: AbortSignal) {
+    return adminFetch<AdminQueueCounts>("/queue-counts", {signal});
 }
 
 export async function listAdminReasons(signal?: AbortSignal) {
@@ -859,7 +956,6 @@ export async function listAdminSuspiciousReviewRatingPairs(signal?: AbortSignal,
 export async function deleteAdminReviewRatings(
     body: {
         ratings: { review_id: string; session_id: string }[];
-        reason_code: string;
         note?: string;
     },
 ) {
@@ -955,7 +1051,7 @@ export async function setReviewVisibility(
 }
 
 export async function hideSuspiciousReviewPair(
-    body: { review_1_id: string; review_2_id: string; keep_review_id?: string; reason_code: string; note?: string; resolve_reports?: boolean },
+    body: { review_1_id: string; review_2_id: string; keep_review_id?: string; note?: string; resolve_reports?: boolean },
 ) {
     return adminFetch<AdminPairDecisionResponse>("/reviews/suspicious/hide-pair", {
         method: "POST",
@@ -967,7 +1063,6 @@ export async function hideSuspiciousReviewPairs(
     body: {
         pairs: { review_1_id: string; review_2_id: string }[];
         keep_reviews?: { review_id: string }[];
-        reason_code: string;
         note?: string;
         resolve_reports?: boolean;
     },

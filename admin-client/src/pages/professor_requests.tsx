@@ -18,7 +18,6 @@ import {
     LoaderCircle,
     RefreshCw,
     Search,
-    ShieldAlert,
     Sparkles,
     UserRoundPlus,
     X,
@@ -46,6 +45,7 @@ import {
     listAdminProfessorRequests,
 } from "@/lib/admin_api";
 import {cn} from "@/lib/utils";
+import {useUrlFilters} from "@/lib/url_state";
 import styles from "./professor_requests.module.scss";
 
 type LoadState = "loading" | "ready" | "error";
@@ -92,6 +92,8 @@ const dateFormatter = new Intl.DateTimeFormat(undefined, {
     timeStyle: "short",
 });
 
+const defaultListFilters = {status: "pending", duplicate: "all", search: ""};
+
 export function ProfessorRequestsPage() {
     const [requests, setRequests] = useState<AdminProfessorRequest[]>([]);
     const [counts, setCounts] = useState<AdminProfessorRequestStatusCounts>(emptyCounts);
@@ -99,12 +101,16 @@ export function ProfessorRequestsPage() {
     const [total, setTotal] = useState(0);
     const [groupTotal, setGroupTotal] = useState(0);
     const [offset, setOffset] = useState(0);
-    const [status, setStatus] = useState<AdminProfessorRequestStatusFilter>("pending");
-    const [duplicate, setDuplicate] = useState<AdminProfessorRequestDuplicateFilter>("all");
+    const [listFilters, setListFilters] = useUrlFilters(defaultListFilters);
+    const status = listFilters.status as AdminProfessorRequestStatusFilter;
+    const duplicate = listFilters.duplicate as AdminProfessorRequestDuplicateFilter;
+    const search = listFilters.search;
+    const setStatus = (value: AdminProfessorRequestStatusFilter) => setListFilters({...listFilters, status: value});
+    const setDuplicate = (value: AdminProfessorRequestDuplicateFilter) => setListFilters({...listFilters, duplicate: value});
+    const setSearch = (value: string) => setListFilters({...listFilters, search: value});
     const showDuplicateFilter = status === "pending" || status === "all";
     const activeDuplicate = showDuplicateFilter ? duplicate : "all";
-    const [searchDraft, setSearchDraft] = useState("");
-    const [search, setSearch] = useState("");
+    const [searchDraft, setSearchDraft] = useState(search);
     const [loadState, setLoadState] = useState<LoadState>("loading");
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [error, setError] = useState("");
@@ -568,7 +574,6 @@ function RequestCard({
                 {request.user_id
                     ? <EntityLink target={{type: "user", id: request.user_id}}>User {request.user_id}</EntityLink>
                     : <span>Anonymous user</span>}
-                {(request.signals || []).length > 0 && <span>{request.signals.length} moderation signals</span>}
             </footer>
         </article>
     );
@@ -775,21 +780,8 @@ function RequestReviewForm({
                 </dl>
             </PanelSection>
 
-            {((request.signals || []).length > 0 || (request.action_history || []).length > 0) && (
-                <PanelSection title="Signals and history">
-                    {(request.signals || []).length > 0 && (
-                        <div className={styles.activityList}>
-                            {(request.signals || []).map((signal, index) => (
-                                <article key={signal.id || `${signal.source}-${signal.attribute}-${index}`}>
-                                    <ShieldAlert size={15}/>
-                                    <div>
-                                        <strong>{signal.attribute}</strong>
-                                        <span>{signal.source} · {signal.severity || "signal"} · {formatDateTime(signal.created_at)}</span>
-                                    </div>
-                                </article>
-                            ))}
-                        </div>
-                    )}
+            {(request.action_history || []).length > 0 && (
+                <PanelSection title="History">
                     {(request.action_history || []).length > 0 && (
                         <div className={styles.activityList}>
                             {(request.action_history || []).map(action => (
@@ -1048,7 +1040,6 @@ function normalizeRequest(request: AdminProfessorRequest): AdminProfessorRequest
         related_request_count: request.related_request_count || 0,
         likely_duplicate: Boolean(request.likely_duplicate),
         matches: request.matches || [],
-        signals: request.signals || [],
         action_history: request.action_history || [],
     };
 }

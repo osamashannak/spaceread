@@ -67,9 +67,8 @@ type AdminReviewRatingRef struct {
 }
 
 type AdminReviewRatingDeleteRequest struct {
-	Ratings    []AdminReviewRatingRef `json:"ratings"`
-	ReasonCode *string                `json:"reason_code" required:"true"`
-	Note       *string                `json:"note"`
+	Ratings []AdminReviewRatingRef `json:"ratings"`
+	Note    *string                `json:"note"`
 }
 
 type AdminReviewRatingDeleteResponse struct {
@@ -221,7 +220,6 @@ type AdminReview struct {
 	Reports              []AdminReviewReport     `json:"reports"`
 	Replies              []AdminReviewReply      `json:"replies"`
 	Ratings              []AdminReviewRating     `json:"ratings"`
-	Signals              []AdminModerationSignal `json:"signals"`
 	ActionHistory        []AdminModerationAction `json:"action_history"`
 }
 
@@ -292,19 +290,6 @@ type AdminReviewRating struct {
 	CreatedAt            time.Time `json:"created_at"`
 }
 
-type AdminModerationSignal struct {
-	ID         *int64           `json:"id,string,omitempty"`
-	TargetType string           `json:"target_type"`
-	TargetID   string           `json:"target_id"`
-	Source     string           `json:"source"`
-	Attribute  string           `json:"attribute"`
-	Score      *float64         `json:"score,omitempty"`
-	Threshold  *float64         `json:"threshold,omitempty"`
-	Severity   *string          `json:"severity,omitempty"`
-	Payload    *json.RawMessage `json:"payload,omitempty"`
-	CreatedAt  time.Time        `json:"created_at"`
-}
-
 type AdminModerationAction struct {
 	ID            int64            `json:"id,string"`
 	ActorUserID   *int64           `json:"actor_user_id,string,omitempty"`
@@ -329,7 +314,6 @@ type AdminReviewPairVisibilityRequest struct {
 	Review1ID      *int64  `json:"review_1_id,string" required:"true"`
 	Review2ID      *int64  `json:"review_2_id,string" required:"true"`
 	KeepReviewID   *int64  `json:"keep_review_id,string"`
-	ReasonCode     *string `json:"reason_code" required:"true"`
 	Note           *string `json:"note"`
 	ResolveReports *bool   `json:"resolve_reports"`
 }
@@ -346,7 +330,6 @@ type AdminReviewKeepRef struct {
 type AdminReviewPairBulkVisibilityRequest struct {
 	Pairs          []AdminReviewPairRef `json:"pairs" required:"true"`
 	KeepReviews    []AdminReviewKeepRef `json:"keep_reviews"`
-	ReasonCode     *string              `json:"reason_code" required:"true"`
 	Note           *string              `json:"note"`
 	ResolveReports *bool                `json:"resolve_reports"`
 }
@@ -431,7 +414,6 @@ type AdminReviewReplyResponse struct {
 	Reply         AdminReviewReply        `json:"reply"`
 	ParentReview  AdminReview             `json:"parent_review"`
 	Likes         []AdminReplyLike        `json:"likes"`
-	Signals       []AdminModerationSignal `json:"signals"`
 	ActionHistory []AdminModerationAction `json:"action_history"`
 }
 
@@ -484,7 +466,6 @@ type AdminLoginSession struct {
 type AdminEntityStats struct {
 	HiddenContentCount   int        `json:"hidden_content_count"`
 	OpenReportCount      int        `json:"open_report_count"`
-	SignalCount          int        `json:"signal_count"`
 	RecentActivityCount  int        `json:"recent_activity_count"`
 	DistinctSessionCount int        `json:"distinct_session_count,omitempty"`
 	DistinctUserCount    int        `json:"distinct_user_count,omitempty"`
@@ -501,7 +482,6 @@ type AdminEntityActivity struct {
 	ProfessorRequests []AdminProfessorRequestSummary `json:"professor_requests"`
 	CourseFiles       []AdminCourseFileSummary       `json:"course_files"`
 	Attachments       []AdminReviewAttachmentSummary `json:"attachments"`
-	Signals           []AdminModerationSignal        `json:"signals"`
 	Actions           []AdminModerationAction        `json:"actions"`
 }
 
@@ -523,7 +503,6 @@ type AdminReviewSummary struct {
 	UserID          *int64     `json:"user_id,string,omitempty"`
 	IPAddress       *string    `json:"ip_address,omitempty"`
 	OpenReportCount int        `json:"open_report_count"`
-	SignalCount     int        `json:"signal_count"`
 	MediaKind       *string    `json:"media_kind,omitempty"`
 }
 
@@ -608,7 +587,6 @@ type AdminProfessorRequest struct {
 	RelatedPendingRequestCount int                     `json:"related_pending_request_count"`
 	LikelyDuplicate            bool                    `json:"likely_duplicate"`
 	Matches                    []AdminProfessorMatch   `json:"matches"`
-	Signals                    []AdminModerationSignal `json:"signals,omitempty"`
 	ActionHistory              []AdminModerationAction `json:"action_history,omitempty"`
 }
 
@@ -652,8 +630,6 @@ type AdminCourseFileSummary struct {
 	ModerationNote       *string                 `json:"moderation_note,omitempty"`
 	BlobName             string                  `json:"blob_name"`
 	URL                  string                  `json:"url,omitempty"`
-	SignalCount          int                     `json:"signal_count"`
-	Signals              []AdminModerationSignal `json:"signals,omitempty"`
 	ActionHistory        []AdminModerationAction `json:"action_history,omitempty"`
 }
 

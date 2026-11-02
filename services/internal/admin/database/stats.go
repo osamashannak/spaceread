@@ -96,6 +96,22 @@ var statsSources = []statsSource{
 	countSource("reports_resolved",
 		`SELECT resolved_at AS ts FROM professor.review_report WHERE `+tzRange("resolved_at"),
 		func(c *v1.AdminStatsCounts, n int64) { c.ReportsResolved += n }),
+	{
+		// Daily view and download counters are written by triggers (migration 000020).
+		name: "daily_counts",
+		inner: `SELECT (day::timestamp AT TIME ZONE '` + statsTimezone + `') AS ts, kind, count
+			FROM analytics.daily_count
+			WHERE day >= ($3::timestamptz AT TIME ZONE '` + statsTimezone + `')::date
+			  AND day <= ($2::timestamptz AT TIME ZONE '` + statsTimezone + `')::date`,
+		aggs: `COALESCE(sum(e.count) FILTER (WHERE e.kind = 'professor_view'), 0)::bigint,
+			COALESCE(sum(e.count) FILTER (WHERE e.kind = 'course_view'), 0)::bigint,
+			COALESCE(sum(e.count) FILTER (WHERE e.kind = 'file_download'), 0)::bigint`,
+		apply: func(c *v1.AdminStatsCounts, v []int64) {
+			c.ProfessorViews += v[0]
+			c.CourseViews += v[1]
+			c.FileDownloads += v[2]
+		},
+	},
 	countSource("moderation_actions",
 		`SELECT created_at AS ts FROM moderation.action_log WHERE action <> 'note' AND `+tzRange("created_at"),
 		func(c *v1.AdminStatsCounts, n int64) { c.ModerationActions += n }),

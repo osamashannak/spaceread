@@ -21,6 +21,9 @@ type AdminStatsCounts struct {
 	ReportsResolved    int64 `json:"reports_resolved"`
 	ModerationActions  int64 `json:"moderation_actions"`
 	ActiveContributors int64 `json:"active_contributors"`
+	ProfessorViews     int64 `json:"professor_views"`
+	CourseViews        int64 `json:"course_views"`
+	FileDownloads      int64 `json:"file_downloads"`
 }
 
 type AdminStatsPoint struct {

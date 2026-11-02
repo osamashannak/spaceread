@@ -9,6 +9,8 @@ export interface NavSection {
         to: string;
         label: string;
         icon: LucideIcon;
+        /** Items waiting in this page's default queue. */
+        badge?: number;
     }[];
 }
 
@@ -16,6 +18,8 @@ interface SectionNavProps {
     sections: NavSection[];
     onNavigate?: () => void;
 }
+
+const compactCount = new Intl.NumberFormat("en-US", {notation: "compact", maximumFractionDigits: 1});
 
 export function SectionNav({sections, onNavigate}: SectionNavProps) {
     return (
@@ -34,6 +38,11 @@ export function SectionNav({sections, onNavigate}: SectionNavProps) {
                             >
                                 <item.icon/>
                                 <span>{item.label}</span>
+                                {item.badge ? (
+                                    <span className={styles.badge} aria-label={`${item.badge} waiting`}>
+                                        {compactCount.format(item.badge)}
+                                    </span>
+                                ) : null}
                             </NavLink>
                         ))}
                     </div>

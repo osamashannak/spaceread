@@ -109,7 +109,7 @@ func (s *Server) ListReviews() http.Handler {
 		reviews, total, err := s.db.ListReviews(r.Context(), admindb.ListReviewOptions{
 			Limit:                limit,
 			Offset:               offset,
-			Sort:                 parseChoiceQuery(r, "sort", "newest", "newest", "oldest", "most_reports", "new_reports", "most_signals", "random"),
+			Sort:                 parseChoiceQuery(r, "sort", "newest", "newest", "oldest", "most_reports", "new_reports", "random"),
 			RandomSeed:           randomSeed,
 			NeedsAttention:       parseBoolQuery(r, "needs_attention", true),
 			Deleted:              parseChoiceQuery(r, "deleted", "exclude", "exclude", "include", "only"),
@@ -120,7 +120,6 @@ func (s *Server) ListReviews() http.Handler {
 			UaeuOrigin:           parseBoolChoiceQuery(r, "uaeu_origin", "uaeu", "non_uaeu"),
 			Media:                parseChoiceQuery(r, "media", "any", "any", "with_media", "without_media", "attachment", "gif"),
 			OpenReports:          parseChoiceQuery(r, "open_reports", "any", "any", "has", "none"),
-			Signals:              parseChoiceQuery(r, "signals", "any", "any", "has", "none"),
 			HasSession:           parseChoiceQuery(r, "has_session", "any", "any", "has", "none"),
 			HasUser:              parseChoiceQuery(r, "has_user", "any", "any", "has", "none"),
 			HasIP:                parseChoiceQuery(r, "has_ip", "any", "any", "has", "none"),
@@ -223,11 +222,7 @@ func (s *Server) HideSuspiciousReviewPair() http.Handler {
 			return
 		}
 
-		reasonCode := cleanOptionalText(request.ReasonCode)
-		if reasonCode == nil {
-			writeError(w, http.StatusBadRequest, "reason_code is required")
-			return
-		}
+		reasonCode := spamReasonCode()
 		if !s.validReason(w, r, reasonCode) {
 			return
 		}
@@ -318,11 +313,7 @@ func (s *Server) HideSuspiciousReviewPairs() http.Handler {
 			keepReviewIDs = append(keepReviewIDs, *keep.ReviewID)
 		}
 
-		reasonCode := cleanOptionalText(request.ReasonCode)
-		if reasonCode == nil {
-			writeError(w, http.StatusBadRequest, "reason_code is required")
-			return
-		}
+		reasonCode := spamReasonCode()
 		if !s.validReason(w, r, reasonCode) {
 			return
 		}
@@ -710,4 +701,13 @@ func writeError(w http.ResponseWriter, status int, message string) {
 		Error:   status,
 		Message: message,
 	})
+}
+
+// Suspicious review and rating actions exist to remove spam, so they always
+// record the spam reason instead of asking the moderator for one.
+const suspiciousActionReasonCode = "spam_or_manipulation"
+
+func spamReasonCode() *string {
+	code := suspiciousActionReasonCode
+	return &code
 }

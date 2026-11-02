@@ -61,10 +61,6 @@ func (db *AdminDB) GetReviewReplyDetail(ctx context.Context, id int64) (*v1.Admi
 	if err != nil {
 		return nil, err
 	}
-	signals, err := db.listSignalsForTargets(ctx, []string{"review_reply"}, [][]string{{strconv.FormatInt(id, 10)}})
-	if err != nil {
-		return nil, err
-	}
 	actions, err := db.listActionsForTargets(ctx, []string{"review_reply"}, [][]string{{strconv.FormatInt(id, 10)}}, nil)
 	if err != nil {
 		return nil, err
@@ -74,7 +70,6 @@ func (db *AdminDB) GetReviewReplyDetail(ctx context.Context, id int64) (*v1.Admi
 		Reply:         *reply,
 		ParentReview:  *review,
 		Likes:         likes,
-		Signals:       signals,
 		ActionHistory: actions,
 	}, nil
 }
@@ -719,10 +714,6 @@ func (db *AdminDB) activityByWhere(ctx context.Context, where activityWhere) (v1
 	if err != nil {
 		return activity, err
 	}
-	activity.Signals, err = db.listSignalsForTargets(ctx, activityTargetTypes(), activityTargetIDs(activity))
-	if err != nil {
-		return activity, err
-	}
 	activity.Actions, err = db.listActionsForTargets(ctx, activityTargetTypes(), activityTargetIDs(activity), nil)
 	if err != nil {
 		return activity, err
@@ -733,17 +724,7 @@ func (db *AdminDB) activityByWhere(ctx context.Context, where activityWhere) (v1
 
 func (db *AdminDB) listReviewSummaries(ctx context.Context, where string, args ...any) ([]v1.AdminReviewSummary, error) {
 	rows, err := db.db.Pool.Query(ctx, fmt.Sprintf(`
-		WITH signal_source AS (
-			SELECT target_id FROM moderation.signal WHERE target_type = 'professor_review'
-			UNION ALL
-			SELECT review_id::text FROM professor.review_flag
-		),
-		signal_counts AS (
-			SELECT target_id, count(*) AS signal_count
-			FROM signal_source
-			GROUP BY target_id
-		),
-		report_counts AS (
+		WITH report_counts AS (
 			SELECT review_id, count(*) FILTER (WHERE resolved = false) AS open_report_count
 			FROM professor.review_report
 			GROUP BY review_id
@@ -766,12 +747,10 @@ func (db *AdminDB) listReviewSummaries(ctx context.Context, where string, args .
 			r.user_id,
 			r.ip_address::text,
 			COALESCE(rc.open_report_count, 0)::int,
-			COALESCE(sc.signal_count, 0)::int,
 			CASE WHEN r.attachment IS NOT NULL THEN 'attachment' WHEN r.gif IS NOT NULL THEN 'gif' END AS media_kind
 		FROM professor.review r
 		LEFT JOIN professor.professor p ON p.email = r.professor_email
 		LEFT JOIN report_counts rc ON rc.review_id = r.id
-		LEFT JOIN signal_counts sc ON sc.target_id = r.id::text
 		WHERE %s
 		ORDER BY r.created_at DESC
 		LIMIT %d`, where, entityActivityLimit), args...)
@@ -801,7 +780,6 @@ func (db *AdminDB) listReviewSummaries(ctx context.Context, where string, args .
 			&review.UserID,
 			&review.IPAddress,
 			&review.OpenReportCount,
-			&review.SignalCount,
 			&review.MediaKind,
 		); err != nil {
 			return nil, err
@@ -1032,12 +1010,6 @@ func (db *AdminDB) listProfessorRequestSummaries(ctx context.Context, where stri
 
 func (db *AdminDB) listCourseFileSummaries(ctx context.Context, where string, args ...any) ([]v1.AdminCourseFileSummary, error) {
 	rows, err := db.db.Pool.Query(ctx, fmt.Sprintf(`
-		WITH signal_counts AS (
-			SELECT target_id, count(*) AS signal_count
-			FROM moderation.signal
-			WHERE target_type = 'course_file'
-			GROUP BY target_id
-		)
 		SELECT
 			cf.id,
 			cf.name,
@@ -1055,11 +1027,9 @@ func (db *AdminDB) listCourseFileSummaries(ctx context.Context, where string, ar
 			cf.reviewer_user_id,
 			cf.moderation_reason_code,
 			cf.moderation_note,
-			cf.blob_name,
-			COALESCE(sc.signal_count, 0)::int
+			cf.blob_name
 		FROM course.file cf
 		LEFT JOIN course.course c ON c.tag = cf.course_tag
-		LEFT JOIN signal_counts sc ON sc.target_id = cf.id::text
 		WHERE %s
 		ORDER BY cf.created_at DESC
 		LIMIT %d`, where, entityActivityLimit), args...)
@@ -1089,7 +1059,6 @@ func (db *AdminDB) listCourseFileSummaries(ctx context.Context, where string, ar
 			&file.ModerationReasonCode,
 			&file.ModerationNote,
 			&file.BlobName,
-			&file.SignalCount,
 		); err != nil {
 			return nil, err
 		}
@@ -1145,53 +1114,6 @@ func (db *AdminDB) listAttachmentSummaries(ctx context.Context, where string, ar
 		attachments = append(attachments, attachment)
 	}
 	return attachments, rows.Err()
-}
-
-func (db *AdminDB) listSignalsForTargets(ctx context.Context, targetTypes []string, targetIDs [][]string) ([]v1.AdminModerationSignal, error) {
-	if len(targetTypes) != len(targetIDs) {
-		return nil, fmt.Errorf("signal target type/id mismatch")
-	}
-
-	where, args := targetWhereClause(targetTypes, targetIDs)
-	if where == "" {
-		return []v1.AdminModerationSignal{}, nil
-	}
-
-	rows, err := db.db.Pool.Query(ctx, fmt.Sprintf(`
-		SELECT id, target_type, target_id, source, attribute, score, threshold, severity, payload, created_at
-		FROM moderation.signal
-		WHERE %s
-		ORDER BY created_at DESC
-		LIMIT %d`, where, entityActivityLimit), args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	signals := []v1.AdminModerationSignal{}
-	for rows.Next() {
-		var (
-			signal  v1.AdminModerationSignal
-			payload []byte
-		)
-		if err := rows.Scan(
-			&signal.ID,
-			&signal.TargetType,
-			&signal.TargetID,
-			&signal.Source,
-			&signal.Attribute,
-			&signal.Score,
-			&signal.Threshold,
-			&signal.Severity,
-			&payload,
-			&signal.CreatedAt,
-		); err != nil {
-			return nil, err
-		}
-		signal.Payload = rawJSONPtr(payload)
-		signals = append(signals, signal)
-	}
-	return signals, rows.Err()
 }
 
 func (db *AdminDB) listActionsForTargets(ctx context.Context, targetTypes []string, targetIDs [][]string, actorUserID *int64) ([]v1.AdminModerationAction, error) {
@@ -1419,7 +1341,6 @@ func buildEntityStats(activity v1.AdminEntityActivity, sessions []v1.AdminEntity
 		}
 	}
 
-	stats.SignalCount = len(activity.Signals)
 	stats.DistinctSessionCount = len(sessionIDs)
 	stats.DistinctUserCount = len(userIDs)
 	return stats
