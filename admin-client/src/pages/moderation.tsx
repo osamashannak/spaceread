@@ -478,7 +478,8 @@ export function ModerationPage() {
                     ? await saveReviewNote(reviewId, {note: bulkNote})
                     : await setReviewVisibility(reviewId, {
                         visible: action === "keep",
-                        reason_code: bulkReason || undefined,
+                        // A reason only explains hiding; keeping needs none.
+                        reason_code: action === "keep" ? undefined : bulkReason || undefined,
                         note: bulkNote || undefined,
                         resolve_reports: true,
                     });

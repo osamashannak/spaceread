@@ -3,6 +3,7 @@ import {getDownloadLink, getPreviewLink} from "../../api/course.ts";
 import {CourseFileAPI} from "../../typed/course.ts";
 import {formatBytes} from "../../utils.tsx";
 import styles from "../../styles/components/course/pdf_preview.module.scss";
+import PreviewLoading from "./preview_loading.tsx";
 
 export default function PdfPreviewModal({file, onClose}: {file: CourseFileAPI; onClose: () => void}) {
     const dialogRef = useRef<HTMLDialogElement>(null);
@@ -115,7 +116,7 @@ export default function PdfPreviewModal({file, onClose}: {file: CourseFileAPI; o
                         </div>
                     ) : (
                         <>
-                            {!loaded && <div className={styles.message} role="status">Loading preview…</div>}
+                            {!loaded && <PreviewLoading className={styles.message} label="Loading preview…"/>}
                             {previewUrl && (
                                 <iframe
                                     className={styles.frame}

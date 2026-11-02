@@ -1,5 +1,6 @@
 import {useEffect, useId, useRef, useState} from "react";
 import styles from "../../styles/components/image_preview.module.scss";
+import PreviewLoading from "./preview_loading.tsx";
 
 export type PreviewKind = "image" | "video" | "audio";
 
@@ -117,7 +118,7 @@ export default function ImagePreviewModal({src, loadSrc, title, downloadUrl, kin
                         </div>
                     ) : (
                         <>
-                            {!loaded && <div className={styles.message} role="status">Loading {noun}…</div>}
+                            {!loaded && <PreviewLoading className={styles.message} label={`Loading ${noun}…`}/>}
                             {imageUrl && kind === "video" && (
                                 <video
                                     key={`${imageUrl}:${attempt}`}

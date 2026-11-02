@@ -334,7 +334,8 @@ export function CourseFilesPage() {
                     ? await saveCourseFileNote(fileId, {note: bulkNote})
                     : await setCourseFileVisibility(fileId, {
                         visible: action === "approve",
-                        reason_code: bulkReason || undefined,
+                        // A reason only explains hiding; approving needs none.
+                        reason_code: action === "approve" ? undefined : bulkReason || undefined,
                         note: bulkNote || undefined,
                     });
                 emitCourseFileUpdated(response.file);
@@ -951,7 +952,7 @@ function CourseFilePanel({
                     </Button>
                     <Button disabled={Boolean(pendingAction)} size="sm" type="button" variant="outline" onClick={() => {
                         void runAction("approve", async () => {
-                            const response = await setCourseFileVisibility(file.id, {visible: true, reason_code: reason || undefined, note: note || undefined});
+                            const response = await setCourseFileVisibility(file.id, {visible: true, note: note || undefined});
                             return response.file;
                         }, "File approved.");
                     }}>

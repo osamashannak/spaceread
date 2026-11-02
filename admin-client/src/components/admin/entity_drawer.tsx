@@ -515,7 +515,7 @@ function ReviewDrawer({
                         <div className={styles.inlineActions}>
                             <Button disabled={media.visible || Boolean(pendingAction)} size="sm" type="button" onClick={() => {
                                 void runAction("show-attachment", async () => {
-                                    const response = await setReviewAttachmentVisibility(media.id, {visible: true, reason_code: reason || undefined, note: note || undefined});
+                                    const response = await setReviewAttachmentVisibility(media.id, {visible: true, note: note || undefined});
                                     return {review: response.review, message: "Attachment shown."};
                                 });
                             }}>
@@ -555,7 +555,7 @@ function ReviewDrawer({
                 <div className={styles.buttonRow}>
                     <Button disabled={Boolean(pendingAction)} type="button" variant="outline" onClick={() => {
                         void runAction("keep-review", async () => {
-                            const response = await setReviewVisibility(review.id, {visible: true, reason_code: reason || undefined, note: note || undefined, resolve_reports: true});
+                            const response = await setReviewVisibility(review.id, {visible: true, note: note || undefined, resolve_reports: true});
                             return {review: response.review, message: "Review kept public."};
                         });
                     }}>
@@ -705,7 +705,7 @@ function ReplyDrawer({
             >
                 <div className={styles.buttonRow}>
                     <Button disabled={reply.visible || Boolean(pendingAction)} type="button" onClick={() => {
-                        void runReplyAction("show-reply", () => setReviewReplyVisibility(reply.id, {visible: true, reason_code: reason || undefined, note: note || undefined}), "Reply shown.");
+                        void runReplyAction("show-reply", () => setReviewReplyVisibility(reply.id, {visible: true, note: note || undefined}), "Reply shown.");
                     }}>
                         {pendingAction === "show-reply" ? <LoaderCircle className={styles.spin} size={16}/> : <Eye size={16}/>}
                         Show
@@ -717,7 +717,7 @@ function ReplyDrawer({
                         Hide
                     </Button>
                     <Button disabled={reply.reviewed || Boolean(pendingAction)} type="button" variant="outline" onClick={() => {
-                        void runReplyAction("review-reply", () => markReviewReplyReviewed(reply.id, {reason_code: reason || undefined, note: note || undefined}), "Reply marked reviewed.");
+                        void runReplyAction("review-reply", () => markReviewReplyReviewed(reply.id, {note: note || undefined}), "Reply marked reviewed.");
                     }}>
                         {pendingAction === "review-reply" ? <LoaderCircle className={styles.spin} size={16}/> : <CheckCircle2 size={16}/>}
                         Reviewed
