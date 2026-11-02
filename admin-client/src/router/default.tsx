@@ -6,6 +6,7 @@ import {SuspiciousReviewsPage} from "@/pages/suspicious_reviews";
 import {SuspiciousReviewRatingsPage} from "@/pages/suspicious_review_ratings";
 import {CourseFilesPage} from "@/pages/course_files";
 import {ProfessorRequestsPage} from "@/pages/professor_requests";
+import {StatisticsPage} from "@/pages/statistics";
 
 export const router = createBrowserRouter([
     {
@@ -19,6 +20,7 @@ export const router = createBrowserRouter([
             {path: "course-files", element: <CourseFilesPage/>},
             {path: "professor-requests", element: <ProfessorRequestsPage/>},
             {path: "reasons", element: <ReasonsPage/>},
+            {path: "statistics", element: <StatisticsPage/>},
             {path: "*", element: <Navigate to="/reviews" replace/>},
         ],
     },

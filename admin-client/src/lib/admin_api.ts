@@ -701,6 +701,94 @@ export type AdminIPDetailResponse = {
     activity: AdminEntityActivity;
 };
 
+export type AdminStatsRangeKey = "7d" | "30d" | "90d" | "12m" | "all";
+
+export type AdminStatsBucket = "day" | "week" | "month";
+
+export type AdminStatsCounts = {
+    reviews: number;
+    verified_reviews: number;
+    positive_reviews: number;
+    hidden_reviews: number;
+    deleted_reviews: number;
+    review_score_sum: number;
+    replies: number;
+    ratings: number;
+    helpful_ratings: number;
+    course_files: number;
+    professor_requests: number;
+    signups: number;
+    sessions: number;
+    reports: number;
+    reports_resolved: number;
+    moderation_actions: number;
+    active_contributors: number;
+};
+
+export type AdminStatsPoint = AdminStatsCounts & {
+    start: string;
+};
+
+export type AdminStatsCount = {
+    key: string;
+    count: number;
+};
+
+export type AdminStatsResponse = {
+    range: {
+        key: AdminStatsRangeKey;
+        bucket: AdminStatsBucket;
+        from: string;
+        to: string;
+        timezone: string;
+    };
+    series: AdminStatsPoint[];
+    current: AdminStatsCounts;
+    previous?: AdminStatsCounts;
+    totals: {
+        reviews: number;
+        professors: number;
+        courses: number;
+        course_files: number;
+        ratings: number;
+        users: number;
+        professor_views: number;
+        course_views: number;
+        file_downloads: number;
+    };
+    backlog: {
+        unreviewed_reviews: number;
+        unreviewed_recent_reviews: number;
+        unreviewed_replies: number;
+        unreviewed_course_files: number;
+        open_reports: number;
+        pending_professor_requests: number;
+    };
+    turnaround: {
+        reviews_hours: number | null;
+        course_files_hours: number | null;
+        reports_hours: number | null;
+        professor_requests_hours: number | null;
+    };
+    moderation_actions: AdminStatsCount[];
+    reviews_by_university: AdminStatsCount[];
+    top_professors: {
+        email: string;
+        name: string;
+        university: string;
+        reviews: number;
+    }[];
+};
+
+export async function getAdminStats(
+    signal?: AbortSignal,
+    options: { range?: AdminStatsRangeKey; bucket?: AdminStatsBucket } = {},
+) {
+    const params = new URLSearchParams({range: options.range || "30d"});
+    if (options.bucket) params.set("bucket", options.bucket);
+    return adminFetch<AdminStatsResponse>(`/stats?${params.toString()}`, {signal});
+}
+
 export async function listAdminReasons(signal?: AbortSignal) {
     return adminFetch<AdminReasonsResponse>("/reasons", {signal});
 }

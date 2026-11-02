@@ -1,6 +1,7 @@
 import {useMemo} from "react";
 import {Outlet, useLocation} from "react-router-dom";
 import {
+    ChartLine,
     FileText,
     MessageSquareText,
     ShieldAlert,
@@ -28,6 +29,12 @@ const navSections: NavSection[] = [
         label: "Requests",
         items: [
             {to: "/professor-requests", label: "Professor add requests", icon: UserRoundPlus},
+        ],
+    },
+    {
+        label: "Insights",
+        items: [
+            {to: "/statistics", label: "Statistics", icon: ChartLine},
         ],
     },
 ];
