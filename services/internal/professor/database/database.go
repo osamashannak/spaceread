@@ -1,6 +1,7 @@
 package database
 
 import (
+	"github.com/osamashannak/uaeu-space/services/pkg/cache"
 	"github.com/osamashannak/uaeu-space/services/pkg/database"
 	"github.com/osamashannak/uaeu-space/services/pkg/utils"
 )
@@ -8,6 +9,7 @@ import (
 type ProfessorDB struct {
 	Db                  *database.DB
 	attachmentURLFormat func(blobName string) string
+	reviewCache         *cache.Cache[reviewSnapshot]
 }
 
 type Option func(*ProfessorDB)
@@ -22,6 +24,7 @@ func New(db *database.DB, opts ...Option) *ProfessorDB {
 	professorDB := &ProfessorDB{
 		Db:                  db,
 		attachmentURLFormat: defaultAttachmentURL,
+		reviewCache:         cache.New[reviewSnapshot](reviewCacheTTL),
 	}
 
 	for _, opt := range opts {
